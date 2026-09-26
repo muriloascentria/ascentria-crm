@@ -1,0 +1,127 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { supabase } from '../lib/supabase'
+import { useApp } from '../lib/store'
+import { fmtMoney, fmtDate } from '../lib/utils'
+import { Avatar, Empty } from '../components/ui'
+import DealModal from '../components/DealModal'
+import { daysIn, runCadenceNow, simulateInstagramDM, moveInboxToDay1, sentLast24h } from '../lib/wa'
+import { DEMO } from '../lib/supabase'
+
+export default function Pipeline() {
+  const { pipelines, stages, users, settings, toast, label, profile } = useApp()
+  const [pipelineId, setPipelineId] = useState(null)
+  const [deals, setDeals] = useState([])
+  const [q, setQ] = useState('')
+  const [onlyMine, setOnlyMine] = useState(false)
+  const [modal, setModal] = useState(null) // { deal, defaults }
+  const [dragId, setDragId] = useState(null)
+  const [over, setOver] = useState(null)
+  const [sent24, setSent24] = useState(null)
+
+  useEffect(() => { if (!pipelineId && pipelines.length) setPipelineId(pipelines.find((p) => p.is_default)?.id || pipelines[0].id) }, [pipelines, pipelineId])
+
+  const load = useCallback(async () => {
+    if (!pipelineId) return
+    const { data, error } = await supabase.from('deals')
+      .select('*, contact:contacts(name), company:companies(name)')
+      .eq('pipeline_id', pipelineId).order('position').order('created_at', { ascending: false })
+    if (error) toast(error.message, 'err')
+    setDeals(data || [])
+  }, [pipelineId, toast])
+  useEffect(() => { load() }, [load])
+
+  const pipeStages = stages.filter((s) => s.pipeline_id === pipelineId)
+  const pipe = pipelines.find((p) => p.id === pipelineId)
+  const hasCadence = pipeStages.some((s) => s.role)
+  useEffect(() => { if (hasCadence) sentLast24h().then(setSent24) }, [hasCadence, deals])
+  const bulkMove = async () => {
+    const inboxCount = deals.filter((d) => d.stage_id === pipeStages.find((s) => s.role === 'inbox')?.id).length
+    const v = window.prompt(`Quantos leads mover de "Recebidos" para o Dia 1? (mais antigos primeiro)\nDisponíveis: ${inboxCount} · Enviados nas últimas 24h: ${sent24 ?? '?'} / limite ${pipe?.daily_limit ?? 250}`, String(Math.min(inboxCount, Math.max(0, (pipe?.daily_limit ?? 250) - (sent24 ?? 0)))))
+    if (v === null) return
+    const n = Number(v); if (!n || n < 1) return
+    try { const moved = await moveInboxToDay1(pipelineId, n); toast(`${moved} lead(s) movido(s) para o Dia 1`); load() } catch (e) { toast(e.message, 'err') }
+  }
+  const filtered = useMemo(() => deals.filter((d) =>
+    (!onlyMine || d.owner_id === profile.id) &&
+    (!q || (d.title + ' ' + (d.contact?.name || '') + ' ' + (d.company?.name || '')).toLowerCase().includes(q.toLowerCase()))
+  ), [deals, q, onlyMine, profile.id])
+
+  const moveTo = async (dealId, stageId) => {
+    const d = deals.find((x) => x.id === dealId)
+    if (!d || d.stage_id === stageId) return
+    setDeals((ds) => ds.map((x) => (x.id === dealId ? { ...x, stage_id: stageId } : x)))
+    const { error } = await supabase.from('deals').update({ stage_id: stageId }).eq('id', dealId)
+    if (error) { toast(error.message, 'err'); load() } else load()
+  }
+
+  const userName = (id) => users.find((u) => u.id === id)?.full_name || ''
+  const totalOpen = filtered.filter((d) => d.status === 'open').reduce((s, d) => s + Number(d.value), 0)
+
+  return (
+    <>
+      <div className="page-head">
+        <div className="row wrap">
+          <h1>{label('pipeline')}</h1>
+          {pipelines.length > 1 && (
+            <select className="select" style={{ width: 'auto' }} value={pipelineId || ''} onChange={(e) => setPipelineId(e.target.value)}>
+              {pipelines.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          )}
+          <span className="chip">Em aberto: <b>{fmtMoney(totalOpen, settings.currency)}</b></span>
+        </div>
+        <div className="row wrap">
+          <input className="input" placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 200 }} />
+          <label className="check small"><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} /> Só meus</label>
+          {DEMO && pipeStages.some((s) => s.role) && <button className="btn" title="Simula uma mensagem no direct do Instagram contendo um celular" onClick={async () => { const r = await simulateInstagramDM(); toast(`DM recebida: ${r.name} entrou em Recebidos`); load() }}>📷 Simular DM do Instagram</button>}
+          {DEMO && pipeStages.some((s) => s.role) && <button className="btn" title="Simula a passagem de 1 dia e roda o motor da cadência" onClick={async () => { const r = await runCadenceNow(); toast(`+1 dia: ${r.cadence.advanced} avançou, ${r.cadence.archived} arquivado, ${r.cadence.reactivated} reativado`); load() }}>⏩ Simular +1 dia</button>}
+          <button className="btn primary" onClick={() => setModal({ deal: null, defaults: { pipeline_id: pipelineId } })}>+ Negócio</button>
+        </div>
+      </div>
+
+      {pipeStages.length === 0 ? <Empty title="Nenhuma etapa" text="Configure as etapas deste funil em Configurações → Funis." /> : (
+        <div className="kanban">
+          {pipeStages.map((s) => {
+            const items = filtered.filter((d) => d.stage_id === s.id)
+            const sum = items.reduce((a, d) => a + Number(d.value), 0)
+            return (
+              <div key={s.id} className={'col' + (over === s.id ? ' over' : '')}
+                onDragOver={(e) => { e.preventDefault(); if (over !== s.id) setOver(s.id) }}
+                onDragLeave={() => setOver(null)}
+                onDrop={(e) => { e.preventDefault(); setOver(null); moveTo(dragId, s.id); setDragId(null) }}>
+                <div className="col-head" style={{ '--stage-color': s.color }}>
+                  <div className="name"><span>{s.name}</span><span className="muted">{items.length}</span></div>
+                  <div className="small muted">{fmtMoney(sum, settings.currency)} · {s.probability}%{s.role === 'day' && s.advance_after_days ? ` · ${s.advance_after_days}d` : ''}</div>
+                  {s.role && <div className="role-chip">{{ inbox: 'entrada automática · mover manualmente', day: s.auto_send ? 'envio automático' : 'mensagem manual', responsive: 'respondeu · conversa manual', archived: 'volta ao Dia 1 em 4 meses', reactivate: 'chamar de novo' }[s.role]}</div>}
+                  {s.role === 'inbox' && items.length > 0 && <button className="btn sm" style={{ marginTop: 4, justifyContent: 'center' }} onClick={bulkMove}>Mover em lote para o Dia 1 →</button>}
+                  {s.role === 'day' && s.id === pipeStages.find((x) => x.role === 'day')?.id && sent24 !== null && (
+                    <div className="small" style={{ marginTop: 2, color: sent24 >= (pipe?.daily_limit ?? 250) ? 'var(--danger)' : 'var(--muted)' }} title="Conversas iniciadas pela empresa (templates) nas últimas 24h × limite da Meta">últimas 24h: <b>{sent24}</b> / {pipe?.daily_limit ?? 250} envios</div>
+                  )}
+                </div>
+                <div className="col-body">
+                  {items.map((d) => {
+                    const overdue = d.status === 'open' && d.expected_close && new Date(d.expected_close) < new Date(new Date().toDateString())
+                    return (
+                      <div key={d.id} className={'deal' + (dragId === d.id ? ' dragging' : '') + (overdue ? ' overdue' : '')} draggable
+                        onDragStart={() => setDragId(d.id)} onDragEnd={() => { setDragId(null); setOver(null) }}
+                        onClick={() => setModal({ deal: d })}>
+                        <div className="title">{d.title}</div>
+                        <div className="small muted">{d.contact?.name || d.company?.name || '—'}</div>
+                        <div className="between" style={{ marginTop: 6 }}>
+                          <span className="val">{fmtMoney(d.value, settings.currency)}</span>
+                          <span className="row small muted">{s.role ? <span title="dias nesta coluna">{daysIn(d.stage_entered_at)}d</span> : d.expected_close && <span>{fmtDate(d.expected_close)}</span>}<Avatar sm name={userName(d.owner_id)} /></span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <button className="btn ghost sm" style={{ justifyContent: 'center', color: 'var(--muted)' }} onClick={() => setModal({ deal: null, defaults: { pipeline_id: pipelineId, stage_id: s.id } })}>+ adicionar</button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {modal && <DealModal deal={modal.deal} defaults={modal.defaults} onClose={() => { setModal(null); load() }} onSaved={load} />}
+    </>
+  )
+}
