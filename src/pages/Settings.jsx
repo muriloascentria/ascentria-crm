@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../lib/store'
-import { ConfirmButton, Field, Modal } from '../components/ui'
-import { ACTIVITY_TYPES, ROLES, slugify } from '../lib/utils'
+import { Avatar, ConfirmButton, Field, Modal } from '../components/ui'
+import { ACTIVITY_TYPES, ROLES, fmtDate, slugify } from '../lib/utils'
 import { STAGE_ROLES, instagramWebhookUrl, runCadenceNow, webhookUrl } from '../lib/wa'
 import { UserSelect } from '../components/ui'
 import { DEMO } from '../lib/supabase'
@@ -319,6 +319,336 @@ function NumberForm({ initial, onClose, onSaved }) {
         <Field label="ID do número de telefone (Meta)" hint="No painel da Meta: WhatsApp → Configuração da API → 'ID do número de telefone' (Phone number ID)."><input className="input" value={f.phone_number_id === 'CONFIGURE-NO-PAINEL' ? '' : f.phone_number_id} onChange={(e) => set('phone_number_id', e.target.value)} placeholder="1234567890" required /></Field>
         <Field label="Quem atende por este número (opcional)"><UserSelect value={f.owner_id} onChange={(v) => set('owner_id', v)} allowEmpty /></Field>
         <label className="check"><input type="checkbox" checked={!!f.is_default} onChange={(e) => set('is_default', e.target.checked)} /> Número padrão (envia a sequência automática)</label>
+      </form>
+    </Modal>
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// Campos personalizados
+// ---------------------------------------------------------------------------------------------
+const FIELD_ENTITIES = [['contact', 'Contatos'], ['deal', 'Negócios']]
+const FIELD_TYPES = { text: 'Texto', textarea: 'Texto longo', number: 'Número', date: 'Data', select: 'Lista de opções', checkbox: 'Sim/Não', url: 'Link' }
+
+function Fields() {
+  const { customFields, reload, toast } = useApp()
+  const [editing, setEditing] = useState(null)
+
+  const move = async (list, i, dir) => {
+    const j = i + dir
+    if (j < 0 || j >= list.length) return
+    const a = list[i], b = list[j]
+    await Promise.all([
+      supabase.from('custom_fields').update({ position: j }).eq('id', a.id),
+      supabase.from('custom_fields').update({ position: i }).eq('id', b.id),
+    ])
+    reload()
+  }
+  const remove = async (f) => {
+    const { error } = await supabase.from('custom_fields').delete().eq('id', f.id)
+    if (error) return toast(error.message, 'err')
+    toast('Campo excluído'); reload()
+  }
+
+  return (
+    <>
+      <p className="small muted" style={{ marginTop: 0 }}>Campos extras que aparecem nos formulários. Os valores já preenchidos continuam guardados mesmo que o campo seja excluído.</p>
+      <div className="grid2" style={{ alignItems: 'start' }}>
+        {FIELD_ENTITIES.map(([entity, title]) => {
+          const list = customFields.filter((f) => f.entity === entity)
+          return (
+            <div key={entity} className="card stack" style={{ gap: 12 }}>
+              <div className="between"><h2>{title}</h2><button className="btn sm" onClick={() => setEditing({ entity, position: list.length })}>+ Campo</button></div>
+              {list.length === 0 ? <div className="small muted">Nenhum campo personalizado.</div> : (
+                <div className="list-edit">
+                  {list.map((f, i) => (
+                    <div key={f.id} className="item">
+                      <div className="stack" style={{ gap: 0 }}>
+                        <button className="btn ghost sm" style={{ padding: '0 6px' }} onClick={() => move(list, i, -1)} disabled={i === 0} aria-label="Subir">▲</button>
+                        <button className="btn ghost sm" style={{ padding: '0 6px' }} onClick={() => move(list, i, 1)} disabled={i === list.length - 1} aria-label="Descer">▼</button>
+                      </div>
+                      <div className="grow">
+                        <div style={{ fontWeight: 500 }}>{f.label}{f.required && <span className="muted"> *</span>}</div>
+                        <div className="small muted">{FIELD_TYPES[f.type] || f.type}{f.type === 'select' && f.options?.length ? ` · ${f.options.join(', ')}` : ''}</div>
+                      </div>
+                      <button className="btn sm" onClick={() => setEditing(f)}>Editar</button>
+                      <ConfirmButton onConfirm={() => remove(f)}>Excluir</ConfirmButton>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {editing && <FieldForm initial={editing} onClose={() => setEditing(null)} onSaved={reload} />}
+    </>
+  )
+}
+
+function FieldForm({ initial, onClose, onSaved }) {
+  const { toast } = useApp()
+  const isNew = !initial.id
+  const [f, setF] = useState({ label: '', type: 'text', required: false, ...initial, options: (initial.options || []).join(', ') })
+  const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
+  const save = async (e) => {
+    e.preventDefault()
+    const payload = {
+      label: f.label.trim(), type: f.type, required: !!f.required,
+      options: f.type === 'select' ? f.options.split(',').map((s) => s.trim()).filter(Boolean) : [],
+    }
+    const q = isNew
+      ? supabase.from('custom_fields').insert({ ...payload, entity: f.entity, key: slugify(f.label) || 'campo_' + Date.now(), position: f.position ?? 0 })
+      : supabase.from('custom_fields').update(payload).eq('id', f.id)
+    const { error } = await q
+    if (error) return toast(error.message.includes('duplicate') ? 'Já existe um campo com esse nome.' : error.message, 'err')
+    toast('Campo salvo'); onSaved(); onClose()
+  }
+  return (
+    <Modal title={isNew ? 'Novo campo' : 'Editar campo'} onClose={onClose}
+      footer={<><button className="btn" type="button" onClick={onClose}>Cancelar</button><button className="btn primary" form="fform">Salvar</button></>}>
+      <form id="fform" onSubmit={save} className="stack" style={{ gap: 12 }}>
+        <Field label="Nome do campo"><input className="input" value={f.label} onChange={(e) => set('label', e.target.value)} required autoFocus /></Field>
+        <Field label="Tipo">
+          <select className="select" value={f.type} onChange={(e) => set('type', e.target.value)}>
+            {Object.entries(FIELD_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        </Field>
+        {f.type === 'select' && (
+          <Field label="Opções" hint="Separe por vírgula. Ex.: Mentoria, Consulta, Curso">
+            <input className="input" value={f.options} onChange={(e) => set('options', e.target.value)} required />
+          </Field>
+        )}
+        <label className="check"><input type="checkbox" checked={!!f.required} onChange={(e) => set('required', e.target.checked)} /> Preenchimento obrigatório</label>
+      </form>
+    </Modal>
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// Usuários e permissões
+// ---------------------------------------------------------------------------------------------
+function Users() {
+  const { users, profile, reload, toast } = useApp()
+  const pending = users.filter((u) => !u.active)
+
+  const update = async (u, patch) => {
+    const { error } = await supabase.from('profiles').update(patch).eq('id', u.id)
+    if (error) return toast(error.message, 'err')
+    toast('Usuário atualizado'); reload()
+  }
+
+  return (
+    <div className="stack" style={{ gap: 16 }}>
+      <div className="card small muted">
+        Novas pessoas criam a própria conta na tela de login e ficam <b>aguardando aprovação</b> até um administrador ativá-las aqui.
+        <b> Administrador</b> acessa tudo, inclusive estas configurações. <b>Gestor</b> vê e edita todos os registros.
+        <b> Vendedor</b> vê {'"'}todos os registros{'"'} ou {'"'}só os próprios{'"'}, conforme a opção em Marca → Visibilidade.
+      </div>
+      {pending.length > 0 && <div className="small" style={{ color: 'var(--accent)', fontWeight: 600 }}>{pending.length} aguardando aprovação</div>}
+      <div className="card pad0" style={{ overflowX: 'auto' }}>
+        <table className="tbl">
+          <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Situação</th><th>Desde</th></tr></thead>
+          <tbody>
+            {users.map((u) => {
+              const me = u.id === profile?.id
+              return (
+                <tr key={u.id} style={{ cursor: 'default' }}>
+                  <td><div className="row"><Avatar name={u.full_name || u.email} sm /><span>{u.full_name || '—'}{me && <span className="muted"> (você)</span>}</span></div></td>
+                  <td>{u.email}</td>
+                  <td>
+                    <select className="select" style={{ width: 150 }} value={u.role} disabled={me} title={me ? 'Você não pode alterar o próprio perfil' : ''} onChange={(e) => update(u, { role: e.target.value })}>
+                      {Object.entries(ROLES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    {u.active
+                      ? <div className="row"><span className="chip dot" style={{ '--chip-color': 'var(--success)' }}>Ativo</span>{!me && <button className="btn ghost sm" onClick={() => window.confirm(`Desativar ${u.full_name || u.email}? A pessoa perde o acesso ao CRM.`) && update(u, { active: false })}>Desativar</button>}</div>
+                      : <div className="row"><span className="chip dot" style={{ '--chip-color': 'var(--accent)' }}>Aguardando</span><button className="btn primary sm" onClick={() => update(u, { active: true })}>Aprovar</button></div>}
+                  </td>
+                  <td className="small muted">{fmtDate(u.created_at)}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// Automações ("quando X, então Y")
+// ---------------------------------------------------------------------------------------------
+const TRIGGERS = {
+  deal_created: 'Negócio criado',
+  deal_stage_changed: 'Negócio mudou de etapa',
+  deal_won: 'Negócio ganho',
+  deal_lost: 'Negócio perdido',
+  contact_created: 'Contato criado',
+}
+const ACTIONS = { create_activity: 'Criar atividade', add_tag: 'Adicionar tag ao contato', set_deal_field: 'Alterar campo do negócio' }
+
+function Automations() {
+  const { pipelines, stages, users, reload: reloadMeta, toast } = useApp()
+  const [list, setList] = useState([])
+  const [editing, setEditing] = useState(null)
+  const load = () => supabase.from('automations').select('*').order('created_at').then(({ data }) => setList(data || []))
+  useEffect(() => { load() }, [])
+
+  const describe = (a) => {
+    const t = a.trigger_config || {}, c = a.action_config || {}
+    const pipe = t.pipeline_id && pipelines.find((p) => p.id === t.pipeline_id)?.name
+    const stage = t.stage_id && stages.find((s) => s.id === t.stage_id)?.name
+    let when = TRIGGERS[a.trigger_type] || a.trigger_type
+    if (stage) when += ` para "${stage}"`
+    if (pipe) when += ` (funil ${pipe})`
+    let then = ACTIONS[a.action_type] || a.action_type
+    if (a.action_type === 'create_activity') {
+      const who = c.assign === 'creator' ? 'quem fez a ação' : c.assign && c.assign !== 'owner' ? (users.find((u) => u.id === c.assign)?.full_name || 'usuário') : 'o responsável'
+      then = `${ACTIVITY_TYPES[c.type]?.label || 'Atividade'} "${c.title || a.name}" em ${c.days_offset ?? 1} dia(s), para ${who}`
+    }
+    if (a.action_type === 'add_tag') then = `Adicionar a tag "${c.tag}" ao contato`
+    if (a.action_type === 'set_deal_field') then = c.field === 'value' ? `Definir valor do negócio = ${c.value}` : c.field === 'expected_close_days' ? `Previsão de fechamento em ${c.value} dia(s)` : `Campo ${c.key} = ${c.value}`
+    return { when, then }
+  }
+  const toggle = async (a) => {
+    const { error } = await supabase.from('automations').update({ active: !a.active }).eq('id', a.id)
+    if (error) return toast(error.message, 'err')
+    load(); reloadMeta()
+  }
+  const remove = async (a) => {
+    const { error } = await supabase.from('automations').delete().eq('id', a.id)
+    if (error) return toast(error.message, 'err')
+    toast('Automação excluída'); load()
+  }
+
+  return (
+    <div className="stack" style={{ gap: 12 }}>
+      <div className="between wrap">
+        <p className="small muted" style={{ margin: 0 }}>Regras que rodam sozinhas. A sequência de WhatsApp do funil de mentoria não fica aqui: ela é configurada em cada coluna (Funis e etapas → ⚙).</p>
+        <button className="btn primary" onClick={() => setEditing({})}>+ Automação</button>
+      </div>
+      {list.length === 0 ? <div className="card small muted">Nenhuma automação.</div> : list.map((a) => {
+        const { when, then } = describe(a)
+        return (
+          <div key={a.id} className="card between wrap" style={{ opacity: a.active ? 1 : 0.6 }}>
+            <div className="grow" style={{ minWidth: 240 }}>
+              <div style={{ fontWeight: 600 }}>{a.name}</div>
+              <div className="small"><span className="muted">Quando:</span> {when}</div>
+              <div className="small"><span className="muted">Então:</span> {then}</div>
+            </div>
+            <div className="row">
+              <label className="check small"><input type="checkbox" checked={a.active} onChange={() => toggle(a)} /> Ativa</label>
+              <button className="btn sm" onClick={() => setEditing(a)}>Editar</button>
+              <ConfirmButton onConfirm={() => remove(a)}>Excluir</ConfirmButton>
+            </div>
+          </div>
+        )
+      })}
+      {editing && <AutomationForm initial={editing} onClose={() => setEditing(null)} onSaved={load} />}
+    </div>
+  )
+}
+
+function AutomationForm({ initial, onClose, onSaved }) {
+  const { pipelines, stages, users, toast } = useApp()
+  const [f, setF] = useState({
+    name: initial.name || '', trigger_type: initial.trigger_type || 'deal_created', action_type: initial.action_type || 'create_activity',
+    tc: { ...(initial.trigger_config || {}) },
+    ac: { type: 'task', title: '', days_offset: 1, assign: 'owner', ...(initial.action_config || {}) },
+    active: initial.active ?? true,
+  })
+  const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
+  const setTc = (k, v) => setF((x) => ({ ...x, tc: { ...x.tc, [k]: v || undefined } }))
+  const setAc = (k, v) => setF((x) => ({ ...x, ac: { ...x.ac, [k]: v } }))
+  const isDealTrigger = f.trigger_type !== 'contact_created'
+  const stageOptions = stages.filter((s) => !f.tc.pipeline_id || s.pipeline_id === f.tc.pipeline_id)
+
+  const save = async (e) => {
+    e.preventDefault()
+    const tc = {}
+    if (isDealTrigger && f.tc.pipeline_id) tc.pipeline_id = f.tc.pipeline_id
+    if (f.trigger_type === 'deal_stage_changed' && f.tc.stage_id) tc.stage_id = f.tc.stage_id
+    let ac = {}
+    if (f.action_type === 'create_activity') ac = { type: f.ac.type, title: f.ac.title, description: f.ac.description || undefined, days_offset: Number(f.ac.days_offset || 0), assign: f.ac.assign || 'owner' }
+    if (f.action_type === 'add_tag') ac = { tag: (f.ac.tag || '').trim() }
+    if (f.action_type === 'set_deal_field') ac = { field: f.ac.field || 'value', value: Number(f.ac.value || 0) }
+    const payload = { name: f.name.trim(), trigger_type: f.trigger_type, trigger_config: tc, action_type: f.action_type, action_config: ac, active: f.active }
+    const q = initial.id ? supabase.from('automations').update(payload).eq('id', initial.id) : supabase.from('automations').insert(payload)
+    const { error } = await q
+    if (error) return toast(error.message, 'err')
+    toast('Automação salva'); onSaved(); onClose()
+  }
+
+  return (
+    <Modal title={initial.id ? 'Editar automação' : 'Nova automação'} onClose={onClose}
+      footer={<><button className="btn" type="button" onClick={onClose}>Cancelar</button><button className="btn primary" form="aform">Salvar</button></>}>
+      <form id="aform" onSubmit={save} className="stack" style={{ gap: 12 }}>
+        <Field label="Nome"><input className="input" value={f.name} onChange={(e) => set('name', e.target.value)} required autoFocus /></Field>
+        <h3>Quando</h3>
+        <div className="grid2">
+          <Field label="Gatilho">
+            <select className="select" value={f.trigger_type} onChange={(e) => set('trigger_type', e.target.value)}>
+              {Object.entries(TRIGGERS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </Field>
+          {isDealTrigger && (
+            <Field label="Funil">
+              <select className="select" value={f.tc.pipeline_id || ''} onChange={(e) => { setTc('pipeline_id', e.target.value); setTc('stage_id', '') }}>
+                <option value="">Todos os funis</option>
+                {pipelines.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </Field>
+          )}
+        </div>
+        {f.trigger_type === 'deal_stage_changed' && (
+          <Field label="Etapa de destino">
+            <select className="select" value={f.tc.stage_id || ''} onChange={(e) => setTc('stage_id', e.target.value)}>
+              <option value="">Qualquer etapa</option>
+              {stageOptions.map((s) => <option key={s.id} value={s.id}>{(pipelines.find((p) => p.id === s.pipeline_id)?.name || '') + ' → ' + s.name}</option>)}
+            </select>
+          </Field>
+        )}
+        <h3>Então</h3>
+        <Field label="Ação">
+          <select className="select" value={f.action_type} onChange={(e) => set('action_type', e.target.value)}>
+            {Object.entries(ACTIONS).map(([k, v]) => <option key={k} value={k} disabled={k === 'set_deal_field' && !isDealTrigger}>{v}</option>)}
+          </select>
+        </Field>
+        {f.action_type === 'create_activity' && (
+          <>
+            <div className="grid2">
+              <Field label="Tipo">
+                <select className="select" value={f.ac.type} onChange={(e) => setAc('type', e.target.value)}>
+                  {Object.entries(ACTIVITY_TYPES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                </select>
+              </Field>
+              <Field label="Prazo (dias depois)"><input className="input" type="number" min="0" value={f.ac.days_offset} onChange={(e) => setAc('days_offset', e.target.value)} /></Field>
+            </div>
+            <Field label="Título" hint="Pode usar {{deal.title}} e {{contact.name}}."><input className="input" value={f.ac.title} onChange={(e) => setAc('title', e.target.value)} required /></Field>
+            <Field label="Atribuir a">
+              <select className="select" value={f.ac.assign} onChange={(e) => setAc('assign', e.target.value)}>
+                <option value="owner">Responsável pelo negócio/contato</option>
+                <option value="creator">Quem realizou a ação</option>
+                {users.filter((u) => u.active).map((u) => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)}
+              </select>
+            </Field>
+          </>
+        )}
+        {f.action_type === 'add_tag' && <Field label="Tag"><input className="input" value={f.ac.tag || ''} onChange={(e) => setAc('tag', e.target.value)} required /></Field>}
+        {f.action_type === 'set_deal_field' && (
+          <div className="grid2">
+            <Field label="Campo">
+              <select className="select" value={f.ac.field || 'value'} onChange={(e) => setAc('field', e.target.value)}>
+                <option value="value">Valor (R$)</option>
+                <option value="expected_close_days">Previsão de fechamento (dias a partir de hoje)</option>
+              </select>
+            </Field>
+            <Field label="Novo valor"><input className="input" type="number" value={f.ac.value ?? ''} onChange={(e) => setAc('value', e.target.value)} required /></Field>
+          </div>
+        )}
+        <label className="check"><input type="checkbox" checked={f.active} onChange={(e) => set('active', e.target.checked)} /> Ativa</label>
       </form>
     </Modal>
   )
