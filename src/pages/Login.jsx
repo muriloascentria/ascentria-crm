@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Field } from '../components/ui'
 import { DEMO } from '../lib/supabase'
-import logoForest from '../assets/brand/ecrm-logo-forest.png'
+import logoEcrm from '../assets/brand/ecrm-verde.svg'
 
 export default function Login() {
   const [mode, setMode] = useState('login')
@@ -37,7 +37,7 @@ export default function Login() {
     <div className="auth">
       <form className="card stack" onSubmit={submit} style={{ gap: 14 }}>
         <div style={{ textAlign: 'center', marginBottom: 6 }}>
-          <img className="logo" src={logoForest} alt="eCRM" />
+          <img className="logo" src={logoEcrm} alt="eCRM Ascentria" />
           <h1>{mode === 'login' ? 'Entrar no CRM' : mode === 'signup' ? 'Criar conta' : 'Recuperar senha'}</h1>
         </div>
         {mode === 'signup' && <Field label="Seu nome"><input className="input" value={name} onChange={(e) => setName(e.target.value)} required /></Field>}
