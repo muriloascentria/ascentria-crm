@@ -97,7 +97,7 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved }) {
             <div className="small muted card" style={{ padding: '8px 10px', background: 'var(--surface-2)' }}>
               {curStage.role === 'day' && <>Na coluna <b>{curStage.name}</b> há {daysIn(deal.stage_entered_at)} dia(s){curStage.advance_after_days ? ` · avança sozinho após ${curStage.advance_after_days} dia(s) sem resposta` : ''}{deal.cycle > 1 ? ` · ${deal.cycle}ª passagem pela sequência` : ''}.</>}
               {curStage.role === 'responsive' && <>Lead respondeu — a sequência automática parou.</>}
-              {curStage.role === 'archived' && <>Arquivado{deal.reactivate_at ? ` · volta sozinho para o Dia 1 em ${fmtDate(deal.reactivate_at)}` : ''}.</>}
+              {curStage.role === 'archived' && <>{curStage.name}{deal.reactivate_at ? ` · volta sozinho para o Dia 1 em ${fmtDate(deal.reactivate_at)}` : ''}.</>}
               {curStage.role === 'reactivate' && <>Prazo de arquivamento venceu — hora de chamar de novo.</>}
             </div>
           )}

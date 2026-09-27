@@ -154,9 +154,9 @@ function Pipelines() {
               {pipelines.length > 1 && <ConfirmButton onConfirm={removePipeline}>Excluir funil</ConfirmButton>}
             </div>
           </div>
-          <p className="small muted">Etapas do tipo <b>Ganho</b> e <b>Perdido</b> fecham o negócio automaticamente ao receber um card. A probabilidade alimenta a previsão ponderada do painel. O botão <b>⚙</b> define a função da coluna na sequência de WhatsApp (dia, responsivo, arquivado, reativar), a mensagem do dia e o avanço automático.</p>
+          <p className="small muted">Etapas do tipo <b>Ganho</b> e <b>Perdido</b> fecham o negócio automaticamente ao receber um card. A probabilidade alimenta a previsão ponderada do painel. O botão <b>⚙</b> define a função da coluna na sequência de WhatsApp (dia, responsivo, perdido temporário, reativar), a mensagem do dia e o avanço automático.</p>
           {draft.some((s) => s.role === 'archived') && (
-            <div className="row small wrap"><span>Leads arquivados, após</span><input className="input" type="number" min="1" defaultValue={pipe.archive_months ?? 4} onBlur={(e) => Number(e.target.value) !== pipe.archive_months && setArchiveMonths(e.target.value)} style={{ width: 70 }} /><span>meses, vão para</span>
+            <div className="row small wrap"><span>Leads nas colunas de perdido, após</span><input className="input" type="number" min="1" defaultValue={pipe.archive_months ?? 4} onBlur={(e) => Number(e.target.value) !== pipe.archive_months && setArchiveMonths(e.target.value)} style={{ width: 70 }} /><span>meses, vão para</span>
               <select className="select" style={{ width: 'auto' }} value={pipe.reactivate_to_pipeline_id || ''} onChange={(e) => setReactivateTo(e.target.value)}>
                 <option value="">o Dia 1 deste funil</option>
                 {pipelines.filter((p) => p.id !== pipe.id && stages.some((s) => s.pipeline_id === p.id && s.role === 'day')).map((p) => <option key={p.id} value={p.id}>o Dia 1 do funil {p.name}</option>)}
@@ -197,7 +197,7 @@ function StageCadenceEditor({ s, onChange, onClose }) {
       </Field>
       {s.role === 'day' && (<>
         <div className="grid2">
-          <Field label="Avançar para a próxima coluna após (dias sem resposta)" hint="Na última coluna de dia, o lead vai para 'Arquivado'."><input className="input" type="number" min="1" value={s.advance_after_days ?? ''} onChange={(e) => onChange('advance_after_days', e.target.value)} /></Field>
+          <Field label="Avançar para a próxima coluna após (dias sem resposta)" hint="Na última coluna de dia, o lead vai para a primeira coluna de perdido (Perdido cadência)."><input className="input" type="number" min="1" value={s.advance_after_days ?? ''} onChange={(e) => onChange('advance_after_days', e.target.value)} /></Field>
           <Field label="Como enviar a mensagem do dia">
             <select className="select" value={s.auto_send ? '1' : '0'} onChange={(e) => onChange('auto_send', e.target.value === '1')}>
               <option value="0">Criar tarefa para eu enviar manualmente</option>
@@ -211,7 +211,7 @@ function StageCadenceEditor({ s, onChange, onClose }) {
           <Field label="Idioma do template"><input className="input" value={s.wa_template_lang || 'pt_BR'} onChange={(e) => onChange('wa_template_lang', e.target.value)} /></Field>
         </div>
       </>)}
-      {s.role && s.role !== 'day' && <p className="small muted">{{ inbox: 'Leads do Instagram (e novos leads em geral) entram aqui automaticamente, sem envio. Você move para o Dia 1 arrastando ou pelo botão "Mover em lote", respeitando o limite diário da Meta.', responsive: 'Quando o lead responde (webhook da Meta), o negócio é movido para esta coluna e a sequência para.', archived: 'Leads que terminam a sequência sem responder vêm para cá e recebem a data de retorno. Quando ela chega, o lead volta sozinho ao primeiro dia da sequência.', reactivate: 'Opcional. Se existir uma coluna com esta função, o lead arquivado vem para cá (com a tarefa "Retomar contato") em vez de voltar ao Dia 1.' }[s.role]}</p>}
+      {s.role && s.role !== 'day' && <p className="small muted">{{ inbox: 'Leads do Instagram (e novos leads em geral) entram aqui automaticamente, sem envio. Você move para o Dia 1 arrastando ou pelo botão "Mover em lote", respeitando o limite diário da Meta.', responsive: 'Quando o lead responde (webhook da Meta), o negócio é movido para esta coluna e a sequência para.', archived: 'Perdido temporário: o lead recebe a data de retorno e, quando ela chega, volta sozinho ao primeiro dia da sequência. A primeira coluna deste tipo (Perdido cadência) recebe automaticamente quem termina a sequência sem responder; as demais (desinteresse, apresentado) você move manualmente.', reactivate: 'Opcional. Se existir uma coluna com esta função, o lead perdido vem para cá, após o prazo, (com a tarefa "Retomar contato") em vez de voltar ao Dia 1.' }[s.role]}</p>}
       <div className="small muted">Lembre de clicar em <b>Salvar etapas</b>.</div>
     </div>
   )
@@ -227,7 +227,7 @@ function WhatsApp() {
   useEffect(() => { supabase.from('contacts').select('id,name,phone,wa_id').order('name').then(({ data }) => setContacts((data || []).filter((c) => c.phone || c.wa_id))) }, [])
   const run = async () => {
     setBusy(true)
-    try { const r = await runCadenceNow(); toast(`Cadência: ${r.cadence.advanced} avançou, ${r.cadence.archived} arquivado, ${r.cadence.reactivated} voltou ao Dia 1 · ${r.outbox.sent} msg enviada(s)`) }
+    try { const r = await runCadenceNow(); toast(`Cadência: ${r.cadence.advanced} avançou, ${r.cadence.archived} perdido cadência, ${r.cadence.reactivated} voltou ao Dia 1 · ${r.outbox.sent} msg enviada(s)`) }
     catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
   }
   const setDefault = async (n) => { await supabase.from('wa_numbers').update({ is_default: false }).neq('id', n.id); await supabase.from('wa_numbers').update({ is_default: true }).eq('id', n.id); reload() }
@@ -265,7 +265,7 @@ function WhatsApp() {
         </div>
         <div className="card stack" style={{ gap: 10 }}>
           <h2>Motor da sequência</h2>
-          <p className="small muted">Roda automaticamente a cada hora. Avança os leads que cumpriram o prazo da coluna, arquiva quem terminou sem responder, devolve ao Dia 1 quem completou {pipelinesArchiveMonths()} meses arquivado e envia as mensagens pendentes.</p>
+          <p className="small muted">Roda automaticamente a cada hora. Avança os leads que cumpriram o prazo da coluna, move para Perdido cadência quem terminou sem responder, devolve ao Dia 1 quem completou {pipelinesArchiveMonths()} meses em uma coluna de perdido e envia as mensagens pendentes.</p>
           <div><button className="btn primary" onClick={run} disabled={busy}>{busy ? 'Rodando…' : 'Rodar agora'}</button></div>
         </div>
         <div className="card stack" style={{ gap: 10 }}>
@@ -281,7 +281,7 @@ function WhatsApp() {
           <div><div><b>Recebidos → Dia 1 (manual, dosado)</b><div className="small muted">Você arrasta os cards ou usa "Mover em lote", informando a quantidade. A coluna Dia 1 mostra quantos envios saíram nas últimas 24h contra o limite da Meta.</div></div></div>
           <div><div><b>Dia 1 → Dia 5 pelo WhatsApp</b><div className="small muted">A mensagem de cada dia sai pelo número padrão como template aprovado (a Meta exige template para a primeira mensagem, já que quem inicia é a empresa). Sem resposta, o lead avança 1 coluna por dia.</div></div></div>
           <div><div><b>Respondeu → Responsivo</b><div className="small muted">O webhook do WhatsApp detecta a resposta, move o card e a sequência para. A conversa continua manual, aqui dentro, pelo número que você escolher.</div></div></div>
-          <div><div><b>Dia 5 sem resposta → Arquivado</b><div className="small muted">O card recebe a data de retorno.</div></div></div>
+          <div><div><b>Dia 5 sem resposta → Perdido cadência</b><div className="small muted">O card recebe a data de retorno.</div></div></div>
           <div><div><b>4 meses depois → volta ao Dia 1</b><div className="small muted">Automaticamente, com a sequência recomeçando (o card mostra a passagem atual).</div></div></div>
         </div>
         <h2 style={{ marginTop: 6 }}>Como ativar (resumo)</h2>

@@ -50,9 +50,11 @@ const db = {
     { id: W.d4, pipeline_id: P2, name: 'Dia 4', position: 3, color: '#c9973f', probability: 25, kind: 'open', role: 'day', advance_after_days: 1, auto_send: true, wa_template_name: 'mentoria_dia_4', wa_template_lang: 'pt_BR', message_text: 'Oi, {{primeiro_nome}}! Passando para retomar a consultoria gratuita que você pediu pelo Instagram. Posso te enviar os horários disponíveis para agendarmos?' },
     { id: W.d5, pipeline_id: P2, name: 'Dia 5', position: 4, color: '#ab6f30', probability: 30, kind: 'open', role: 'day', advance_after_days: 1, auto_send: true, wa_template_name: 'mentoria_dia_5', wa_template_lang: 'pt_BR', message_text: '{{primeiro_nome}}, esta é minha última mensagem sobre a consultoria gratuita que você pediu pelo Instagram.\nSe ainda quiser agendar, responda SIM que te envio os horários. Se não for o momento, responda NÃO e encerro o contato por aqui.' },
     { id: W.resp, pipeline_id: P2, name: 'Responsivo', position: 5, color: '#5c7a3a', probability: 60, kind: 'open', role: 'responsive' },
-    { id: W.arch, pipeline_id: P2, name: 'Arquivado', position: 6, color: '#cfc9b6', probability: 0, kind: 'open', role: 'archived' },
-    { id: W.won, pipeline_id: P2, name: 'Fechou mentoria', position: 8, color: '#2e381a', probability: 100, kind: 'won' },
-    { id: W.lost, pipeline_id: P2, name: 'Perdido', position: 9, color: '#a8432f', probability: 0, kind: 'lost' },
+    { id: W.arch, pipeline_id: P2, name: 'Perdido cadência', position: 6, color: '#cfc9b6', probability: 0, kind: 'open', role: 'archived' },
+    { id: 'w-desint', pipeline_id: P2, name: 'Perdido desinteresse', position: 7, color: '#c9a27e', probability: 0, kind: 'open', role: 'archived' },
+    { id: 'w-apres', pipeline_id: P2, name: 'Perdido apresentado', position: 8, color: '#b98a6a', probability: 0, kind: 'open', role: 'archived' },
+    { id: W.won, pipeline_id: P2, name: 'Fechou mentoria', position: 10, color: '#2e381a', probability: 100, kind: 'won' },
+    { id: W.lost, pipeline_id: P2, name: 'Perdido', position: 11, color: '#a8432f', probability: 0, kind: 'lost' },
     ...[
       ['Oi, {{primeiro_nome}}! Aqui é a Mari, do time do enfermeiro Murilo Pedroso. Há alguns meses você demonstrou interesse na consultoria gratuita para estruturar seu consultório de enfermagem. Como estão as coisas por aí? Esse ainda é um objetivo seu?', '#9aa585'],
       ['Poderia ouvir o áudio que enviei?', '#818a66'],
@@ -61,9 +63,11 @@ const db = {
       ['Oi, {{primeiro_nome}}, esta é minha última mensagem por agora sobre a consultoria gratuita.\nSe quiser agendar, responda SIM que te envio os horários. Se não for o momento, responda NÃO e encerro o contato por aqui.', '#ab6f30'],
     ].map(([msg, color], i) => ({ id: `r-d${i + 1}`, pipeline_id: P3, name: `Dia ${i + 1}`, position: i, color, probability: 10 + i * 5, kind: 'open', role: 'day', advance_after_days: 1, auto_send: true, wa_template_name: i === 1 ? 'mentoria_dia_2' : `reativacao_dia_${i + 1}`, wa_template_lang: 'pt_BR', message_text: msg })),
     { id: 'r-resp', pipeline_id: P3, name: 'Responsivo', position: 5, color: '#5c7a3a', probability: 60, kind: 'open', role: 'responsive' },
-    { id: 'r-arch', pipeline_id: P3, name: 'Arquivado', position: 6, color: '#cfc9b6', probability: 0, kind: 'open', role: 'archived' },
-    { id: 'r-won', pipeline_id: P3, name: 'Fechou mentoria', position: 7, color: '#2e381a', probability: 100, kind: 'won' },
-    { id: 'r-lost', pipeline_id: P3, name: 'Perdido', position: 8, color: '#a8432f', probability: 0, kind: 'lost' },
+    { id: 'r-arch', pipeline_id: P3, name: 'Perdido cadência', position: 6, color: '#cfc9b6', probability: 0, kind: 'open', role: 'archived' },
+    { id: 'r-desint', pipeline_id: P3, name: 'Perdido desinteresse', position: 7, color: '#c9a27e', probability: 0, kind: 'open', role: 'archived' },
+    { id: 'r-apres', pipeline_id: P3, name: 'Perdido apresentado', position: 8, color: '#b98a6a', probability: 0, kind: 'open', role: 'archived' },
+    { id: 'r-won', pipeline_id: P3, name: 'Fechou mentoria', position: 9, color: '#2e381a', probability: 100, kind: 'won' },
+    { id: 'r-lost', pipeline_id: P3, name: 'Perdido', position: 10, color: '#a8432f', probability: 0, kind: 'lost' },
   ],
   companies: [
     { id: E.e1, name: 'Clínica Vida Plena', domain: 'vidaplena.com.br', phone: '(11) 3333-1000', segment: 'Saúde', city: 'São Paulo', notes: null, owner_id: U_ME, custom: {}, created_at: daysFromNow(-40), updated_at: now() },
@@ -359,7 +363,7 @@ function runCadence() {
     const s = db.stages.find((x) => x.id === d.stage_id)
     if (s?.role === 'day' && s.advance_after_days && new Date(d.stage_entered_at) < new Date(Date.now() - s.advance_after_days * 86400000)) {
       let nxt = db.stages.filter((x) => x.pipeline_id === d.pipeline_id && x.role === 'day' && x.position > s.position).sort((a, b) => a.position - b.position)[0]
-      if (!nxt) { nxt = db.stages.find((x) => x.pipeline_id === d.pipeline_id && x.role === 'archived'); if (nxt) archived++ } else advanced++
+      if (!nxt) { nxt = db.stages.filter((x) => x.pipeline_id === d.pipeline_id && x.role === 'archived').sort((a, b) => a.position - b.position)[0]; if (nxt) archived++ } else advanced++
       if (nxt) { const old = { ...d }; d.stage_id = nxt.id; beforeWrite('deals', d, old); afterWrite('deals', d, old) }
     }
   })

@@ -19,7 +19,7 @@ export default function Dashboard() {
 
   const m = useMemo(() => {
     const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0)
-    const open = deals.filter((d) => d.status === 'open')
+    const open = deals.filter((d) => d.status === 'open' && stages.find((x) => x.id === d.stage_id)?.role !== 'archived')
     const wonMonth = deals.filter((d) => d.status === 'won' && new Date(d.closed_at) >= monthStart)
     const lostMonth = deals.filter((d) => d.status === 'lost' && new Date(d.closed_at) >= monthStart)
     const weighted = open.reduce((s, d) => s + Number(d.value) * ((stages.find((x) => x.id === d.stage_id)?.probability ?? 0) / 100), 0)
@@ -59,7 +59,7 @@ export default function Dashboard() {
         <div className="stat"><div className="k">Conversão no mês</div><div className="v">{m.conv === null ? '—' : m.conv + '%'}</div><div className="small muted">ganhos ÷ fechados</div></div>
         {stages.some((s) => s.role) && (<>
           <div className="stat"><div className="k">Em sequência (WhatsApp)</div><div className="v">{m.inSequence}</div><div className="small muted">aguardando resposta</div></div>
-          <div className="stat"><div className="k">Leads para reativar</div><div className="v" style={{ color: m.toReactivate ? 'var(--accent)' : undefined }}>{m.toReactivate}</div><div className="small muted">arquivados há 4+ meses</div></div>
+          <div className="stat"><div className="k">Leads para reativar</div><div className="v" style={{ color: m.toReactivate ? 'var(--accent)' : undefined }}>{m.toReactivate}</div><div className="small muted">perdidos há 4+ meses</div></div>
         </>)}
         <div className="stat"><div className="k">Atividades atrasadas</div><div className="v" style={{ color: m.overdue ? 'var(--danger)' : undefined }}>{m.overdue}</div><div className="small muted">suas pendências</div></div>
       </div>

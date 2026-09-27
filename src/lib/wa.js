@@ -5,7 +5,7 @@ export const STAGE_ROLES = {
   inbox: 'Recebidos (entrada automática; passagem manual para o Dia 1)',
   day: 'Dia da sequência (mensagem + avanço automático)',
   responsive: 'Responsivo (lead respondeu)',
-  archived: 'Arquivado (aguarda reativação)',
+  archived: 'Perdido temporário (volta ao Dia 1 após o prazo)',
   reactivate: 'Reativar (opcional: coluna manual em vez de voltar ao Dia 1)',
 }
 
