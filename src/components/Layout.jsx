@@ -11,7 +11,6 @@ export default function Layout() {
     { to: '/', ico: '◫', text: label('dashboard') },
     { to: '/funil', ico: '⫶', text: label('pipeline') },
     { to: '/contatos', ico: '☺', text: label('contacts') },
-    { to: '/empresas', ico: '▣', text: label('companies') },
     { to: '/atividades', ico: '☑', text: label('activities') },
   ]
   if (isAdmin) items.push({ to: '/configuracoes', ico: '⚙', text: 'Configurações' })
