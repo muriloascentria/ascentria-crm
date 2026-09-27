@@ -55,11 +55,11 @@ const db = {
     { id: W.lost, pipeline_id: P2, name: 'Perdido', position: 9, color: '#a8432f', probability: 0, kind: 'lost' },
     ...[
       ['Oi, {{primeiro_nome}}! Aqui é a Mari, do time do enfermeiro Murilo Pedroso. Há alguns meses você demonstrou interesse na consultoria gratuita para estruturar seu consultório de enfermagem. Como estão as coisas por aí? Esse ainda é um objetivo seu?', '#9aa585'],
-      ['Oi, {{primeiro_nome}}! Uma pergunta rápida: hoje, o que mais te impede de fazer seu consultório de enfermagem faturar mais? Pode me responder em uma frase que eu te ajudo a partir daí.', '#818a66'],
+      ['Poderia ouvir o áudio que enviei?', '#818a66'],
       ['Oi, {{primeiro_nome}}! O enfermeiro Murilo abriu novos horários para a consultoria gratuita. Nela, ele ajuda você a estruturar seu consultório com a meta de faturar pelo menos R$ 10 mil por mês. Quer que eu te envie as opções?', '#6f7d52'],
       ['Oi, {{primeiro_nome}}! Ainda tenho alguns horários livres nesta semana para a consultoria gratuita. Posso reservar um para você?', '#c9973f'],
       ['Oi, {{primeiro_nome}}, esta é minha última mensagem por agora sobre a consultoria gratuita.\nSe quiser agendar, responda SIM que te envio os horários. Se não for o momento, responda NÃO e encerro o contato por aqui.', '#ab6f30'],
-    ].map(([msg, color], i) => ({ id: `r-d${i + 1}`, pipeline_id: P3, name: `Dia ${i + 1}`, position: i, color, probability: 10 + i * 5, kind: 'open', role: 'day', advance_after_days: 1, auto_send: true, wa_template_name: `reativacao_dia_${i + 1}`, wa_template_lang: 'pt_BR', message_text: msg })),
+    ].map(([msg, color], i) => ({ id: `r-d${i + 1}`, pipeline_id: P3, name: `Dia ${i + 1}`, position: i, color, probability: 10 + i * 5, kind: 'open', role: 'day', advance_after_days: 1, auto_send: true, wa_template_name: i === 1 ? 'mentoria_dia_2' : `reativacao_dia_${i + 1}`, wa_template_lang: 'pt_BR', message_text: msg })),
     { id: 'r-resp', pipeline_id: P3, name: 'Responsivo', position: 5, color: '#5c7a3a', probability: 60, kind: 'open', role: 'responsive' },
     { id: 'r-arch', pipeline_id: P3, name: 'Arquivado', position: 6, color: '#cfc9b6', probability: 0, kind: 'open', role: 'archived' },
     { id: 'r-won', pipeline_id: P3, name: 'Fechou mentoria', position: 7, color: '#2e381a', probability: 100, kind: 'won' },

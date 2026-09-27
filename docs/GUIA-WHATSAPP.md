@@ -140,13 +140,12 @@ Enquanto os templates não estiverem aprovados, deixe as colunas em **Criar tare
 
 ### Modelos do funil Reativação
 
-Leads que ficam 4 meses no Arquivado da Mentoria passam sozinhos para o **Dia 1 do funil Reativação** (configurável em *Configurações → Funis e etapas → Mentoria*). Quem não responder na Reativação fica 4 meses arquivado e recomeça a Reativação. Crie estes 5 modelos (Marketing, Português (BR), variável tipo Número, exemplo "Fernanda"):
+Leads que ficam 4 meses no Arquivado da Mentoria passam sozinhos para o **Dia 1 do funil Reativação** (configurável em *Configurações → Funis e etapas → Mentoria*). Quem não responder na Reativação fica 4 meses arquivado e recomeça a Reativação. Crie estes 4 modelos (Marketing, Português (BR), variável tipo Número, exemplo "Fernanda"):
 
 **`reativacao_dia_1`**
 > Oi, {{1}}! Aqui é a Mari, do time do enfermeiro Murilo Pedroso. Há alguns meses você demonstrou interesse na consultoria gratuita para estruturar seu consultório de enfermagem. Como estão as coisas por aí? Esse ainda é um objetivo seu?
 
-**`reativacao_dia_2`**
-> Oi, {{1}}! Uma pergunta rápida: hoje, o que mais te impede de fazer seu consultório de enfermagem faturar mais? Pode me responder em uma frase que eu te ajudo a partir daí.
+**Dia 2** — reaproveita o modelo `mentoria_dia_2` ("Poderia ouvir o áudio que enviei?"); não precisa criar outro.
 
 **`reativacao_dia_3`**
 > Oi, {{1}}! O enfermeiro Murilo abriu novos horários para a consultoria gratuita. Nela, ele ajuda você a estruturar seu consultório com a meta de faturar pelo menos R$ 10 mil por mês. Quer que eu te envie as opções?
