@@ -392,6 +392,11 @@ const functions = {
       }, 2000)
       return { data: { ok: true, id: 'wamid.demo' }, error: null }
     }
+    if (name === 'invite-user') {
+      if (db.profiles.some((p) => p.email === body.email)) return { data: { ok: false, error: 'Já existe uma conta com este e-mail.' }, error: null }
+      db.profiles.push({ id: uid(), email: body.email, full_name: body.full_name || body.email.split('@')[0], role: body.role || 'seller', active: true, created_at: now() })
+      return { data: { ok: true, email: body.email }, error: null }
+    }
     if (name === 'wa-connect' && ['request_code', 'verify_code'].includes(body?.action)) return { data: { ok: true, error: null }, error: null }
     if (name === 'wa-connect' && body?.action === 'register') return { data: { ok: true, error: null, phone: { status: 'CONNECTED' } }, error: null }
     if (name === 'wa-connect') {

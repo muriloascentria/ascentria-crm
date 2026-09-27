@@ -524,6 +524,7 @@ function FieldForm({ initial, onClose, onSaved }) {
 function Users() {
   const { users, profile, reload, toast } = useApp()
   const pending = users.filter((u) => !u.active)
+  const [inviting, setInviting] = useState(false)
 
   const update = async (u, patch) => {
     const { error } = await supabase.from('profiles').update(patch).eq('id', u.id)
@@ -538,7 +539,11 @@ function Users() {
         <b> Administrador</b> acessa tudo, inclusive estas configurações. <b>Gestor</b> vê e edita todos os registros.
         <b> Vendedor</b> vê {'"'}todos os registros{'"'} ou {'"'}só os próprios{'"'}, conforme a opção em Marca → Visibilidade.
       </div>
-      {pending.length > 0 && <div className="small" style={{ color: 'var(--accent)', fontWeight: 600 }}>{pending.length} aguardando aprovação</div>}
+      <div className="between wrap">
+        {pending.length > 0 ? <div className="small" style={{ color: 'var(--accent)', fontWeight: 600 }}>{pending.length} aguardando aprovação</div> : <span />}
+        <button className="btn primary" onClick={() => setInviting(true)}>+ Convidar pessoa</button>
+      </div>
+      {inviting && <InviteForm onClose={() => setInviting(false)} onSaved={reload} />}
       <div className="card pad0" style={{ overflowX: 'auto' }}>
         <table className="tbl">
           <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Situação</th><th>Desde</th></tr></thead>
@@ -567,6 +572,38 @@ function Users() {
         </table>
       </div>
     </div>
+  )
+}
+
+function InviteForm({ onClose, onSaved }) {
+  const { toast } = useApp()
+  const [f, setF] = useState({ email: '', full_name: '', role: 'seller' })
+  const [busy, setBusy] = useState(false)
+  const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
+  const save = async (e) => {
+    e.preventDefault()
+    setBusy(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('invite-user', { body: f })
+      if (error) throw new Error((await error.context?.json?.().catch(() => null))?.error || error.message)
+      if (!data?.ok) throw new Error(data?.error || 'Não foi possível convidar')
+      toast(`Convite enviado para ${data.email}`); onSaved(); onClose()
+    } catch (err) { toast(err.message, 'err') } finally { setBusy(false) }
+  }
+  return (
+    <Modal title="Convidar pessoa" onClose={onClose}
+      footer={<><button className="btn" type="button" onClick={onClose}>Cancelar</button><button className="btn primary" form="iform" disabled={busy}>{busy ? 'Enviando…' : 'Enviar convite'}</button></>}>
+      <form id="iform" onSubmit={save} className="stack" style={{ gap: 12 }}>
+        <Field label="E-mail"><input className="input" type="email" value={f.email} onChange={(e) => set('email', e.target.value)} required autoFocus /></Field>
+        <Field label="Nome"><input className="input" value={f.full_name} onChange={(e) => set('full_name', e.target.value)} placeholder="Opcional" /></Field>
+        <Field label="Perfil">
+          <select className="select" value={f.role} onChange={(e) => set('role', e.target.value)}>
+            {Object.entries(ROLES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        </Field>
+        <p className="small muted" style={{ margin: 0 }}>A pessoa recebe um e-mail com um link para criar a própria senha. O acesso já fica liberado, sem precisar de aprovação.</p>
+      </form>
+    </Modal>
   )
 }
 
