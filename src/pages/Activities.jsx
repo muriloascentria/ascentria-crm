@@ -21,7 +21,7 @@ export default function Activities() {
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.from('activities')
-      .select('*, deal:deals(id,title), contact:contacts(id,name), company:companies(id,name)')
+      .select('*, deal:deals(id,title), contact:contacts(id,name)')
       .order('due_at', { ascending: true, nullsFirst: false })
     if (error) toast(error.message, 'err')
     setItems(data || [])
@@ -53,7 +53,6 @@ export default function Activities() {
   const ctx = (a) => {
     if (a.deal) return <a onClick={(e) => { e.stopPropagation(); setDealOpen(a.deal.id) }} style={{ color: 'var(--primary)', cursor: 'pointer' }}>💼 {a.deal.title}</a>
     if (a.contact) return <a onClick={(e) => { e.stopPropagation(); nav(`/contatos/${a.contact.id}`) }} style={{ color: 'var(--primary)', cursor: 'pointer' }}>☺ {a.contact.name}</a>
-    if (a.company) return <a onClick={(e) => { e.stopPropagation(); nav(`/empresas/${a.company.id}`) }} style={{ color: 'var(--primary)', cursor: 'pointer' }}>▣ {a.company.name}</a>
     return null
   }
 

@@ -17,13 +17,13 @@ export default function Contacts() {
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase.from('contacts').select('*, company:companies(id,name)').order('created_at', { ascending: false })
+    const { data, error } = await supabase.from('contacts').select('*').order('created_at', { ascending: false })
     if (error) toast(error.message, 'err')
     setList(data || []); setLoading(false)
   }, [toast])
   useEffect(() => { load() }, [load])
 
-  const filtered = list.filter((c) => !q || [c.name, c.email, c.phone, c.company?.name, ...(c.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()))
+  const filtered = list.filter((c) => !q || [c.name, c.email, c.phone, ...(c.tags || [])].join(' ').toLowerCase().includes(q.toLowerCase()))
   const userName = (uid) => users.find((u) => u.id === uid)?.full_name || ''
   const selected = id ? list.find((c) => c.id === id) : null
 
@@ -39,12 +39,11 @@ export default function Contacts() {
       {!loading && filtered.length === 0 ? <Empty title="Nenhum contato" text="Cadastre seu primeiro lead ou cliente." action={<button className="btn primary" onClick={() => setEditing({})}>+ Contato</button>} /> : (
         <div className="card pad0">
           <table className="tbl">
-            <thead><tr><th>Nome</th><th>Empresa</th><th>Contato</th><th>Origem</th><th>Tags</th><th>Responsável</th><th>Criado</th></tr></thead>
+            <thead><tr><th>Nome</th><th>Contato</th><th>Origem</th><th>Tags</th><th>Responsável</th><th>Criado</th></tr></thead>
             <tbody>
               {filtered.map((c) => (
                 <tr key={c.id} onClick={() => nav(`/contatos/${c.id}`)}>
                   <td><div className="row"><Avatar sm name={c.name} /><b>{c.name}</b></div>{(c.job_title || c.ig_username) && <div className="small muted">{c.job_title}{c.job_title && c.ig_username ? ' · ' : ''}{c.ig_username && `@${c.ig_username}`}</div>}</td>
-                  <td>{c.company?.name || '—'}</td>
                   <td><div>{c.email || ''}</div><div className="small muted">{c.phone || ''}</div></td>
                   <td>{c.source || '—'}</td>
                   <td>{(c.tags || []).map((t) => <span key={t} className="tag" style={{ marginRight: 4 }}>{t}</span>)}</td>
@@ -64,17 +63,15 @@ export default function Contacts() {
 
 export function ContactForm({ initial, onClose, onSaved, defaults = {} }) {
   const { toast, profile } = useApp()
-  const [companies, setCompanies] = useState([])
-  const [f, setF] = useState({ name: '', email: '', phone: '', job_title: '', source: '', tags: '', notes: '', company_id: '', owner_id: profile.id, custom: {}, ...defaults, ...(initial || {}), tags: (initial?.tags || []).join(', ') })
+  const [f, setF] = useState({ name: '', email: '', phone: '', job_title: '', source: '', tags: '', notes: '', owner_id: profile.id, custom: {}, ...defaults, ...(initial || {}), tags: (initial?.tags || []).join(', ') })
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
-  useEffect(() => { supabase.from('companies').select('id,name').order('name').then(({ data }) => setCompanies(data || [])) }, [])
 
   const save = async (e) => {
     e.preventDefault()
     const payload = {
       name: f.name, email: f.email || null, phone: f.phone || null, job_title: f.job_title || null, source: f.source || null,
       tags: f.tags.split(',').map((t) => t.trim()).filter(Boolean), notes: f.notes || null,
-      company_id: f.company_id || null, owner_id: f.owner_id || null, custom: f.custom || {},
+      owner_id: f.owner_id || null, custom: f.custom || {},
     }
     const q = initial?.id ? supabase.from('contacts').update(payload).eq('id', initial.id) : supabase.from('contacts').insert(payload).select().single()
     const { data, error } = await q
@@ -90,14 +87,7 @@ export function ContactForm({ initial, onClose, onSaved, defaults = {} }) {
           <Field label="E-mail"><input className="input" type="email" value={f.email || ''} onChange={(e) => set('email', e.target.value)} /></Field>
           <Field label="Telefone / WhatsApp"><input className="input" value={f.phone || ''} onChange={(e) => set('phone', e.target.value)} /></Field>
         </div>
-        <div className="grid2">
-          <Field label="Empresa">
-            <select className="select" value={f.company_id || ''} onChange={(e) => set('company_id', e.target.value)}>
-              <option value="">—</option>{companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </Field>
-          <Field label="Cargo"><input className="input" value={f.job_title || ''} onChange={(e) => set('job_title', e.target.value)} /></Field>
-        </div>
+        <Field label="Cargo"><input className="input" value={f.job_title || ''} onChange={(e) => set('job_title', e.target.value)} /></Field>
         <div className="grid2">
           <Field label="Origem">
             <select className="select" value={f.source || ''} onChange={(e) => set('source', e.target.value)}>
@@ -134,7 +124,6 @@ function ContactDetail({ contact: c, onClose, onEdit, onChanged, currency }) {
           <div className="grid2">
             <div><div className="small muted">E-mail</div><div>{c.email || '—'}</div></div>
             <div><div className="small muted">Telefone</div><div>{c.phone ? <a href={`https://wa.me/${c.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)' }}>{c.phone}</a> : '—'}</div></div>
-            <div><div className="small muted">Empresa</div><div>{c.company?.name || '—'}</div></div>
             <div><div className="small muted">Cargo</div><div>{c.job_title || '—'}</div></div>
             <div><div className="small muted">Origem</div><div>{c.source || '—'}</div></div>
             <div><div className="small muted">Responsável</div><div>{users.find((u) => u.id === c.owner_id)?.full_name || '—'}</div></div>
@@ -143,7 +132,7 @@ function ContactDetail({ contact: c, onClose, onEdit, onChanged, currency }) {
           <CustomFieldsView entity="contact" values={c.custom} />
           {c.notes && <div><div className="small muted">Observações</div><div style={{ whiteSpace: 'pre-wrap' }}>{c.notes}</div></div>}
           <div className="stack">
-            <div className="between"><h3>Negócios</h3><button className="btn sm" onClick={() => setDealModal({ defaults: { contact_id: c.id, company_id: c.company_id } })}>+ Novo</button></div>
+            <div className="between"><h3>Negócios</h3><button className="btn sm" onClick={() => setDealModal({ defaults: { contact_id: c.id } })}>+ Novo</button></div>
             {deals.length === 0 && <div className="small muted">Nenhum negócio.</div>}
             {deals.map((d) => (
               <div key={d.id} className="act" style={{ cursor: 'pointer' }} onClick={() => setDealModal({ deal: d })}>

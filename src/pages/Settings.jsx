@@ -62,7 +62,7 @@ function Brand() {
       <div className="card stack" style={{ gap: 12 }}>
         <h2>Nomes das seções</h2>
         <p className="small muted">Adapte a linguagem do sistema ao seu negócio (ex.: "Alunos" em vez de "Contatos").</p>
-        {Object.entries(f.labels).map(([k, v]) => <Field key={k} label={k}><input className="input" value={v} onChange={(e) => setLabel(k, e.target.value)} /></Field>)}
+        {Object.entries(f.labels).filter(([k]) => k !== 'companies').map(([k, v]) => <Field key={k} label={k}><input className="input" value={v} onChange={(e) => setLabel(k, e.target.value)} /></Field>)}
         <div className="row" style={{ justifyContent: 'flex-end' }}><button className="btn primary">Salvar</button></div>
       </div>
     </form>

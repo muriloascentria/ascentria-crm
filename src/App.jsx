@@ -6,7 +6,6 @@ import ResetPassword from './pages/ResetPassword'
 import Dashboard from './pages/Dashboard'
 import Pipeline from './pages/Pipeline'
 import Contacts from './pages/Contacts'
-import Companies from './pages/Companies'
 import Activities from './pages/Activities'
 import Settings from './pages/Settings'
 
@@ -51,8 +50,6 @@ export default function App() {
         <Route path="/funil" element={<Pipeline />} />
         <Route path="/contatos" element={<Contacts />} />
         <Route path="/contatos/:id" element={<Contacts />} />
-        <Route path="/empresas" element={<Companies />} />
-        <Route path="/empresas/:id" element={<Companies />} />
         <Route path="/atividades" element={<Activities />} />
         {isAdmin && <Route path="/configuracoes" element={<Settings />} />}
         <Route path="*" element={<Navigate to="/" replace />} />

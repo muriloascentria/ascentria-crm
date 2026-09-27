@@ -9,15 +9,14 @@ import { daysIn } from '../lib/wa'
 
 /**
  * Modal de criação/edição de negócio.
- * props: deal (null para novo), defaults { pipeline_id, stage_id, contact_id, company_id }, onClose, onSaved
+ * props: deal (null para novo), defaults { pipeline_id, stage_id, contact_id }, onClose, onSaved
  */
 export default function DealModal({ deal, defaults = {}, onClose, onSaved }) {
   const { stages, pipelines, profile, toast, isManager, users, waNumbers } = useApp()
   const [contacts, setContacts] = useState([])
-  const [companies, setCompanies] = useState([])
   const [history, setHistory] = useState([])
   const [f, setF] = useState(() => ({
-    title: '', value: '', contact_id: '', company_id: '', owner_id: profile.id, expected_close: '', custom: {}, lost_reason: '', wa_number_id: '',
+    title: '', value: '', contact_id: '', owner_id: profile.id, expected_close: '', custom: {}, lost_reason: '', wa_number_id: '',
     pipeline_id: defaults.pipeline_id || pipelines.find((p) => p.is_default)?.id || pipelines[0]?.id,
     stage_id: defaults.stage_id || '',
     ...defaults, ...(deal || {}),
@@ -27,8 +26,7 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved }) {
   const curStage = stages.find((s) => s.id === f.stage_id)
 
   useEffect(() => {
-    supabase.from('contacts').select('id,name,company_id').order('name').then(({ data }) => setContacts(data || []))
-    supabase.from('companies').select('id,name').order('name').then(({ data }) => setCompanies(data || []))
+    supabase.from('contacts').select('id,name').order('name').then(({ data }) => setContacts(data || []))
     if (deal?.id) supabase.from('deal_stage_history').select('*').eq('deal_id', deal.id).order('changed_at', { ascending: false }).then(({ data }) => setHistory(data || []))
   }, [deal?.id])
 
@@ -38,15 +36,13 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved }) {
 
   const onContact = (id) => {
     set('contact_id', id)
-    const c = contacts.find((x) => x.id === id)
-    if (c?.company_id && !f.company_id) set('company_id', c.company_id)
   }
 
   const save = async (e) => {
     e.preventDefault()
     const payload = {
       title: f.title, value: Number(f.value || 0), pipeline_id: f.pipeline_id, stage_id: f.stage_id,
-      contact_id: f.contact_id || null, company_id: f.company_id || null, owner_id: f.owner_id || null,
+      contact_id: f.contact_id || null, owner_id: f.owner_id || null,
       expected_close: f.expected_close || null, custom: f.custom || {}, lost_reason: f.lost_reason || null,
       wa_number_id: f.wa_number_id || null,
     }
@@ -91,20 +87,12 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved }) {
               </select>
             </Field>
           </div>
-          <div className="grid2">
-            <Field label="Contato">
-              <select className="select" value={f.contact_id || ''} onChange={(e) => onContact(e.target.value)}>
-                <option value="">—</option>
-                {contacts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </Field>
-            <Field label="Empresa">
-              <select className="select" value={f.company_id || ''} onChange={(e) => set('company_id', e.target.value)}>
-                <option value="">—</option>
-                {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </Field>
-          </div>
+          <Field label="Contato">
+            <select className="select" value={f.contact_id || ''} onChange={(e) => onContact(e.target.value)}>
+              <option value="">—</option>
+              {contacts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Field>
           {deal?.id && curStage?.role && (
             <div className="small muted card" style={{ padding: '8px 10px', background: 'var(--surface-2)' }}>
               {curStage.role === 'day' && <>Na coluna <b>{curStage.name}</b> há {daysIn(deal.stage_entered_at)} dia(s){curStage.advance_after_days ? ` · avança sozinho após ${curStage.advance_after_days} dia(s) sem resposta` : ''}{deal.cycle > 1 ? ` · ${deal.cycle}ª passagem pela sequência` : ''}.</>}

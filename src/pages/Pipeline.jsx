@@ -23,7 +23,7 @@ export default function Pipeline() {
   const load = useCallback(async () => {
     if (!pipelineId) return
     const { data, error } = await supabase.from('deals')
-      .select('*, contact:contacts(name), company:companies(name)')
+      .select('*, contact:contacts(name)')
       .eq('pipeline_id', pipelineId).order('position').order('created_at', { ascending: false })
     if (error) toast(error.message, 'err')
     setDeals(data || [])
@@ -43,7 +43,7 @@ export default function Pipeline() {
   }
   const filtered = useMemo(() => deals.filter((d) =>
     (!onlyMine || d.owner_id === profile.id) &&
-    (!q || (d.title + ' ' + (d.contact?.name || '') + ' ' + (d.company?.name || '')).toLowerCase().includes(q.toLowerCase()))
+    (!q || (d.title + ' ' + (d.contact?.name || '')).toLowerCase().includes(q.toLowerCase()))
   ), [deals, q, onlyMine, profile.id])
 
   const moveTo = async (dealId, stageId) => {
@@ -105,7 +105,7 @@ export default function Pipeline() {
                         onDragStart={() => setDragId(d.id)} onDragEnd={() => { setDragId(null); setOver(null) }}
                         onClick={() => setModal({ deal: d })}>
                         <div className="title">{d.title}</div>
-                        <div className="small muted">{d.contact?.name || d.company?.name || '—'}</div>
+                        <div className="small muted">{d.contact?.name || '—'}</div>
                         <div className="between" style={{ marginTop: 6 }}>
                           <span className="val">{fmtMoney(d.value, settings.currency)}</span>
                           <span className="row small muted">{s.role ? <span title="dias nesta coluna">{daysIn(d.stage_entered_at)}d</span> : d.expected_close && <span>{fmtDate(d.expected_close)}</span>}<Avatar sm name={userName(d.owner_id)} /></span>
