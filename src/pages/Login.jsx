@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Field } from '../components/ui'
 import { DEMO } from '../lib/supabase'
-import logoEcrm from '../assets/brand/ecrm-verde.svg'
+import logoEcrm from '../assets/brand/ecrm-escuro.svg'
 
 export default function Login() {
   const [mode, setMode] = useState('login')

@@ -170,7 +170,7 @@ table.tbl { width: 100%; border-collapse: collapse; }
 /* ---------- login ---------- */
 .auth { min-height: 100vh; display: grid; place-items: center; background: var(--sand); padding: 16px; }
 .auth .card { width: 100%; max-width: 380px; padding: 28px; border-color: #c2bba6; }
-.auth .logo { width: 220px; height: auto; display: block; margin: 0 auto 6px; }
+.auth .logo { width: 240px; height: auto; display: block; margin: 0 auto 6px; border-radius: 14px; }
 
 /* ---------- settings ---------- */
 .list-edit { display: flex; flex-direction: column; gap: 6px; }
