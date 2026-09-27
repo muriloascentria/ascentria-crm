@@ -3,7 +3,7 @@ import { useApp } from '../lib/store'
 import { Avatar, Toasts } from './ui'
 import { ROLES } from '../lib/utils'
 import { DEMO } from '../lib/supabase'
-import logoSage from '../assets/brand/logo-sage.png'
+import logoSage from '../assets/brand/ecrm-logo-sage.png'
 import { useState } from 'react'
 import ProfileModal from './ProfileModal'
 
@@ -33,7 +33,7 @@ export default function Layout() {
           {settings?.logo_url ? (
             <><img className="custom" src={settings.logo_url} alt="" /><span className="name">{settings.company_name}</span></>
           ) : (settings?.company_name || 'Ascentria').toLowerCase() === 'ascentria' ? (
-            <img className="wordmark" src={logoSage} alt="Ascentria — terapia e saúde integrativa" />
+            <img className="wordmark" src={logoSage} alt="eCRM" />
           ) : (
             <><span className="mark">{(settings?.company_name || 'A')[0]}</span><span className="name">{settings?.company_name}</span></>
           )}
