@@ -109,21 +109,32 @@ Teste: abra `https://SEU-PROJETO.supabase.co/functions/v1/whatsapp-webhook?hub.m
 
 Teste: mande uma DM do seu Instagram pessoal para a conta da Ascentria com um texto como "quero saber da mentoria, meu whats é 48 99999-0000". O contato deve aparecer em **Contatos** com o @ do perfil e o negócio na coluna **Recebidos**. Uma DM sem número gera a tarefa "Instagram: pedir número".
 
-## Passo 7 — Templates das mensagens (Dia 2 em diante)
+## Passo 7 — Templates das mensagens (Dia 1 a Dia 5)
 
 1. <https://business.facebook.com/wa/manage/message-templates> → **Criar modelo**.
-2. Categoria **Marketing**, nome em minúsculas sem espaço (ex.: `mentoria_dia_1`), idioma **Português (BR)**.
-3. No corpo, use `{{1}}` onde vai o primeiro nome. Exemplo para o Dia 1:
+2. Categoria **Marketing**, idioma **Português (BR)**, nome exatamente como abaixo.
+3. Cole o corpo de cada modelo. `{{1}}` é o primeiro nome do lead; informe um exemplo (ex.: "Fernanda") quando a Meta pedir. O Dia 2 não tem variável.
 
-   > Oi {{1}}! Aqui é o Murilo, da Ascentria. Vi sua mensagem no Instagram — me conta rapidinho: o que te trouxe até a mentoria?
+   **`mentoria_dia_1`**
+   > Oi, {{1}}! Aqui é a Mari, do time do enfermeiro Murilo Pedroso. Você solicitou no Instagram uma consultoria gratuita para estruturar seu consultório de enfermagem com faturamento de mais de 10 mil reais mensais.
+   > Posso te passar os horários disponíveis para esta semana?
 
-   E para o Dia 2:
+   **`mentoria_dia_2`**
+   > Poderia ouvir o áudio que enviei?
 
-   > Oi {{1}}, passando pra te mostrar como funciona a mentoria na prática. Posso te mandar um áudio de 1 minuto explicando?
+   **`mentoria_dia_3`**
+   > Oi, {{1}}! Você ainda tem interesse na consultoria para estruturar seu consultório de enfermagem com a meta de faturar pelo menos R$ 10 mil por mês? Se tiver alguma dúvida antes de agendar, pode me falar por aqui.
 
-4. Informe um exemplo de valor para `{{1}}` (ex.: "Fernanda") e envie para análise. Repita para `mentoria_dia_3`, `mentoria_dia_4`, `mentoria_dia_5` (5 templates no total).
-5. Dicas para aprovação rápida: nada de CAPS LOCK exagerado, sem links encurtados, texto claro sobre quem você é, e uma frase de saída ("se preferir, responda SAIR") ajuda em campanhas de marketing.
-6. Quando aprovados, abra o CRM → **Configurações → Funis e etapas → Mentoria — Instagram → WhatsApp** → botão **⚙** de cada coluna → confira o nome em **Template aprovado na Meta** (já vem preenchido como `mentoria_dia_N`) → escolha **Enviar automaticamente pela API da Meta** → **Salvar etapas**.
+   **`mentoria_dia_4`**
+   > Oi, {{1}}! Passando para retomar a consultoria gratuita que você pediu pelo Instagram. Posso te enviar os horários disponíveis para agendarmos?
+
+   **`mentoria_dia_5`**
+   > {{1}}, esta é minha última mensagem sobre a consultoria gratuita que você pediu pelo Instagram.
+   > Se ainda quiser agendar, responda SIM que te envio os horários. Se não for o momento, responda NÃO e encerro o contato por aqui.
+
+4. Envie cada um para análise (5 modelos no total). O texto aprovado na Meta é o que o lead recebe; o texto da coluna no CRM serve de roteiro e é usado quando a conversa já está aberta (lead respondeu nas últimas 24 h).
+5. Dicas para aprovação rápida: nada de CAPS LOCK exagerado, sem links encurtados, texto claro sobre quem você é.
+6. As colunas Dia 1 a Dia 5 já estão com **Enviar automaticamente** ligado e o nome do modelo preenchido (`mentoria_dia_N`). Confira em **Configurações → Funis e etapas → Mentoria** → botão **⚙** de cada coluna.
 
 Enquanto os templates não estiverem aprovados, deixe as colunas em **Criar tarefa para eu enviar manualmente**: o CRM cria a tarefa com o roteiro do dia e você envia pelo próprio painel de conversa (ou pelo celular).
 
