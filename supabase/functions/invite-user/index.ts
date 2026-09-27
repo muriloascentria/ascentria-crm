@@ -5,7 +5,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { cors, json } from '../_shared/wa.ts'
 
-const SITE_URL = Deno.env.get('SITE_URL') ?? 'https://ascentria-crm.onrender.com'
+const SITE_URL = Deno.env.get('SITE_URL') ?? 'https://ecrm.digital'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
