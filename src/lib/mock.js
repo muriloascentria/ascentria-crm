@@ -171,6 +171,7 @@ const db = {
     { id: 'qe11', stage: "confirmacao", title: "Lembrete 1h antes", body: "*ESTÁ QUASE NA HORA!*\nTudo certo para, daqui a 1 hora, você ter acesso a como estruturar seu Consultório de Enfermagem? Alguns minutos antes já vamos te mandar o link do Google Meet.\n\nLembre que é importante que você esteja presente e focado, porque vamos analisar o seu momento atual na Enfermagem e te mostrar o caminho para estruturar o seu Consultório de Enfermagem.\n\nTe vemos já já!", options: [], position: 303 },
     { id: 'qe12', stage: "confirmacao", title: "Envio do link (15 min antes)", body: "Olá, {{primeiro_nome}}\n---\nSegue link conforme combinado.\n---\n[LINK]", options: [], position: 304 },
   ],
+  quick_reply_sends: [],
   automation_runs: [
     { id: 1, automation_id: 'au1', entity: 'deal', entity_id: 'd6', ok: true, message: 'create_activity', ran_at: daysFromNow(-2) },
     { id: 2, automation_id: 'au1', entity: 'deal', entity_id: 'd5', ok: true, message: 'create_activity', ran_at: daysFromNow(-4) },
@@ -347,7 +348,7 @@ function defaultsFor(t) {
     contacts: { tags: [], custom: {} }, companies: { custom: {} }, deals: { value: 0, status: 'open', custom: {}, position: 0 },
     activities: { type: 'task', done: false }, stages: { kind: 'open', probability: 50, color: '#64748b', position: 0 },
     custom_fields: { options: [], required: false, position: 0 }, quick_replies: { stage: null, options: [], position: 0 }, automations: { active: true, trigger_config: {}, action_config: {} },
-    pipelines: { is_default: false, position: 0 },
+    pipelines: { is_default: false, position: 0 }, quick_reply_sends: { sent_at: now() },
   }[t] || {}
 }
 

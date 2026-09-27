@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../lib/store'
-import { inWindow, sendWhatsApp, QUICK_STAGES, splitParts, pendingFields, fillMeeting, meetingDateLabel, meetingTimeLabel } from '../lib/wa'
+import { inWindow, sendWhatsApp, QUICK_STAGES, quickStageLabel, splitParts, pendingFields, fillMeeting, meetingDateLabel, meetingTimeLabel } from '../lib/wa'
 import { fmtDateTime } from '../lib/utils'
 import { Field } from './ui'
 
@@ -21,6 +21,11 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
   const [seq, setSeq] = useState({ parts: [], options: [] })
   const [stage, setStage] = useState('')
   const [progress, setProgress] = useState('')
+  // Quais mensagens prontas já foram para este contato (✓) e qual foi escolhida agora.
+  const [sends, setSends] = useState([])
+  const [pickedId, setPickedId] = useState(null)
+  const loadSends = useCallback(() => supabase.from('quick_reply_sends').select('*').eq('contact_id', contactId).then(({ data }) => setSends(data || [])), [contactId])
+  useEffect(() => { loadSends() }, [loadSends])
   // Encontro confirmado (dia, hora e link): preenche [DATA], [HORA], [HOJE OU AMANHÃ] e [LINK] sozinho.
   const [meeting, setMeeting] = useState({ date: '', time: '', link: '' })
   useEffect(() => {
@@ -42,6 +47,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
   const fill = (t = '') => fillMeeting(t.replace(/{{primeiro_nome}}/g, firstName).replace(/{{nome}}/g, firstName), meeting)
   const pick = (q) => {
     setShowQuick(false)
+    setPickedId(q.id)
     const parts = splitParts(q.body)
     if (parts.length > 1) { setSeq({ parts: parts.map(fill), options: [...(q.options || [])] }); setMode('sequence'); return }
     if (q.options?.length) { setQuestion({ body: fill(q.body), options: [...q.options] }); setMode('interactive') }
@@ -59,9 +65,33 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
     if (error) toast(error.message, 'err')
   }
   const quickVisiveis = quick.filter((q) => !stage || (stage === 'outras' ? !q.stage : q.stage === stage))
+  const enviadaEm = (q) => { const f = sends.filter((x) => x.quick_reply_id === q.id).map((x) => x.sent_at).sort(); return f.length ? f[f.length - 1] : null }
+  const ORDEM_ETAPA = { agendamento: 1, qualificacao: 2, confirmacao: 3 }
+  const sequencia = [...quick].sort((a, b) => (ORDEM_ETAPA[a.stage] || 9) - (ORDEM_ETAPA[b.stage] || 9) || a.position - b.position)
+  const proxima = sequencia.find((q) => !enviadaEm(q))
+  const totalEnviadas = quick.filter((q) => enviadaEm(q)).length
+  const abrirMensagens = () => {
+    // Ao abrir, a lista já vai para a etapa da próxima mensagem.
+    if (!showQuick && proxima?.stage) setStage(proxima.stage)
+    setShowQuick((v) => !v)
+  }
   useEffect(() => { endRef.current?.scrollIntoView?.({ block: 'end' }) }, [msgs.length])
   useEffect(() => { setMode(win ? 'text' : 'template') }, [win])
 
+  const registrarEnvio = async () => {
+    if (!pickedId) return
+    const id = pickedId
+    setPickedId(null)
+    await supabase.from('quick_reply_sends').insert({ contact_id: contactId, quick_reply_id: id, deal_id: deal?.id || null })
+    loadSends()
+  }
+  // Marcar/desmarcar à mão (por exemplo, quando a mensagem foi mandada pelo celular).
+  const toggleSent = async (q) => {
+    const feitos = sends.filter((x) => x.quick_reply_id === q.id)
+    if (feitos.length) await supabase.from('quick_reply_sends').delete().eq('contact_id', contactId).eq('quick_reply_id', q.id)
+    else await supabase.from('quick_reply_sends').insert({ contact_id: contactId, quick_reply_id: q.id, deal_id: deal?.id || null })
+    loadSends()
+  }
   const send = async (e) => {
     e.preventDefault()
     const escrito = mode === 'text' ? text : mode === 'interactive' ? question.body : mode === 'sequence' ? seq.parts.join('\n') : ''
@@ -82,6 +112,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
           // Uma pequena pausa para as mensagens chegarem na ordem certa no celular do lead.
           if (!last) await new Promise((r) => setTimeout(r, 1200))
         }
+        await registrarEnvio()
         setSeq({ parts: [], options: [] }); setMode('text'); setProgress('')
         toast(`${parts.length} mensagens enviadas`); load(); onSent?.()
         return
@@ -89,6 +120,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
       await sendWhatsApp(mode === 'text' ? { ...base, kind: 'text', body: text }
         : mode === 'interactive' ? { ...base, kind: 'interactive', body: question.body, options: question.options.filter((o) => o.trim()) }
         : { ...base, kind: 'template', template_name: tpl.name, template_params: tpl.params.split(',').map((s) => s.trim()).filter(Boolean) })
+      await registrarEnvio()
       setText(''); setQuestion({ body: '', options: [] }); if (mode === 'interactive') setMode('text')
       toast('Mensagem enviada'); load(); onSent?.()
     } catch (err) { toast(parouEm ? `Parou na mensagem ${parouEm}: ${err.message}` : err.message, 'err'); load() } finally { setBusy(false); setProgress('') }
@@ -139,10 +171,11 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
           {mode === 'interactive' && <button type="button" className="active">Pergunta com opções</button>}
           {mode === 'sequence' && <button type="button" className="active">Sequência · {seq.parts.length} mensagens</button>}
           <span className="grow" />
-          <button type="button" onClick={() => setShowQuick((v) => !v)} disabled={deal && !win} title={deal && !win ? 'Mensagens prontas só dentro das 24h após a última mensagem do lead' : 'Escolher uma mensagem pronta'}>⚡ Mensagens prontas</button>
+          <button type="button" onClick={abrirMensagens} disabled={deal && !win} title={deal && !win ? 'Mensagens prontas só dentro das 24h após a última mensagem do lead' : 'Escolher uma mensagem pronta'}>⚡ Mensagens prontas</button>
         </div>
         {showQuick && (
-          <div className="card" style={{ padding: 6, maxHeight: 220, overflowY: 'auto' }}>
+          <div className="card" style={{ padding: 6, maxHeight: 340, overflowY: 'auto' }}>
+            {quick.length > 0 && <div className="small muted" style={{ padding: '2px 4px 6px' }}>{totalEnviadas} de {quick.length} enviadas para este contato{proxima ? '' : ' · sequência completa ✓'}</div>}
             {quick.length > 0 && (
               <select className="select" style={{ marginBottom: 6 }} value={stage} onChange={(e) => setStage(e.target.value)} aria-label="Etapa">
                 <option value="">Todas as etapas</option>
@@ -151,12 +184,24 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
               </select>
             )}
             {quick.length === 0 && <div className="small muted" style={{ padding: 8 }}>Nenhuma mensagem pronta. Cadastre em Configurações → Mensagens prontas.</div>}
-            {quickVisiveis.map((q) => (
-              <button type="button" key={q.id} className="btn ghost" style={{ display: 'block', width: '100%', textAlign: 'left', whiteSpace: 'normal', padding: '6px 8px' }} onClick={() => pick(q)}>
-                <b>{q.title}</b>{splitParts(q.body).length > 1 && <span className="chip" style={{ marginLeft: 6 }}>{splitParts(q.body).length} mensagens</span>}{q.options?.length > 0 && <span className="chip" style={{ marginLeft: 6 }}>{q.options.length} opções</span>}
-                <div className="small muted">{fill(q.body).slice(0, 110)}{q.body.length > 110 ? '…' : ''}</div>
+            {proxima && stage && stage !== 'outras' && proxima.stage !== stage && (
+              <button type="button" className="btn ghost sm" style={{ display: 'block', width: '100%', textAlign: 'left', margin: '2px 0 6px' }} onClick={() => setStage(proxima.stage || 'outras')}>
+                ✓ Etapa em dia. Próxima: <b>{proxima.title}</b> ({quickStageLabel(proxima.stage)}) →
               </button>
-            ))}
+            )}
+            {quickVisiveis.map((q) => {
+              const em = enviadaEm(q)
+              const eProxima = proxima?.id === q.id
+              return (
+              <div key={q.id} className="row" style={{ gap: 4, alignItems: 'flex-start', borderLeft: eProxima ? '3px solid var(--accent)' : '3px solid transparent', background: eProxima ? 'var(--surface-2)' : undefined, borderRadius: 6 }}>
+              <button type="button" className="btn ghost sm" style={{ padding: '6px 6px', fontSize: 16, lineHeight: 1, color: em ? 'var(--success)' : 'var(--border-strong, #bbb)' }} onClick={() => toggleSent(q)} title={em ? 'Enviada. Clique para desmarcar' : 'Marcar como enviada'} aria-label={em ? 'Desmarcar como enviada' : 'Marcar como enviada'}>{em ? '✓' : '○'}</button>
+              <button type="button" className="btn ghost grow" style={{ display: 'block', textAlign: 'left', whiteSpace: 'normal', padding: '6px 8px', opacity: em ? 0.6 : 1 }} onClick={() => pick(q)}>
+                <b>{q.title}</b>{eProxima && <span className="chip" style={{ marginLeft: 6, '--chip-color': 'var(--accent)', color: 'var(--accent)', fontWeight: 600 }}>próxima</span>}{em && <span className="small" style={{ marginLeft: 6, color: 'var(--success)' }}>enviada {fmtDateTime(em)}</span>}{splitParts(q.body).length > 1 && <span className="chip" style={{ marginLeft: 6 }}>{splitParts(q.body).length} mensagens</span>}{q.options?.length > 0 && <span className="chip" style={{ marginLeft: 6 }}>{q.options.length} opções</span>}
+                <div className="small muted">{splitParts(fill(q.body)).join(' · ').slice(0, 110)}{q.body.length > 110 ? '…' : ''}</div>
+              </button>
+              </div>
+              )
+            })}
           </div>
         )}
         {mode === 'sequence' ? (
@@ -168,7 +213,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
               </div>
             ))}
             {seq.options.length > 0 && <div className="row wrap" style={{ gap: 6 }}>{seq.options.map((o, i) => <span key={i} className="chip">{o}</span>)}</div>}
-            <div className="small muted">As mensagens saem uma depois da outra, nesta ordem. Troque o que estiver entre colchetes, como [DATA], antes de enviar. <button type="button" className="btn ghost sm" onClick={() => { setMode('text'); setSeq({ parts: [], options: [] }) }}>cancelar</button></div>
+            <div className="small muted">As mensagens saem uma depois da outra, nesta ordem. Troque o que estiver entre colchetes, como [DATA], antes de enviar. <button type="button" className="btn ghost sm" onClick={() => { setMode('text'); setSeq({ parts: [], options: [] }); setPickedId(null) }}>cancelar</button></div>
           </div>
         ) : mode === 'interactive' ? (
           <div className="stack" style={{ gap: 6 }}>
@@ -178,7 +223,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
                 <span key={i} className="chip">{o} <button type="button" className="close" style={{ fontSize: 13 }} onClick={() => setQuestion({ ...question, options: question.options.filter((_, j) => j !== i) })} aria-label="Remover opção">×</button></span>
               ))}
             </div>
-            <div className="small muted">{question.options.length <= 3 ? 'O lead recebe as opções como botões.' : 'O lead recebe um botão "Ver opções" com a lista.'} <button type="button" className="btn ghost sm" onClick={() => { setMode('text'); setQuestion({ body: '', options: [] }) }}>cancelar</button></div>
+            <div className="small muted">{question.options.length <= 3 ? 'O lead recebe as opções como botões.' : 'O lead recebe um botão "Ver opções" com a lista.'} <button type="button" className="btn ghost sm" onClick={() => { setMode('text'); setQuestion({ body: '', options: [] }); setPickedId(null) }}>cancelar</button></div>
           </div>
         ) : mode === 'text' ? (
           <textarea className="textarea" style={{ minHeight: 60 }} placeholder="Escreva a mensagem…" value={text} onChange={(e) => setText(e.target.value)} required />
