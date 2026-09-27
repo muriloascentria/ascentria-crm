@@ -32,8 +32,10 @@ export function Field({ label, children, hint }) {
   )
 }
 
-export function Avatar({ name, sm }) {
-  return <span className={'avatar' + (sm ? ' sm' : '')} title={name}>{initials(name)}</span>
+export function Avatar({ name, sm, lg, src }) {
+  const cls = 'avatar' + (sm ? ' sm' : '') + (lg ? ' lg' : '')
+  if (src) return <img className={cls} src={src} alt={name || ''} title={name} />
+  return <span className={cls} title={name}>{initials(name)}</span>
 }
 
 export function Empty({ title, text, action }) {

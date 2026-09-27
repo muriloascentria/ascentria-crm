@@ -454,7 +454,7 @@ function Users() {
               const me = u.id === profile?.id
               return (
                 <tr key={u.id} style={{ cursor: 'default' }}>
-                  <td><div className="row"><Avatar name={u.full_name || u.email} sm /><span>{u.full_name || '—'}{me && <span className="muted"> (você)</span>}</span></div></td>
+                  <td><div className="row"><Avatar name={u.full_name || u.email} src={u.avatar_url} sm /><span>{u.full_name || '—'}{me && <span className="muted"> (você)</span>}</span></div></td>
                   <td>{u.email}</td>
                   <td>
                     <select className="select" style={{ width: 150 }} value={u.role} disabled={me} title={me ? 'Você não pode alterar o próprio perfil' : ''} onChange={(e) => update(u, { role: e.target.value })}>

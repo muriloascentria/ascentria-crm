@@ -108,7 +108,7 @@ export default function Pipeline() {
                         <div className="small muted">{d.contact?.name || '—'}</div>
                         <div className="between" style={{ marginTop: 6 }}>
                           <span className="val">{fmtMoney(d.value, settings.currency)}</span>
-                          <span className="row small muted">{s.role ? <span title="dias nesta coluna">{daysIn(d.stage_entered_at)}d</span> : d.expected_close && <span>{fmtDate(d.expected_close)}</span>}<Avatar sm name={userName(d.owner_id)} /></span>
+                          <span className="row small muted">{s.role ? <span title="dias nesta coluna">{daysIn(d.stage_entered_at)}d</span> : d.expected_close && <span>{fmtDate(d.expected_close)}</span>}<Avatar sm name={userName(d.owner_id)} src={users.find((u) => u.id === d.owner_id)?.avatar_url} /></span>
                         </div>
                       </div>
                     )

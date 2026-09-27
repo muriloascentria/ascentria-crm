@@ -4,6 +4,8 @@ import { Avatar, Toasts } from './ui'
 import { ROLES } from '../lib/utils'
 import { DEMO } from '../lib/supabase'
 import logoSage from '../assets/brand/logo-sage.png'
+import { useState } from 'react'
+import ProfileModal from './ProfileModal'
 
 function FunnelIcon() {
   return (
@@ -15,6 +17,7 @@ function FunnelIcon() {
 
 export default function Layout() {
   const { profile, settings, signOut, isAdmin, label } = useApp()
+  const [editingProfile, setEditingProfile] = useState(false)
   const items = [
     { to: '/', ico: '◫', text: label('dashboard') },
     { to: '/funil', ico: <FunnelIcon />, text: label('pipeline') },
@@ -41,22 +44,27 @@ export default function Layout() {
           ))}
         </nav>
         <div className="me">
-          <Avatar name={profile?.full_name || profile?.email} />
-          <div className="grow" style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{profile?.full_name || profile?.email}</div>
-            <div className="small" style={{ opacity: .7 }}>{ROLES[profile?.role]} · <button onClick={signOut}>sair</button></div>
-          </div>
+          <button type="button" className="me-open" onClick={() => setEditingProfile(true)} title="Meu perfil: foto e nome">
+            <Avatar name={profile?.full_name || profile?.email} src={profile?.avatar_url} />
+            <div className="grow" style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--sage)' }}>{profile?.full_name || profile?.email}</div>
+              <div className="small" style={{ opacity: .7 }}>{ROLES[profile?.role]}</div>
+            </div>
+          </button>
+          <button onClick={signOut} title="Sair do sistema">sair</button>
         </div>
       </aside>
       <div className="grow" style={{ minWidth: 0 }}>
         <div className="topbar-mobile">
           {items.map((i) => <NavLink key={i.to} to={i.to} end={i.to === '/'}>{i.text}</NavLink>)}
-          <a onClick={signOut} style={{ marginLeft: 'auto' }}>Sair</a>
+          <a onClick={() => setEditingProfile(true)} style={{ marginLeft: 'auto' }}>Perfil</a>
+          <a onClick={signOut}>Sair</a>
         </div>
         {DEMO && <div className="demo-banner">Modo demonstração — dados fictícios; alterações valem só nesta sessão. Recarregue para voltar ao início.</div>}
         <main className="main"><Outlet /></main>
       </div>
       <Toasts />
+      {editingProfile && <ProfileModal onClose={() => setEditingProfile(false)} />}
     </div>
   )
 }

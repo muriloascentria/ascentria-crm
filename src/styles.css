@@ -69,6 +69,10 @@ h1 { font-size: 20px; } h2 { font-size: 16px; } h3 { font-size: 14px; }
 /* ---------- componentes ---------- */
 .avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--sand); color: var(--forest); display: grid; place-items: center; font-weight: 700; font-size: 11px; flex-shrink: 0; }
 .avatar.sm { width: 22px; height: 22px; font-size: 9px; }
+.avatar.lg { width: 72px; height: 72px; font-size: 22px; }
+img.avatar { object-fit: cover; background: var(--sand); }
+.sidebar .me .me-open { display: flex; gap: 10px; align-items: center; min-width: 0; flex: 1; text-align: left; color: inherit; font-size: inherit; border-radius: 8px; padding: 2px; }
+.sidebar .me .me-open:hover { color: inherit; background: rgba(255,255,255,.07); }
 .btn {
   display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border);
   background: var(--surface); cursor: pointer; font-weight: 500; white-space: nowrap; transition: .12s;
