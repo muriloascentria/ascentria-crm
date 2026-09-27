@@ -25,13 +25,13 @@ Deno.serve(async (req) => {
 
   const token = Deno.env.get('WA_ACCESS_TOKEN')
   const missing = ['WA_ACCESS_TOKEN', 'WA_APP_SECRET', 'WA_VERIFY_TOKEN', 'CRON_SECRET'].filter((k) => !Deno.env.get(k))
-  if (!token) return json({ ok: false, missing, error: 'O secret WA_ACCESS_TOKEN não está configurado no Supabase.' })
+  if (!token) { console.log('wa-connect', JSON.stringify({ missing })); return json({ ok: false, missing, error: 'O secret WA_ACCESS_TOKEN não está configurado no Supabase.' }) }
 
   const { waba_id, subscribe = true } = await req.json().catch(() => ({}))
   if (!waba_id || !/^\d+$/.test(String(waba_id))) return json({ ok: false, missing, error: 'Informe o ID da conta do WhatsApp (WABA ID), só números.' })
 
   const numbers = await graph(`${waba_id}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status`, token)
-  if (!numbers.ok) return json({ ok: false, missing, step: 'phone_numbers', error: numbers.error })
+  if (!numbers.ok) { console.log('wa-connect', JSON.stringify({ step: 'phone_numbers', missing, error: numbers.error })); return json({ ok: false, missing, step: 'phone_numbers', error: numbers.error }) }
 
   let subscribed: { ok: boolean; error?: string } = { ok: true }
   if (subscribe) {
@@ -40,11 +40,14 @@ Deno.serve(async (req) => {
   }
   const apps = await graph(`${waba_id}/subscribed_apps`, token)
 
-  return json({
+  const result = {
     ok: subscribed.ok,
     missing,
     numbers: numbers.body?.data ?? [],
     subscribe_error: subscribed.error ?? null,
     apps: (apps.body?.data ?? []).map((a: any) => a?.whatsapp_business_api_data?.name ?? a?.name ?? a?.id),
-  })
+    apps_error: apps.error ?? null,
+  }
+  console.log('wa-connect', JSON.stringify(result)) // diagnóstico (sem segredos)
+  return json(result)
 })
