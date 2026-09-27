@@ -4,10 +4,10 @@
 //
 // Secrets necessários (Supabase → Edge Functions → Secrets):
 //  WA_VERIFY_TOKEN  — palavra secreta que você digita no painel da Meta
-//  WA_APP_SECRET    — "App Secret" do app na Meta (valida a assinatura)
+//  WA_APP_SECRET    — "App Secret" do app na Meta (valida a assinatura; sem ele o webhook recusa tudo)
 //  SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY — já existem por padrão
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { json, verifySignature } from '../_shared/wa.ts'
+import { json, safeEqual, verifySignature } from '../_shared/wa.ts'
 
 const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
@@ -16,9 +16,10 @@ Deno.serve(async (req) => {
 
   if (req.method === 'GET') {
     const mode = url.searchParams.get('hub.mode')
-    const token = url.searchParams.get('hub.verify_token')
+    const token = url.searchParams.get('hub.verify_token') ?? ''
     const challenge = url.searchParams.get('hub.challenge')
-    if (mode === 'subscribe' && token === Deno.env.get('WA_VERIFY_TOKEN')) {
+    const expected = Deno.env.get('WA_VERIFY_TOKEN') ?? ''
+    if (mode === 'subscribe' && expected && safeEqual(token, expected)) {
       return new Response(challenge ?? '', { status: 200 })
     }
     return new Response('Token de verificação inválido', { status: 403 })
@@ -27,6 +28,7 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 })
 
   const raw = await req.text()
+  if (raw.length > 1_000_000) return new Response('Payload grande demais', { status: 413 })
   if (!(await verifySignature(raw, req.headers.get('x-hub-signature-256')))) {
     return new Response('Assinatura inválida', { status: 401 })
   }

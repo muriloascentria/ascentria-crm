@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { supabase } from './supabase'
+import { supabase, DEMO } from './supabase'
 
 const Ctx = createContext(null)
 
@@ -20,6 +20,25 @@ export function AppProvider({ children }) {
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s ?? null))
     return () => sub.subscription.unsubscribe()
   }, [])
+
+  // ---- saída automática após 8 horas sem uso (protege o CRM em computador esquecido aberto) ----
+  useEffect(() => {
+    if (!session || DEMO) return
+    const KEY = 'crm.lastActive', LIMIT = 8 * 60 * 60 * 1000
+    const get = () => { try { return Number(localStorage.getItem(KEY)) || 0 } catch { return 0 } }
+    const touch = () => { try { localStorage.setItem(KEY, String(Date.now())) } catch { /* sem armazenamento: segue sem o controle */ } }
+    const check = () => {
+      const last = get()
+      if (last && Date.now() - last > LIMIT) { try { localStorage.removeItem(KEY) } catch { /* ignora */ } supabase.auth.signOut() }
+    }
+    check(); touch()
+    let t = 0
+    const onActivity = () => { const now = Date.now(); if (now - t > 60_000) { t = now; touch() } }
+    const evs = ['pointerdown', 'keydown', 'scroll', 'visibilitychange']
+    evs.forEach((e) => window.addEventListener(e, onActivity, { passive: true }))
+    const iv = setInterval(check, 5 * 60 * 1000)
+    return () => { evs.forEach((e) => window.removeEventListener(e, onActivity)); clearInterval(iv) }
+  }, [session])
 
   const loadMeta = useCallback(async () => {
     const [p, s, pl, st, us, cf, wn] = await Promise.all([

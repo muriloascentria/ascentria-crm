@@ -76,15 +76,23 @@ export async function resolveNumber(admin: any, waNumberId?: string | null): Pro
   return id && id !== 'CONFIGURE-NO-PAINEL' ? id : null
 }
 
-/** Valida a assinatura X-Hub-Signature-256 do webhook (se WA_APP_SECRET estiver definido). */
+/** Comparação em tempo constante (evita descobrir o segredo medindo o tempo de resposta). */
+export function safeEqual(a: string, b: string): boolean {
+  const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b)
+  let diff = x.length ^ y.length
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0)
+  return diff === 0
+}
+
+/** Valida a assinatura X-Hub-Signature-256 do webhook. Sem WA_APP_SECRET configurado, recusa (falha fechada). */
 export async function verifySignature(rawBody: string, header: string | null): Promise<boolean> {
   const secret = Deno.env.get('WA_APP_SECRET')
-  if (!secret) return true // sem segredo configurado: não valida (não recomendado em produção)
+  if (!secret) { console.error('WA_APP_SECRET ausente: webhook recusado'); return false }
   if (!header?.startsWith('sha256=')) return false
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
   const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(rawBody))
   const hex = Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, '0')).join('')
-  return hex === header.slice(7)
+  return safeEqual(hex, header.slice(7))
 }
 
 export const json = (data: unknown, status = 200) =>

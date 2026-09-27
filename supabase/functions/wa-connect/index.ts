@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
   if (!p?.active || p.role !== 'admin') return json({ error: 'Apenas administradores' }, 403)
 
   const token = Deno.env.get('WA_ACCESS_TOKEN')
-  const missing = ['WA_ACCESS_TOKEN', 'WA_APP_SECRET', 'WA_VERIFY_TOKEN', 'CRON_SECRET'].filter((k) => !Deno.env.get(k))
+  const missing = ['WA_ACCESS_TOKEN', 'WA_APP_SECRET', 'WA_VERIFY_TOKEN'].filter((k) => !Deno.env.get(k))
   if (!token) { console.log('wa-connect', JSON.stringify({ missing })); return json({ ok: false, missing, error: 'O secret WA_ACCESS_TOKEN não está configurado no Supabase.' }) }
 
   const { waba_id, subscribe = true, action, phone_number_id, pin, code, method: body_method } = await req.json().catch(() => ({}))

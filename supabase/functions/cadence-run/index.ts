@@ -2,9 +2,9 @@
 //  1. chama run_cadence() no banco (avança dias, arquiva, reativa)
 //  2. envia as mensagens pendentes em wa_outbox pela API da Meta
 //
-// Autorização: header "Authorization: Bearer <CRON_SECRET>"  (cron)
+// Autorização: header "Authorization: Bearer <segredo cron_secret do Vault>"  (pg_cron)
 //              ou token de um usuário administrador (botão no CRM)
-// Secrets: CRON_SECRET, WA_ACCESS_TOKEN, WA_PHONE_NUMBER_ID
+// Secrets: WA_ACCESS_TOKEN (o segredo do cron fica no Vault do banco, não em variável de ambiente)
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { cors, json, resolveNumber, sendTemplate, sendText } from '../_shared/wa.ts'
 
@@ -15,8 +15,12 @@ Deno.serve(async (req) => {
   const token = auth.replace(/^Bearer\s+/i, '')
   const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
-  let authorized = !!Deno.env.get('CRON_SECRET') && token === Deno.env.get('CRON_SECRET')
-  if (!authorized && token) {
+  let authorized = false
+  if (token.length >= 32 && !token.startsWith('eyJ')) {
+    const { data: ok } = await admin.rpc('check_cron_secret', { p: token })
+    authorized = ok === true
+  }
+  if (!authorized && token.startsWith('eyJ')) {
     const userClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: auth } } })
     const { data: { user } } = await userClient.auth.getUser()
     if (user) {

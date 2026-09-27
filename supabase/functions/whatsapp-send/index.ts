@@ -22,8 +22,19 @@ Deno.serve(async (req) => {
   if (!profile?.active) return json({ error: 'Usuário inativo' }, 403)
 
   const b = await req.json().catch(() => ({}))
-  const { data: contact } = await admin.from('contacts').select('id, name, phone, wa_id').eq('id', b.contact_id).single()
+  // Limites: texto até 4096 caracteres e no máximo 30 envios por minuto por usuário (protege contra abuso/bloqueio da Meta).
+  if (typeof b.body === 'string' && b.body.length > 4096) return json({ error: 'Mensagem longa demais' }, 400)
+  const { count: recent } = await admin.from('wa_messages').select('id', { count: 'exact', head: true })
+    .eq('sent_by', user.id).gte('created_at', new Date(Date.now() - 60_000).toISOString())
+  if ((recent ?? 0) >= 30) return json({ error: 'Muitos envios em sequência. Aguarde um minuto.' }, 429)
+
+  // Busca com o token do próprio usuário: só envia para contatos que ele pode ver (regras de acesso do banco).
+  const { data: contact } = await userClient.from('contacts').select('id, name, phone, wa_id').eq('id', b.contact_id).maybeSingle()
   if (!contact) return json({ error: 'Contato não encontrado' }, 404)
+  if (b.deal_id) {
+    const { data: okDeal } = await userClient.from('deals').select('id').eq('id', b.deal_id).eq('contact_id', contact.id).maybeSingle()
+    if (!okDeal) return json({ error: 'Negócio não encontrado' }, 404)
+  }
   const to = contact.wa_id ?? (contact.phone ?? '').replace(/\D/g, '')
   if (!to) return json({ error: 'Contato sem telefone/WhatsApp' }, 400)
 
