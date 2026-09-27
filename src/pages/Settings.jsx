@@ -318,6 +318,8 @@ function MetaCheck() {
           {res.numbers?.length > 0 && <div><b>Números da conta:</b> {res.numbers.map((n) => `${n.display_phone_number} (${n.verified_name}) — ID ${n.id}`).join(' · ')}</div>}
           {res.subscribe_error && <div style={{ color: 'var(--danger)' }}>Não foi possível ligar o app aos webhooks: {res.subscribe_error}</div>}
           {res.apps && <div><b>Apps recebendo eventos desta conta:</b> {res.apps.join(', ') || '—'}</div>}
+          {res.permissions && <div><b>Permissões do token:</b> {res.permissions.join(', ') || '—'}{!res.permissions.includes('whatsapp_business_messaging') && <span style={{ color: 'var(--danger)' }}> — falta whatsapp_business_messaging (necessária para enviar)</span>}</div>}
+          {res.waba && !res.waba.error && <div><b>Conta do WhatsApp:</b> {res.waba.name} · dono: {res.waba.owner || '—'}{res.waba.on_behalf_of ? ` · em nome de: ${res.waba.on_behalf_of}` : ''}</div>}
           {res.ok && !res.error && <div style={{ color: 'var(--success)', fontWeight: 600 }}>✓ Token válido e CRM ligado à conta.</div>}
         </div>
       )}
