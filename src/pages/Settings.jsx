@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useApp } from '../lib/store'
 import { Avatar, ConfirmButton, Field, Modal } from '../components/ui'
 import { ACTIVITY_TYPES, ROLES, fmtDate, slugify } from '../lib/utils'
-import { STAGE_ROLES, connectWaba, instagramWebhookUrl, runCadenceNow, webhookUrl } from '../lib/wa'
+import { STAGE_ROLES, connectWaba, instagramWebhookUrl, registerNumber, runCadenceNow, webhookUrl } from '../lib/wa'
 import { UserSelect } from '../components/ui'
 import { DEMO } from '../lib/supabase'
 import WhatsAppPanel from '../components/WhatsAppPanel'
@@ -325,7 +325,39 @@ function MetaCheck() {
           {res.ok && !res.error && <div style={{ color: 'var(--success)', fontWeight: 600 }}>✓ Token válido e CRM ligado à conta.</div>}
         </div>
       )}
+      <RegisterNumber />
     </div>
+  )
+}
+
+function RegisterNumber() {
+  const { waNumbers, toast } = useApp()
+  const [num, setNum] = useState('')
+  const [pin, setPin] = useState('')
+  const [busy, setBusy] = useState(false)
+  const valid = waNumbers.filter((n) => /^\d+$/.test(n.phone_number_id))
+  const submit = async () => {
+    setBusy(true)
+    try {
+      const r = await registerNumber(num || valid[0]?.phone_number_id, pin)
+      if (r.ok) toast(`Número registrado${r.phone?.status ? ` · situação: ${r.phone.status}` : ''}`)
+      else toast(r.error || 'Não foi possível registrar', 'err')
+    } catch (e) { toast(e.message, 'err') } finally { setBusy(false); setPin('') }
+  }
+  return (
+    <details style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+      <summary className="small" style={{ cursor: 'pointer', fontWeight: 600 }}>Registrar número na API (use se o número parar de enviar/receber após trocar de sistema)</summary>
+      <div className="stack small" style={{ gap: 8, marginTop: 8 }}>
+        <span className="muted">Informe o PIN de 6 dígitos da verificação em duas etapas do número (Gerenciador do WhatsApp → Números de telefone → Verificação em duas etapas).</span>
+        <div className="row wrap">
+          <select className="select" style={{ width: 'auto' }} value={num || valid[0]?.phone_number_id || ''} onChange={(e) => setNum(e.target.value)}>
+            {valid.map((n) => <option key={n.id} value={n.phone_number_id}>{n.label} {n.phone_display}</option>)}
+          </select>
+          <input className="input" style={{ width: 120 }} inputMode="numeric" maxLength={6} placeholder="PIN" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} />
+          <button className="btn sm" onClick={submit} disabled={busy || pin.length !== 6 || !valid.length}>{busy ? 'Registrando…' : 'Registrar'}</button>
+        </div>
+      </div>
+    </details>
   )
 }
 

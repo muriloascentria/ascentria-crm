@@ -36,6 +36,13 @@ export async function connectWaba(wabaId) {
   return data
 }
 
+/** Registra um número na Cloud API com o PIN de 6 dígitos da verificação em duas etapas (admin). */
+export async function registerNumber(phoneNumberId, pin) {
+  const { data, error } = await supabase.functions.invoke('wa-connect', { body: { action: 'register', phone_number_id: String(phoneNumberId), pin: String(pin).trim() } })
+  if (error) throw new Error(await describeError(error))
+  return data
+}
+
 /** Roda o motor da cadência agora (admin). */
 export async function runCadenceNow() {
   const { data, error } = await supabase.functions.invoke('cadence-run', { body: {} })

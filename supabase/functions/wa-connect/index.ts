@@ -6,10 +6,14 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { GRAPH_VERSION, cors, json } from '../_shared/wa.ts'
 
-async function graph(path: string, token: string, method = 'GET') {
-  const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${path}`, { method, headers: { Authorization: `Bearer ${token}` } })
-  const body = await res.json().catch(() => ({}))
-  return { ok: res.ok, body, error: body?.error?.message as string | undefined }
+async function graph(path: string, token: string, method = 'GET', body?: unknown) {
+  const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  const data: any = await res.json().catch(() => ({}))
+  return { ok: res.ok, body: data, error: data?.error?.message as string | undefined }
 }
 
 Deno.serve(async (req) => {
@@ -27,7 +31,18 @@ Deno.serve(async (req) => {
   const missing = ['WA_ACCESS_TOKEN', 'WA_APP_SECRET', 'WA_VERIFY_TOKEN', 'CRON_SECRET'].filter((k) => !Deno.env.get(k))
   if (!token) { console.log('wa-connect', JSON.stringify({ missing })); return json({ ok: false, missing, error: 'O secret WA_ACCESS_TOKEN não está configurado no Supabase.' }) }
 
-  const { waba_id, subscribe = true } = await req.json().catch(() => ({}))
+  const { waba_id, subscribe = true, action, phone_number_id, pin } = await req.json().catch(() => ({}))
+
+  // Registrar (ou re-registrar) um número na Cloud API com o PIN da verificação em duas etapas.
+  if (action === 'register') {
+    if (!/^\d+$/.test(String(phone_number_id ?? '')) || !/^\d{6}$/.test(String(pin ?? ''))) {
+      return json({ ok: false, error: 'Informe o número e um PIN de 6 dígitos.' })
+    }
+    const r = await graph(`${phone_number_id}/register`, token, 'POST', { messaging_product: 'whatsapp', pin: String(pin) })
+    const st = await graph(`${phone_number_id}?fields=display_phone_number,status,platform_type`, token)
+    console.log('wa-connect register', JSON.stringify({ phone_number_id, ok: r.ok, error: r.error ?? null, status: st.body?.status ?? null }))
+    return json({ ok: r.ok, error: r.error ?? null, phone: st.ok ? st.body : null })
+  }
   if (!waba_id || !/^\d+$/.test(String(waba_id))) return json({ ok: false, missing, error: 'Informe o ID da conta do WhatsApp (WABA ID), só números.' })
 
   const numbers = await graph(`${waba_id}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status`, token)
