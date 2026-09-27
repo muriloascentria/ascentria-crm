@@ -73,6 +73,7 @@ Deno.serve(async (req) => {
   const wabaInfo = await graph(`${waba_id}?fields=id,name,owner_business_info,on_behalf_of_business_info,account_review_status`, token)
   const ownerId = wabaInfo.body?.owner_business_info?.id
   const assigned = ownerId ? await graph(`${waba_id}/assigned_users?business=${ownerId}`, token) : null
+  const templates = await graph(`${waba_id}/message_templates?fields=name,status,language,category&limit=100`, token)
   const { data: nums } = await admin.from('wa_numbers').select('phone_number_id').eq('active', true)
   const phoneDetails = await Promise.all((nums ?? []).map(async (n: { phone_number_id: string }) => {
     const r = await graph(`${n.phone_number_id}?fields=display_phone_number,status,platform_type,account_mode,name_status,messaging_limit_tier`, token)
@@ -91,6 +92,7 @@ Deno.serve(async (req) => {
     permissions_error: perms.error ?? null,
     assigned_users: assigned ? (assigned.ok ? (assigned.body?.data ?? []).map((u: any) => `${u.name}: ${(u.tasks ?? []).join('/')}`) : [assigned.error]) : null,
     phones: phoneDetails,
+    templates: templates.ok ? (templates.body?.data ?? []).map((t: any) => ({ name: t.name, status: t.status, language: t.language, category: t.category })) : [{ name: 'erro', status: templates.error }],
     waba: wabaInfo.ok ? { name: wabaInfo.body?.name, owner: wabaInfo.body?.owner_business_info?.name, owner_id: wabaInfo.body?.owner_business_info?.id, on_behalf_of: wabaInfo.body?.on_behalf_of_business_info?.name ?? null, review: wabaInfo.body?.account_review_status } : { error: wabaInfo.error },
   }
   console.log('wa-connect', JSON.stringify(result)) // diagnóstico (sem segredos)
