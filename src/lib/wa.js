@@ -9,6 +9,16 @@ export const STAGE_ROLES = {
   reactivate: 'Reativar (opcional: coluna manual em vez de voltar ao Dia 1)',
 }
 
+/** Etapas das mensagens prontas (a ordem aqui é a ordem do menu). */
+export const QUICK_STAGES = [['agendamento', 'Agendamento'], ['qualificacao', 'Qualificação'], ['confirmacao', 'Confirmação']]
+export const quickStageLabel = (s) => (QUICK_STAGES.find(([k]) => k === s) || [null, 'Outras'])[1]
+
+/** Uma mensagem pronta pode ter várias mensagens separadas por uma linha com "---". */
+export const splitParts = (body = '') => body.split(/\n[ \t]*---[ \t]*(?:\n|$)/).map((t) => t.trim()).filter(Boolean)
+
+/** Campos que quem envia precisa preencher, escritos em maiúsculas entre colchetes: [DATA], [HORA 1]... */
+export const pendingFields = (text = '') => [...new Set(text.match(/\[[A-ZÀ-Ú0-9 ]+\]/g) || [])]
+
 export const functionsUrl = () => (DEMO ? 'https://SEU-PROJETO.supabase.co/functions/v1' : `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`)
 
 export const webhookUrl = () => `${functionsUrl()}/whatsapp-webhook`

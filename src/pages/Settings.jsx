@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useApp } from '../lib/store'
 import { Avatar, ConfirmButton, Field, Modal } from '../components/ui'
 import { ACTIVITY_TYPES, ROLES, fmtDate, slugify } from '../lib/utils'
-import { STAGE_ROLES, connectWaba, instagramWebhookUrl, registerNumber, runCadenceNow, verifyNumberStep, webhookUrl } from '../lib/wa'
+import { QUICK_STAGES, STAGE_ROLES, quickStageLabel, splitParts, connectWaba, instagramWebhookUrl, registerNumber, runCadenceNow, verifyNumberStep, webhookUrl } from '../lib/wa'
 import { UserSelect } from '../components/ui'
 import { DEMO } from '../lib/supabase'
 import WhatsAppPanel from '../components/WhatsAppPanel'
@@ -537,7 +537,7 @@ function QuickReplies() {
   return (
     <div className="stack" style={{ gap: 12 }}>
       <div className="between wrap">
-        <p className="small muted" style={{ margin: 0 }}>Mensagens salvas para enviar com um clique no painel de conversa (botão ⚡). Com opções, o lead recebe botões (até 3) ou uma lista (até 10). Só podem ser enviadas dentro das 24h após a última mensagem do lead. Use {'{{primeiro_nome}}'} para o nome.</p>
+        <p className="small muted" style={{ margin: 0 }}>Mensagens salvas para enviar com um clique no painel de conversa (botão ⚡). Com opções, o lead recebe botões (até 3) ou uma lista (até 10). Só podem ser enviadas dentro das 24h após a última mensagem do lead. Use {'{{primeiro_nome}}'} para o nome. Uma linha só com --- separa mensagens que saem em sequência.</p>
         <button className="btn primary" onClick={() => setEditing({ position: list.length })}>+ Mensagem pronta</button>
       </div>
       {list.length === 0 ? <div className="card small muted">Nenhuma mensagem pronta.</div> : (
@@ -549,7 +549,7 @@ function QuickReplies() {
                 <button className="btn ghost sm" style={{ padding: '0 6px' }} onClick={() => move(i, 1)} disabled={i === list.length - 1} aria-label="Descer">▼</button>
               </div>
               <div className="grow">
-                <div style={{ fontWeight: 600 }}>{q.title}{q.options?.length > 0 && <span className="chip" style={{ marginLeft: 6 }}>{q.options.length <= 3 ? 'botões' : 'lista'} · {q.options.join(' / ')}</span>}</div>
+                <div style={{ fontWeight: 600 }}><span className="chip" style={{ marginRight: 6 }}>{quickStageLabel(q.stage)}</span>{q.title}{splitParts(q.body).length > 1 && <span className="chip" style={{ marginLeft: 6 }}>{splitParts(q.body).length} mensagens</span>}{q.options?.length > 0 && <span className="chip" style={{ marginLeft: 6 }}>{q.options.length <= 3 ? 'botões' : 'lista'} · {q.options.join(' / ')}</span>}</div>
                 <div className="small muted" style={{ whiteSpace: 'pre-wrap' }}>{q.body}</div>
               </div>
               <button className="btn sm" onClick={() => setEditing(q)}>Editar</button>
@@ -565,7 +565,7 @@ function QuickReplies() {
 
 function QuickReplyForm({ initial, onClose, onSaved }) {
   const { toast } = useApp()
-  const [f, setF] = useState({ title: initial.title || '', body: initial.body || '', options: (initial.options || []).join('\n') })
+  const [f, setF] = useState({ stage: initial.stage || '', title: initial.title || '', body: initial.body || '', options: (initial.options || []).join('\n') })
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
   const opts = f.options.split('\n').map((s) => s.trim()).filter(Boolean)
   const maxLen = opts.length <= 3 ? 20 : 24
@@ -574,7 +574,7 @@ function QuickReplyForm({ initial, onClose, onSaved }) {
     e.preventDefault()
     if (opts.length > 10) return toast('No máximo 10 opções.', 'err')
     if (tooLong.length) return toast(`Opções com mais de ${maxLen} caracteres: ${tooLong.join(', ')}`, 'err')
-    const payload = { title: f.title.trim(), body: f.body.trim(), options: opts }
+    const payload = { stage: f.stage || null, title: f.title.trim(), body: f.body.trim(), options: opts }
     const q = initial.id ? supabase.from('quick_replies').update(payload).eq('id', initial.id) : supabase.from('quick_replies').insert({ ...payload, position: initial.position ?? 0 })
     const { error } = await q
     if (error) return toast(error.message, 'err')
@@ -584,8 +584,14 @@ function QuickReplyForm({ initial, onClose, onSaved }) {
     <Modal title={initial.id ? 'Editar mensagem pronta' : 'Nova mensagem pronta'} onClose={onClose}
       footer={<><button className="btn" type="button" onClick={onClose}>Cancelar</button><button className="btn primary" form="qform">Salvar</button></>}>
       <form id="qform" onSubmit={save} className="stack" style={{ gap: 12 }}>
+        <Field label="Etapa">
+          <select className="select" value={f.stage} onChange={(e) => set('stage', e.target.value)}>
+            {QUICK_STAGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            <option value="">Outras</option>
+          </select>
+        </Field>
         <Field label="Título (só para você achar na lista)"><input className="input" value={f.title} onChange={(e) => set('title', e.target.value)} required autoFocus /></Field>
-        <Field label="Mensagem" hint="Use {{primeiro_nome}} para o primeiro nome do lead."><textarea className="textarea" value={f.body} onChange={(e) => set('body', e.target.value)} required /></Field>
+        <Field label="Mensagem" hint="Use {{primeiro_nome}} para o primeiro nome do lead. Para mandar várias mensagens seguidas, separe com uma linha só com ---. Escreva entre colchetes e em maiúsculas o que a consultora preenche na hora, como [DATA]."><textarea className="textarea" value={f.body} onChange={(e) => set('body', e.target.value)} required /></Field>
         <Field label="Opções de resposta (opcional, uma por linha)" hint={opts.length === 0 ? 'Sem opções: vai como mensagem de texto normal.' : `${opts.length} opção(ões) → ${opts.length <= 3 ? 'botões' : 'lista'} · até ${maxLen} caracteres cada · máximo 10.`}>
           <textarea className="textarea" style={{ minHeight: 90 }} value={f.options} onChange={(e) => set('options', e.target.value)} placeholder={'Manhã\nTarde\nNoite'} />
         </Field>
