@@ -376,6 +376,7 @@ const functions = {
       }, 2000)
       return { data: { ok: true, id: 'wamid.demo' }, error: null }
     }
+    if (name === 'wa-connect' && ['request_code', 'verify_code'].includes(body?.action)) return { data: { ok: true, error: null }, error: null }
     if (name === 'wa-connect' && body?.action === 'register') return { data: { ok: true, error: null, phone: { status: 'CONNECTED' } }, error: null }
     if (name === 'wa-connect') {
       return { data: { ok: true, missing: [], numbers: [{ id: '100000000000001', display_phone_number: '+55 48 99911-2233', verified_name: 'Ascentria' }], subscribe_error: null, apps: ['Ascentria CRM'] }, error: null }

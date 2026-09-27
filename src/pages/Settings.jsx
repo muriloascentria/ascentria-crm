@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useApp } from '../lib/store'
 import { Avatar, ConfirmButton, Field, Modal } from '../components/ui'
 import { ACTIVITY_TYPES, ROLES, fmtDate, slugify } from '../lib/utils'
-import { STAGE_ROLES, connectWaba, instagramWebhookUrl, registerNumber, runCadenceNow, webhookUrl } from '../lib/wa'
+import { STAGE_ROLES, connectWaba, instagramWebhookUrl, registerNumber, runCadenceNow, verifyNumberStep, webhookUrl } from '../lib/wa'
 import { UserSelect } from '../components/ui'
 import { DEMO } from '../lib/supabase'
 import WhatsAppPanel from '../components/WhatsAppPanel'
@@ -335,11 +335,23 @@ function RegisterNumber() {
   const [num, setNum] = useState('')
   const [pin, setPin] = useState('')
   const [busy, setBusy] = useState(false)
+  const [code, setCode] = useState('')
+  const [codeSent, setCodeSent] = useState(false)
   const valid = waNumbers.filter((n) => /^\d+$/.test(n.phone_number_id))
+  const current = num || valid[0]?.phone_number_id
+  const step = async (action, extra) => {
+    setBusy(true)
+    try {
+      const r = await verifyNumberStep(action, current, extra)
+      if (!r.ok) return toast(r.error || 'Não foi possível concluir', 'err')
+      if (action === 'request_code') { setCodeSent(true); toast('Código enviado. Confira o SMS ou a ligação no chip deste número.') }
+      else { setCodeSent(false); setCode(''); toast('Número verificado. Agora registre com o PIN.') }
+    } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
+  }
   const submit = async () => {
     setBusy(true)
     try {
-      const r = await registerNumber(num || valid[0]?.phone_number_id, pin)
+      const r = await registerNumber(current, pin)
       if (r.ok) toast(`Número registrado${r.phone?.status ? ` · situação: ${r.phone.status}` : ''}`)
       else toast(r.error || 'Não foi possível registrar', 'err')
     } catch (e) { toast(e.message, 'err') } finally { setBusy(false); setPin('') }
@@ -355,6 +367,15 @@ function RegisterNumber() {
           </select>
           <input className="input" style={{ width: 120 }} inputMode="numeric" maxLength={6} placeholder="PIN" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} />
           <button className="btn sm" onClick={submit} disabled={busy || pin.length !== 6 || !valid.length}>{busy ? 'Registrando…' : 'Registrar'}</button>
+        </div>
+        <div className="muted" style={{ marginTop: 4 }}>Se aparecer <b>"re-verification needed"</b> (#133006), verifique o número primeiro. O código chega no chip deste número:</div>
+        <div className="row wrap">
+          <button className="btn sm" onClick={() => step('request_code', { method: 'SMS' })} disabled={busy || !valid.length}>Enviar código por SMS</button>
+          <button className="btn sm ghost" onClick={() => step('request_code', { method: 'VOICE' })} disabled={busy || !valid.length}>Receber por ligação</button>
+          {codeSent && <>
+            <input className="input" style={{ width: 120 }} inputMode="numeric" maxLength={6} placeholder="Código" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
+            <button className="btn primary sm" onClick={() => step('verify_code', { code })} disabled={busy || code.length < 6}>Confirmar código</button>
+          </>}
         </div>
       </div>
     </details>

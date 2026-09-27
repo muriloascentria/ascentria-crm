@@ -43,6 +43,13 @@ export async function registerNumber(phoneNumberId, pin) {
   return data
 }
 
+/** Reverificação do número: pede código por SMS/ligação (request_code) e confirma (verify_code). */
+export async function verifyNumberStep(action, phoneNumberId, extra = {}) {
+  const { data, error } = await supabase.functions.invoke('wa-connect', { body: { action, phone_number_id: String(phoneNumberId), ...extra } })
+  if (error) throw new Error(await describeError(error))
+  return data
+}
+
 /** Roda o motor da cadência agora (admin). */
 export async function runCadenceNow() {
   const { data, error } = await supabase.functions.invoke('cadence-run', { body: {} })

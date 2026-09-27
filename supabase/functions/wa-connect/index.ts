@@ -31,7 +31,19 @@ Deno.serve(async (req) => {
   const missing = ['WA_ACCESS_TOKEN', 'WA_APP_SECRET', 'WA_VERIFY_TOKEN', 'CRON_SECRET'].filter((k) => !Deno.env.get(k))
   if (!token) { console.log('wa-connect', JSON.stringify({ missing })); return json({ ok: false, missing, error: 'O secret WA_ACCESS_TOKEN não está configurado no Supabase.' }) }
 
-  const { waba_id, subscribe = true, action, phone_number_id, pin } = await req.json().catch(() => ({}))
+  const { waba_id, subscribe = true, action, phone_number_id, pin, code, method: body_method } = await req.json().catch(() => ({}))
+
+  // Reverificação do número (quando a Meta responde #133006): pede o código por SMS/ligação e confirma.
+  if (action === 'request_code' || action === 'verify_code') {
+    if (!/^\d+$/.test(String(phone_number_id ?? ''))) return json({ ok: false, error: 'Número inválido.' })
+    const payload = action === 'request_code'
+      ? { code_method: body_method === 'VOICE' ? 'VOICE' : 'SMS', language: 'pt_BR' }
+      : { code: String(code ?? '').replace(/\D/g, '') }
+    if (action === 'verify_code' && !payload.code) return json({ ok: false, error: 'Informe o código recebido.' })
+    const r = await graph(`${phone_number_id}/${action}`, token, 'POST', payload)
+    console.log('wa-connect ' + action, JSON.stringify({ phone_number_id, ok: r.ok, error: r.error ?? null }))
+    return json({ ok: r.ok, error: r.error ?? null })
+  }
 
   // Registrar (ou re-registrar) um número na Cloud API com o PIN da verificação em duas etapas.
   if (action === 'register') {
