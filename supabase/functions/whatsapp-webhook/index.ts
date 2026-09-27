@@ -34,6 +34,11 @@ Deno.serve(async (req) => {
   let payload: any
   try { payload = JSON.parse(raw) } catch { return json({ ok: false, error: 'JSON inválido' }, 400) }
 
+  // A Meta envia eventos de TODOS os números da conta (WABA). Só processamos os números cadastrados
+  // no CRM — os demais podem estar em uso por outro sistema (ex.: Go High Level).
+  const { data: nums } = await supabase.from('wa_numbers').select('phone_number_id').eq('active', true)
+  const known = new Set((nums ?? []).map((n: { phone_number_id: string }) => n.phone_number_id))
+
   const results: unknown[] = []
   for (const entry of payload?.entry ?? []) {
     for (const change of entry?.changes ?? []) {
@@ -41,6 +46,7 @@ Deno.serve(async (req) => {
       if (!value) continue
       const profileName: string = value.contacts?.[0]?.profile?.name ?? ''
       const phoneNumberId: string | null = value.metadata?.phone_number_id ?? null
+      if (phoneNumberId && !known.has(phoneNumberId)) { results.push({ ignored: phoneNumberId }); continue }
 
       for (const m of value.messages ?? []) {
         const body = extractBody(m)

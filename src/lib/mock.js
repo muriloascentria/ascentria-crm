@@ -376,6 +376,9 @@ const functions = {
       }, 2000)
       return { data: { ok: true, id: 'wamid.demo' }, error: null }
     }
+    if (name === 'wa-connect') {
+      return { data: { ok: true, missing: [], numbers: [{ id: '100000000000001', display_phone_number: '+55 48 99911-2233', verified_name: 'Ascentria' }], subscribe_error: null, apps: ['Ascentria CRM'] }, error: null }
+    }
     if (name === 'demo-instagram') {
       const names = [['Larissa Mendes', 'lari.mendes'], ['Gustavo Pinto', 'gpinto'], ['Paula Nunes', 'paulanunes'], ['Rafael Duarte', 'rafa.duarte']]
       const [nm, user] = names[db.contacts.length % names.length]

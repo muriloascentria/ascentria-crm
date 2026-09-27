@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useApp } from '../lib/store'
 import { Avatar, ConfirmButton, Field, Modal } from '../components/ui'
 import { ACTIVITY_TYPES, ROLES, fmtDate, slugify } from '../lib/utils'
-import { STAGE_ROLES, instagramWebhookUrl, runCadenceNow, webhookUrl } from '../lib/wa'
+import { STAGE_ROLES, connectWaba, instagramWebhookUrl, runCadenceNow, webhookUrl } from '../lib/wa'
 import { UserSelect } from '../components/ui'
 import { DEMO } from '../lib/supabase'
 import WhatsAppPanel from '../components/WhatsAppPanel'
@@ -254,6 +254,7 @@ function WhatsApp() {
             <span className="chip dot" style={{ '--chip-color': settings.wa_connected ? 'var(--success)' : 'var(--danger)' }}>{settings.wa_connected ? 'recebendo eventos' : 'aguardando 1º evento'}</span></div>
           <div className="small muted">{settings.wa_last_event_at ? `Último evento recebido: ${new Date(settings.wa_last_event_at).toLocaleString('pt-BR')}` : 'Nenhuma mensagem recebida ainda. A conexão é confirmada quando a primeira mensagem chegar pelo webhook.'}</div>
           <Field label="Webhook do WhatsApp (campo: messages)"><div className="code">{webhookUrl()}</div></Field>
+          <MetaCheck />
           <Field label="Webhook do Instagram (campo: messages)"><div className="code">{instagramWebhookUrl()}</div></Field>
         </div>
         <div className="card stack" style={{ gap: 10 }}>
@@ -291,6 +292,35 @@ function WhatsApp() {
         <p className="small muted">Guia completo: <b>docs/GUIA-WHATSAPP.md</b>.{DEMO && ' (Nesta demonstração, nada é enviado de verdade.)'}</p>
       </div>
       {editing && <NumberForm initial={editing} onClose={() => setEditing(null)} onSaved={reload} />}
+    </div>
+  )
+}
+
+function MetaCheck() {
+  const { toast } = useApp()
+  const [waba, setWaba] = useState(() => { try { return localStorage.getItem('crm.waba_id') || '' } catch { return '' } })
+  const [busy, setBusy] = useState(false)
+  const [res, setRes] = useState(null)
+  const check = async () => {
+    setBusy(true); setRes(null)
+    try { localStorage.setItem('crm.waba_id', waba.trim()) } catch { /* ignore */ }
+    try { setRes(await connectWaba(waba)) } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
+  }
+  return (
+    <div className="stack" style={{ gap: 8, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+      <Field label="ID da conta do WhatsApp (WABA ID)" hint="Verifica o token e liga o CRM a esta conta. Outros sistemas conectados à conta continuam funcionando.">
+        <div className="row"><input className="input" value={waba} onChange={(e) => setWaba(e.target.value)} placeholder="ex.: 844738291651828" /><button className="btn primary" onClick={check} disabled={busy || !waba.trim()}>{busy ? 'Verificando…' : 'Verificar e conectar'}</button></div>
+      </Field>
+      {res && (
+        <div className="small stack" style={{ gap: 4 }}>
+          {res.missing?.length > 0 && <div style={{ color: 'var(--danger)' }}>Secrets faltando no Supabase: {res.missing.join(', ')}</div>}
+          {res.error && <div style={{ color: 'var(--danger)' }}>Erro: {res.error}</div>}
+          {res.numbers?.length > 0 && <div><b>Números da conta:</b> {res.numbers.map((n) => `${n.display_phone_number} (${n.verified_name}) — ID ${n.id}`).join(' · ')}</div>}
+          {res.subscribe_error && <div style={{ color: 'var(--danger)' }}>Não foi possível ligar o app aos webhooks: {res.subscribe_error}</div>}
+          {res.apps && <div><b>Apps recebendo eventos desta conta:</b> {res.apps.join(', ') || '—'}</div>}
+          {res.ok && !res.error && <div style={{ color: 'var(--success)', fontWeight: 600 }}>✓ Token válido e CRM ligado à conta.</div>}
+        </div>
+      )}
     </div>
   )
 }

@@ -29,6 +29,13 @@ export async function sendWhatsApp(payload) {
   return data
 }
 
+/** Verifica o token da Meta e inscreve o app nos webhooks da conta do WhatsApp (admin). */
+export async function connectWaba(wabaId) {
+  const { data, error } = await supabase.functions.invoke('wa-connect', { body: { waba_id: String(wabaId).trim() } })
+  if (error) throw new Error(await describeError(error))
+  return data
+}
+
 /** Roda o motor da cadência agora (admin). */
 export async function runCadenceNow() {
   const { data, error } = await supabase.functions.invoke('cadence-run', { body: {} })
