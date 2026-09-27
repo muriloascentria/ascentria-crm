@@ -44,6 +44,13 @@ Deno.serve(async (req) => {
   const perms = await graph('me/permissions', token)
   const me = await graph('me?fields=id,name', token)
   const wabaInfo = await graph(`${waba_id}?fields=id,name,owner_business_info,on_behalf_of_business_info,account_review_status`, token)
+  const ownerId = wabaInfo.body?.owner_business_info?.id
+  const assigned = ownerId ? await graph(`${waba_id}/assigned_users?business=${ownerId}`, token) : null
+  const { data: nums } = await admin.from('wa_numbers').select('phone_number_id').eq('active', true)
+  const phoneDetails = await Promise.all((nums ?? []).map(async (n: { phone_number_id: string }) => {
+    const r = await graph(`${n.phone_number_id}?fields=display_phone_number,status,platform_type,account_mode,name_status,messaging_limit_tier`, token)
+    return r.ok ? r.body : { id: n.phone_number_id, error: r.error }
+  }))
 
   const result = {
     ok: subscribed.ok,
@@ -55,6 +62,8 @@ Deno.serve(async (req) => {
     token_user: me.body?.name ?? me.error ?? null,
     permissions: (perms.body?.data ?? []).filter((x: any) => x.status === 'granted').map((x: any) => x.permission),
     permissions_error: perms.error ?? null,
+    assigned_users: assigned ? (assigned.ok ? (assigned.body?.data ?? []).map((u: any) => `${u.name}: ${(u.tasks ?? []).join('/')}`) : [assigned.error]) : null,
+    phones: phoneDetails,
     waba: wabaInfo.ok ? { name: wabaInfo.body?.name, owner: wabaInfo.body?.owner_business_info?.name, owner_id: wabaInfo.body?.owner_business_info?.id, on_behalf_of: wabaInfo.body?.on_behalf_of_business_info?.name ?? null, review: wabaInfo.body?.account_review_status } : { error: wabaInfo.error },
   }
   console.log('wa-connect', JSON.stringify(result)) // diagnóstico (sem segredos)
