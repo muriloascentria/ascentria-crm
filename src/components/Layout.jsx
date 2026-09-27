@@ -5,11 +5,19 @@ import { ROLES } from '../lib/utils'
 import { DEMO } from '../lib/supabase'
 import logoSage from '../assets/brand/logo-sage.png'
 
+function FunnelIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round" aria-hidden="true" style={{ verticalAlign: '-2px' }}>
+      <path d="M3 4h18l-7 8.5V19l-4 2v-8.5L3 4z" />
+    </svg>
+  )
+}
+
 export default function Layout() {
   const { profile, settings, signOut, isAdmin, label } = useApp()
   const items = [
     { to: '/', ico: '◫', text: label('dashboard') },
-    { to: '/funil', ico: '⫶', text: label('pipeline') },
+    { to: '/funil', ico: <FunnelIcon />, text: label('pipeline') },
     { to: '/contatos', ico: '☺', text: label('contacts') },
     { to: '/atividades', ico: '☑', text: label('activities') },
   ]
