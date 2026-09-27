@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../lib/store'
 import { fmtMoney, fmtDate } from '../lib/utils'
@@ -7,8 +7,49 @@ import DealModal from '../components/DealModal'
 import { daysIn, runCadenceNow, simulateInstagramDM, moveInboxToDay1, sentLast24h } from '../lib/wa'
 import { DEMO } from '../lib/supabase'
 
+/**
+ * Rodinha do mouse rola o quadro na horizontal, com animação suave.
+ * Sobre a lista de cards de uma coluna que ainda tem conteúdo para rolar na vertical,
+ * a rodinha continua rolando a coluna (comportamento normal).
+ */
+function useWheelToHorizontal() {
+  const ref = useRef(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    let target = el.scrollLeft
+    let raf = 0
+    const animate = () => {
+      const diff = target - el.scrollLeft
+      if (Math.abs(diff) < 0.5) { el.scrollLeft = target; raf = 0; return }
+      el.scrollLeft += diff * 0.18
+      raf = requestAnimationFrame(animate)
+    }
+    const onWheel = (e) => {
+      if (e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return // zoom ou trackpad já horizontal
+      const body = e.target.closest?.('.col-body')
+      if (body && body.scrollHeight > body.clientHeight) {
+        const canDown = body.scrollTop + body.clientHeight < body.scrollHeight - 1
+        const canUp = body.scrollTop > 0
+        if ((e.deltaY > 0 && canDown) || (e.deltaY < 0 && canUp)) return
+      }
+      const max = el.scrollWidth - el.clientWidth
+      if (max <= 0) return
+      e.preventDefault()
+      const step = e.deltaMode === 1 ? e.deltaY * 32 : e.deltaY
+      if (!raf) target = el.scrollLeft
+      target = Math.max(0, Math.min(max, target + step * 1.2))
+      if (!raf) raf = requestAnimationFrame(animate)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => { el.removeEventListener('wheel', onWheel); if (raf) cancelAnimationFrame(raf) }
+  })
+  return ref
+}
+
 export default function Pipeline() {
   const { pipelines, stages, users, settings, toast, label, profile } = useApp()
+  const boardRef = useWheelToHorizontal()
   const [pipelineId, setPipelineId] = useState(null)
   const [deals, setDeals] = useState([])
   const [q, setQ] = useState('')
@@ -79,7 +120,7 @@ export default function Pipeline() {
       </div>
 
       {pipeStages.length === 0 ? <Empty title="Nenhuma etapa" text="Configure as etapas deste funil em Configurações → Funis." /> : (
-        <div className="kanban">
+        <div className="kanban" ref={boardRef}>
           {pipeStages.map((s) => {
             const items = filtered.filter((d) => d.stage_id === s.id)
             const sum = items.reduce((a, d) => a + Number(d.value), 0)
