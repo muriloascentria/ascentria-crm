@@ -14,6 +14,10 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
   const [mode, setMode] = useState('text')
   const [tpl, setTpl] = useState({ name: '', params: '' })
   const [busy, setBusy] = useState(false)
+  const [quick, setQuick] = useState([])
+  const [showQuick, setShowQuick] = useState(false)
+  const [question, setQuestion] = useState({ body: '', options: [] })
+  const [firstName, setFirstName] = useState('')
   const endRef = useRef(null)
   const win = inWindow(deal)
 
@@ -22,6 +26,16 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
     setMsgs(data || [])
   }, [contactId])
   useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t) }, [load])
+  useEffect(() => {
+    supabase.from('quick_replies').select('*').order('position').then(({ data }) => setQuick(data || []))
+    supabase.from('contacts').select('name').eq('id', contactId).single().then(({ data }) => setFirstName((data?.name || '').split(' ')[0]))
+  }, [contactId])
+  const fill = (t = '') => t.replace(/{{primeiro_nome}}/g, firstName).replace(/{{nome}}/g, firstName)
+  const pick = (q) => {
+    setShowQuick(false)
+    if (q.options?.length) { setQuestion({ body: fill(q.body), options: [...q.options] }); setMode('interactive') }
+    else { setText(fill(q.body)); setMode('text') }
+  }
   useEffect(() => { endRef.current?.scrollIntoView?.({ block: 'end' }) }, [msgs.length])
   useEffect(() => { setMode(win ? 'text' : 'template') }, [win])
 
@@ -29,10 +43,12 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
     e.preventDefault()
     setBusy(true)
     try {
-      await sendWhatsApp(mode === 'text'
-        ? { contact_id: contactId, deal_id: deal?.id, wa_number_id: deal?.wa_number_id || undefined, kind: 'text', body: text }
-        : { contact_id: contactId, deal_id: deal?.id, wa_number_id: deal?.wa_number_id || undefined, kind: 'template', template_name: tpl.name, template_params: tpl.params.split(',').map((s) => s.trim()).filter(Boolean) })
-      setText(''); toast('Mensagem enviada'); load(); onSent?.()
+      const base = { contact_id: contactId, deal_id: deal?.id, wa_number_id: deal?.wa_number_id || undefined }
+      await sendWhatsApp(mode === 'text' ? { ...base, kind: 'text', body: text }
+        : mode === 'interactive' ? { ...base, kind: 'interactive', body: question.body, options: question.options.filter((o) => o.trim()) }
+        : { ...base, kind: 'template', template_name: tpl.name, template_params: tpl.params.split(',').map((s) => s.trim()).filter(Boolean) })
+      setText(''); setQuestion({ body: '', options: [] }); if (mode === 'interactive') setMode('text')
+      toast('Mensagem enviada'); load(); onSent?.()
     } catch (err) { toast(err.message, 'err') } finally { setBusy(false) }
   }
 
@@ -59,8 +75,32 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
         <div className="pills">
           <button type="button" className={mode === 'text' ? 'active' : ''} onClick={() => setMode('text')} disabled={deal && !win} title={deal && !win ? 'Texto livre só dentro das 24h após a última mensagem do lead' : ''}>Texto</button>
           <button type="button" className={mode === 'template' ? 'active' : ''} onClick={() => setMode('template')}>Template</button>
+          {mode === 'interactive' && <button type="button" className="active">Pergunta com opções</button>}
+          <span className="grow" />
+          <button type="button" onClick={() => setShowQuick((v) => !v)} disabled={deal && !win} title={deal && !win ? 'Mensagens prontas só dentro das 24h após a última mensagem do lead' : 'Escolher uma mensagem pronta'}>⚡ Mensagens prontas</button>
         </div>
-        {mode === 'text' ? (
+        {showQuick && (
+          <div className="card" style={{ padding: 6, maxHeight: 220, overflowY: 'auto' }}>
+            {quick.length === 0 && <div className="small muted" style={{ padding: 8 }}>Nenhuma mensagem pronta. Cadastre em Configurações → Mensagens prontas.</div>}
+            {quick.map((q) => (
+              <button type="button" key={q.id} className="btn ghost" style={{ display: 'block', width: '100%', textAlign: 'left', whiteSpace: 'normal', padding: '6px 8px' }} onClick={() => pick(q)}>
+                <b>{q.title}</b>{q.options?.length > 0 && <span className="chip" style={{ marginLeft: 6 }}>{q.options.length} opções</span>}
+                <div className="small muted">{fill(q.body).slice(0, 110)}{q.body.length > 110 ? '…' : ''}</div>
+              </button>
+            ))}
+          </div>
+        )}
+        {mode === 'interactive' ? (
+          <div className="stack" style={{ gap: 6 }}>
+            <textarea className="textarea" style={{ minHeight: 60 }} value={question.body} onChange={(e) => setQuestion({ ...question, body: e.target.value })} required />
+            <div className="row wrap" style={{ gap: 6 }}>
+              {question.options.map((o, i) => (
+                <span key={i} className="chip">{o} <button type="button" className="close" style={{ fontSize: 13 }} onClick={() => setQuestion({ ...question, options: question.options.filter((_, j) => j !== i) })} aria-label="Remover opção">×</button></span>
+              ))}
+            </div>
+            <div className="small muted">{question.options.length <= 3 ? 'O lead recebe as opções como botões.' : 'O lead recebe um botão "Ver opções" com a lista.'} <button type="button" className="btn ghost sm" onClick={() => { setMode('text'); setQuestion({ body: '', options: [] }) }}>cancelar</button></div>
+          </div>
+        ) : mode === 'text' ? (
           <textarea className="textarea" style={{ minHeight: 60 }} placeholder="Escreva a mensagem…" value={text} onChange={(e) => setText(e.target.value)} required />
         ) : (
           <div className="grid2">

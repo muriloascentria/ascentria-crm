@@ -157,6 +157,11 @@ const db = {
     { id: 'au2', name: 'Lembrete após proposta', trigger_type: 'deal_stage_changed', trigger_config: { stage_id: S.proposta }, action_type: 'create_activity', action_config: { type: 'task', title: 'Acompanhar {{deal.title}}', days_offset: 2, assign: 'owner' }, active: true, created_at: daysFromNow(-50) },
     { id: 'au3', name: 'Marcar contato como cliente', trigger_type: 'deal_won', trigger_config: {}, action_type: 'add_tag', action_config: { tag: 'cliente' }, active: true, created_at: daysFromNow(-50) },
   ],
+  quick_replies: [
+    { id: 'q1', title: 'Melhor período', body: 'Oi, {{primeiro_nome}}! Qual o melhor período para a sua consultoria gratuita?', options: ['Manhã', 'Tarde', 'Noite'], position: 0 },
+    { id: 'q2', title: 'Confirmar interesse', body: 'Oi, {{primeiro_nome}}! Você ainda tem interesse na consultoria gratuita para estruturar seu consultório de enfermagem?', options: ['Sim, quero agendar', 'Agora não'], position: 1 },
+    { id: 'q3', title: 'Enviar horários', body: 'Perfeito! Vou te enviar os horários disponíveis desta semana. Um instante.', options: [], position: 2 },
+  ],
   automation_runs: [
     { id: 1, automation_id: 'au1', entity: 'deal', entity_id: 'd6', ok: true, message: 'create_activity', ran_at: daysFromNow(-2) },
     { id: 2, automation_id: 'au1', entity: 'deal', entity_id: 'd5', ok: true, message: 'create_activity', ran_at: daysFromNow(-4) },
@@ -332,7 +337,7 @@ function defaultsFor(t) {
   return {
     contacts: { tags: [], custom: {} }, companies: { custom: {} }, deals: { value: 0, status: 'open', custom: {}, position: 0 },
     activities: { type: 'task', done: false }, stages: { kind: 'open', probability: 50, color: '#64748b', position: 0 },
-    custom_fields: { options: [], required: false, position: 0 }, automations: { active: true, trigger_config: {}, action_config: {} },
+    custom_fields: { options: [], required: false, position: 0 }, quick_replies: { options: [], position: 0 }, automations: { active: true, trigger_config: {}, action_config: {} },
     pipelines: { is_default: false, position: 0 },
   }[t] || {}
 }
@@ -382,7 +387,7 @@ const functions = {
     if (name === 'whatsapp-send') {
       const c = db.contacts.find((x) => x.id === body.contact_id)
       if (!c) return { data: { ok: false, error: 'Contato não encontrado' }, error: null }
-      const text = body.kind === 'template' ? `[template ${body.template_name}] ${(body.template_params || []).join(', ')}` : body.body
+      const text = body.kind === 'template' ? `[template ${body.template_name}] ${(body.template_params || []).join(', ')}` : body.kind === 'interactive' ? `${body.body}\n${(body.options || []).map((o) => `▸ ${o}`).join('\n')}` : body.body
       db.wa_messages.push({ id: uid(), contact_id: c.id, deal_id: body.deal_id || null, direction: 'out', wa_number_id: body.wa_number_id || 'n1', wa_message_id: 'wamid.' + uid(), type: body.kind, template_name: body.template_name || null, body: text, status: 'sent', sent_by: session.user.id, created_at: now() })
       // demo: o lead responde em 2s e o negócio vai para "Responsivo"
       setTimeout(() => {

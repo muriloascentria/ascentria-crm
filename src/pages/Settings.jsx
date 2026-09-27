@@ -8,7 +8,7 @@ import { UserSelect } from '../components/ui'
 import { DEMO } from '../lib/supabase'
 import WhatsAppPanel from '../components/WhatsAppPanel'
 
-const TABS = [['brand', 'Marca'], ['pipelines', 'Funis e etapas'], ['whatsapp', 'WhatsApp'], ['fields', 'Campos personalizados'], ['users', 'Usuários e permissões'], ['automations', 'Automações']]
+const TABS = [['brand', 'Marca'], ['pipelines', 'Funis e etapas'], ['whatsapp', 'WhatsApp'], ['quick', 'Mensagens prontas'], ['fields', 'Campos personalizados'], ['users', 'Usuários e permissões'], ['automations', 'Automações']]
 
 export default function Settings() {
   const [tab, setTab] = useState('brand')
@@ -19,6 +19,7 @@ export default function Settings() {
       {tab === 'brand' && <Brand />}
       {tab === 'pipelines' && <Pipelines />}
       {tab === 'fields' && <Fields />}
+      {tab === 'quick' && <QuickReplies />}
       {tab === 'users' && <Users />}
       {tab === 'automations' && <Automations />}
       {tab === 'whatsapp' && <WhatsApp />}
@@ -513,6 +514,82 @@ function FieldForm({ initial, onClose, onSaved }) {
           </Field>
         )}
         <label className="check"><input type="checkbox" checked={!!f.required} onChange={(e) => set('required', e.target.checked)} /> Preenchimento obrigatório</label>
+      </form>
+    </Modal>
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// Mensagens prontas (enviadas manualmente no painel de conversa)
+// ---------------------------------------------------------------------------------------------
+function QuickReplies() {
+  const { toast } = useApp()
+  const [list, setList] = useState([])
+  const [editing, setEditing] = useState(null)
+  const load = () => supabase.from('quick_replies').select('*').order('position').then(({ data }) => setList(data || []))
+  useEffect(() => { load() }, [])
+  const remove = async (q) => { const { error } = await supabase.from('quick_replies').delete().eq('id', q.id); if (error) return toast(error.message, 'err'); load() }
+  const move = async (i, dir) => {
+    const j = i + dir; if (j < 0 || j >= list.length) return
+    await Promise.all([supabase.from('quick_replies').update({ position: j }).eq('id', list[i].id), supabase.from('quick_replies').update({ position: i }).eq('id', list[j].id)])
+    load()
+  }
+  return (
+    <div className="stack" style={{ gap: 12 }}>
+      <div className="between wrap">
+        <p className="small muted" style={{ margin: 0 }}>Mensagens salvas para enviar com um clique no painel de conversa (botão ⚡). Com opções, o lead recebe botões (até 3) ou uma lista (até 10). Só podem ser enviadas dentro das 24h após a última mensagem do lead. Use {'{{primeiro_nome}}'} para o nome.</p>
+        <button className="btn primary" onClick={() => setEditing({ position: list.length })}>+ Mensagem pronta</button>
+      </div>
+      {list.length === 0 ? <div className="card small muted">Nenhuma mensagem pronta.</div> : (
+        <div className="list-edit">
+          {list.map((q, i) => (
+            <div key={q.id} className="item">
+              <div className="stack" style={{ gap: 0 }}>
+                <button className="btn ghost sm" style={{ padding: '0 6px' }} onClick={() => move(i, -1)} disabled={i === 0} aria-label="Subir">▲</button>
+                <button className="btn ghost sm" style={{ padding: '0 6px' }} onClick={() => move(i, 1)} disabled={i === list.length - 1} aria-label="Descer">▼</button>
+              </div>
+              <div className="grow">
+                <div style={{ fontWeight: 600 }}>{q.title}{q.options?.length > 0 && <span className="chip" style={{ marginLeft: 6 }}>{q.options.length <= 3 ? 'botões' : 'lista'} · {q.options.join(' / ')}</span>}</div>
+                <div className="small muted" style={{ whiteSpace: 'pre-wrap' }}>{q.body}</div>
+              </div>
+              <button className="btn sm" onClick={() => setEditing(q)}>Editar</button>
+              <ConfirmButton onConfirm={() => remove(q)}>Excluir</ConfirmButton>
+            </div>
+          ))}
+        </div>
+      )}
+      {editing && <QuickReplyForm initial={editing} onClose={() => setEditing(null)} onSaved={load} />}
+    </div>
+  )
+}
+
+function QuickReplyForm({ initial, onClose, onSaved }) {
+  const { toast } = useApp()
+  const [f, setF] = useState({ title: initial.title || '', body: initial.body || '', options: (initial.options || []).join('\n') })
+  const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
+  const opts = f.options.split('\n').map((s) => s.trim()).filter(Boolean)
+  const maxLen = opts.length <= 3 ? 20 : 24
+  const tooLong = opts.filter((o) => o.length > maxLen)
+  const save = async (e) => {
+    e.preventDefault()
+    if (opts.length > 10) return toast('No máximo 10 opções.', 'err')
+    if (tooLong.length) return toast(`Opções com mais de ${maxLen} caracteres: ${tooLong.join(', ')}`, 'err')
+    const payload = { title: f.title.trim(), body: f.body.trim(), options: opts }
+    const q = initial.id ? supabase.from('quick_replies').update(payload).eq('id', initial.id) : supabase.from('quick_replies').insert({ ...payload, position: initial.position ?? 0 })
+    const { error } = await q
+    if (error) return toast(error.message, 'err')
+    toast('Mensagem pronta salva'); onSaved(); onClose()
+  }
+  return (
+    <Modal title={initial.id ? 'Editar mensagem pronta' : 'Nova mensagem pronta'} onClose={onClose}
+      footer={<><button className="btn" type="button" onClick={onClose}>Cancelar</button><button className="btn primary" form="qform">Salvar</button></>}>
+      <form id="qform" onSubmit={save} className="stack" style={{ gap: 12 }}>
+        <Field label="Título (só para você achar na lista)"><input className="input" value={f.title} onChange={(e) => set('title', e.target.value)} required autoFocus /></Field>
+        <Field label="Mensagem" hint="Use {{primeiro_nome}} para o primeiro nome do lead."><textarea className="textarea" value={f.body} onChange={(e) => set('body', e.target.value)} required /></Field>
+        <Field label="Opções de resposta (opcional, uma por linha)" hint={opts.length === 0 ? 'Sem opções: vai como mensagem de texto normal.' : `${opts.length} opção(ões) → ${opts.length <= 3 ? 'botões' : 'lista'} · até ${maxLen} caracteres cada · máximo 10.`}>
+          <textarea className="textarea" style={{ minHeight: 90 }} value={f.options} onChange={(e) => set('options', e.target.value)} placeholder={'Manhã\nTarde\nNoite'} />
+        </Field>
+        {tooLong.length > 0 && <div className="small" style={{ color: 'var(--danger)' }}>Muito longas: {tooLong.join(', ')}</div>}
       </form>
     </Modal>
   )

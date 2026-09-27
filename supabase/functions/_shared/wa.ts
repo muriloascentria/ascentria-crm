@@ -41,6 +41,30 @@ export function sendTemplate(to: string, name: string, lang = 'pt_BR', params: s
   return post({ to, type: 'template', template: { name, language: { code: lang }, components } }, phoneNumberId)
 }
 
+/**
+ * Pergunta com opções (mensagem interativa) — só dentro da janela de 24h.
+ * 1 a 3 opções → botões de resposta rápida (título até 20 caracteres);
+ * 4 a 10 opções → lista (título da linha até 24 caracteres).
+ */
+export function sendInteractive(to: string, body: string, options: string[], phoneNumberId?: string | null) {
+  const opts = options.map((o) => String(o).trim()).filter(Boolean).slice(0, 10)
+  const interactive = opts.length <= 3
+    ? {
+        type: 'button',
+        body: { text: body.slice(0, 1024) },
+        action: { buttons: opts.map((o, i) => ({ type: 'reply', reply: { id: `opt_${i + 1}`, title: o.slice(0, 20) } })) },
+      }
+    : {
+        type: 'list',
+        body: { text: body.slice(0, 4096) },
+        action: {
+          button: 'Ver opções',
+          sections: [{ title: 'Opções', rows: opts.map((o, i) => ({ id: `opt_${i + 1}`, title: o.slice(0, 24) })) }],
+        },
+      }
+  return post({ to, type: 'interactive', interactive }, phoneNumberId)
+}
+
 /** Resolve o phone_number_id de um número cadastrado (wa_numbers.id → phone_number_id). */
 export async function resolveNumber(admin: any, waNumberId?: string | null): Promise<string | null> {
   if (waNumberId) {

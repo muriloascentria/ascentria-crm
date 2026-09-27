@@ -1,10 +1,10 @@
 // Envio manual pelo CRM (chamado pelo frontend com o token do usuário logado).
-// Body: { contact_id, deal_id?, wa_number_id?, kind: 'text' | 'template', body?, template_name?, template_lang?, template_params?: string[] }
+// Body: { contact_id, deal_id?, wa_number_id?, kind: 'text' | 'template' | 'interactive', body?, options?: string[], template_name?, template_lang?, template_params?: string[] }
 // wa_number_id: número cadastrado que envia (se omitido: o número do negócio, senão o padrão)
 //
 // Secrets: WA_ACCESS_TOKEN, WA_PHONE_NUMBER_ID
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { cors, json, resolveNumber, sendTemplate, sendText } from '../_shared/wa.ts'
+import { cors, json, resolveNumber, sendInteractive, sendTemplate, sendText } from '../_shared/wa.ts'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -38,6 +38,10 @@ Deno.serve(async (req) => {
   if (b.kind === 'template') {
     if (!b.template_name) return json({ error: 'template_name obrigatório' }, 400)
     result = await sendTemplate(to, b.template_name, b.template_lang ?? 'pt_BR', b.template_params ?? [], phoneNumberId)
+  } else if (b.kind === 'interactive') {
+    const options = Array.isArray(b.options) ? b.options.filter((o: unknown) => String(o ?? '').trim()) : []
+    if (!b.body || options.length === 0) return json({ error: 'Pergunta e opções são obrigatórias' }, 400)
+    result = await sendInteractive(to, b.body, options, phoneNumberId)
   } else {
     if (!b.body) return json({ error: 'body obrigatório' }, 400)
     result = await sendText(to, b.body, phoneNumberId)
@@ -45,8 +49,9 @@ Deno.serve(async (req) => {
 
   await admin.from('wa_messages').insert({
     contact_id: contact.id, deal_id: b.deal_id ?? null, direction: 'out',
-    wa_message_id: result.ok ? result.id : null, type: b.kind === 'template' ? 'template' : 'text',
-    body: b.kind === 'template' ? `[template ${b.template_name}] ${(b.template_params ?? []).join(', ')}` : b.body,
+    wa_message_id: result.ok ? result.id : null, type: b.kind === 'template' ? 'template' : b.kind === 'interactive' ? 'interactive' : 'text',
+    body: b.kind === 'template' ? `[template ${b.template_name}] ${(b.template_params ?? []).join(', ')}`
+      : b.kind === 'interactive' ? `${b.body}\n${(b.options ?? []).map((o: string) => `▸ ${o}`).join('\n')}` : b.body,
     template_name: b.template_name ?? null, status: result.ok ? 'sent' : 'failed',
     error: result.ok ? null : result.error, sent_by: user.id, wa_number_id: waNumberId,
   })
