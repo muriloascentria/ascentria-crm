@@ -15,6 +15,7 @@ const P1 = 'p-0000-0000-0000-000000000001'
 const S = ['novo', 'contato', 'qualif', 'proposta', 'negoc', 'ganho', 'perdido'].reduce((o, k, i) => ({ ...o, [k]: `s-0000-0000-0000-00000000000${i + 1}` }), {})
 const C = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7'].reduce((o, k, i) => ({ ...o, [k]: `ct-000-0000-0000-00000000000${i + 1}` }), {})
 const P2 = 'p-0000-0000-0000-000000000002'
+const P3 = 'p-0000-0000-0000-000000000003'
 const W = ['inbox', 'd1', 'd2', 'd3', 'd4', 'd5', 'resp', 'arch', 'react', 'won', 'lost'].reduce((o, k, i) => ({ ...o, [k]: `w-0000-0000-0000-0000000000${String(i + 1).padStart(2, '0')}` }), {})
 const WC = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7'].reduce((o, k, i) => ({ ...o, [k]: `wc-00-0000-0000-00000000000${i + 1}` }), {})
 const E = ['e1', 'e2', 'e3', 'e4'].reduce((o, k, i) => ({ ...o, [k]: `co-000-0000-0000-00000000000${i + 1}` }), {})
@@ -31,7 +32,8 @@ const db = {
   }],
   pipelines: [
     { id: P1, name: 'Funil de Vendas', position: 0, is_default: true, archive_months: 4, created_at: now() },
-    { id: P2, name: 'Mentoria — Instagram → WhatsApp', position: 1, is_default: false, archive_months: 4, daily_limit: 250, created_at: now() },
+    { id: P2, name: 'Mentoria', position: 1, is_default: false, archive_months: 4, daily_limit: 250, reactivate_to_pipeline_id: P3, created_at: now() },
+    { id: P3, name: 'Reativação', position: 2, is_default: false, archive_months: 4, daily_limit: 250, reactivate_to_pipeline_id: null, created_at: now() },
   ],
   stages: [
     { id: S.novo, pipeline_id: P1, name: 'Novo lead', position: 0, color: '#babec6', probability: 10, kind: 'open' },
@@ -51,6 +53,17 @@ const db = {
     { id: W.arch, pipeline_id: P2, name: 'Arquivado', position: 6, color: '#cfc9b6', probability: 0, kind: 'open', role: 'archived' },
     { id: W.won, pipeline_id: P2, name: 'Fechou mentoria', position: 8, color: '#2e381a', probability: 100, kind: 'won' },
     { id: W.lost, pipeline_id: P2, name: 'Perdido', position: 9, color: '#a8432f', probability: 0, kind: 'lost' },
+    ...[
+      ['Oi, {{primeiro_nome}}! Aqui é a Mari, do time do enfermeiro Murilo Pedroso. Há alguns meses você demonstrou interesse na consultoria gratuita para estruturar seu consultório de enfermagem. Como estão as coisas por aí? Esse ainda é um objetivo seu?', '#9aa585'],
+      ['Oi, {{primeiro_nome}}! Uma pergunta rápida: hoje, o que mais te impede de fazer seu consultório de enfermagem faturar mais? Pode me responder em uma frase que eu te ajudo a partir daí.', '#818a66'],
+      ['Oi, {{primeiro_nome}}! O enfermeiro Murilo abriu novos horários para a consultoria gratuita. Nela, ele ajuda você a estruturar seu consultório com a meta de faturar pelo menos R$ 10 mil por mês. Quer que eu te envie as opções?', '#6f7d52'],
+      ['Oi, {{primeiro_nome}}! Ainda tenho alguns horários livres nesta semana para a consultoria gratuita. Posso reservar um para você?', '#c9973f'],
+      ['Oi, {{primeiro_nome}}, esta é minha última mensagem por agora sobre a consultoria gratuita.\nSe quiser agendar, responda SIM que te envio os horários. Se não for o momento, responda NÃO e encerro o contato por aqui.', '#ab6f30'],
+    ].map(([msg, color], i) => ({ id: `r-d${i + 1}`, pipeline_id: P3, name: `Dia ${i + 1}`, position: i, color, probability: 10 + i * 5, kind: 'open', role: 'day', advance_after_days: 1, auto_send: true, wa_template_name: `reativacao_dia_${i + 1}`, wa_template_lang: 'pt_BR', message_text: msg })),
+    { id: 'r-resp', pipeline_id: P3, name: 'Responsivo', position: 5, color: '#5c7a3a', probability: 60, kind: 'open', role: 'responsive' },
+    { id: 'r-arch', pipeline_id: P3, name: 'Arquivado', position: 6, color: '#cfc9b6', probability: 0, kind: 'open', role: 'archived' },
+    { id: 'r-won', pipeline_id: P3, name: 'Fechou mentoria', position: 7, color: '#2e381a', probability: 100, kind: 'won' },
+    { id: 'r-lost', pipeline_id: P3, name: 'Perdido', position: 8, color: '#a8432f', probability: 0, kind: 'lost' },
   ],
   companies: [
     { id: E.e1, name: 'Clínica Vida Plena', domain: 'vidaplena.com.br', phone: '(11) 3333-1000', segment: 'Saúde', city: 'São Paulo', notes: null, owner_id: U_ME, custom: {}, created_at: daysFromNow(-40), updated_at: now() },
@@ -338,8 +351,11 @@ function runCadence() {
   db.deals.forEach((d) => {
     const s = db.stages.find((x) => x.id === d.stage_id)
     if (s?.role === 'archived' && d.reactivate_at && d.reactivate_at <= new Date().toISOString().slice(0, 10)) {
-      const nxt = db.stages.find((x) => x.pipeline_id === d.pipeline_id && x.role === 'reactivate')
-        || db.stages.filter((x) => x.pipeline_id === d.pipeline_id && x.role === 'day').sort((a, b) => a.position - b.position)[0]
+      const target = db.pipelines.find((p) => p.id === d.pipeline_id)?.reactivate_to_pipeline_id
+      const firstDay = (pid) => db.stages.filter((x) => x.pipeline_id === pid && x.role === 'day').sort((a, b) => a.position - b.position)[0]
+      const nxt = (target && target !== d.pipeline_id && firstDay(target))
+        || db.stages.find((x) => x.pipeline_id === d.pipeline_id && x.role === 'reactivate')
+        || firstDay(d.pipeline_id)
       if (nxt) {
         const old = { ...d }; d.stage_id = nxt.id; d.reactivate_at = null; d.cycle = (d.cycle || 1) + 1; beforeWrite('deals', d, old); afterWrite('deals', d, old)
         if (nxt.role === 'reactivate') db.activities.push({ id: uid(), type: 'whatsapp', title: `Retomar contato: ${d.title}`, description: 'Lead arquivado sem resposta. Hora de tentar de novo.', due_at: now(), done: false, done_at: null, deal_id: d.id, contact_id: d.contact_id, company_id: null, assigned_to: d.owner_id, created_by: d.owner_id, created_at: now() })

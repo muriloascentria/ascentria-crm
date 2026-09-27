@@ -138,6 +138,26 @@ Teste: mande uma DM do seu Instagram pessoal para a conta da Ascentria com um te
 
 Enquanto os templates não estiverem aprovados, deixe as colunas em **Criar tarefa para eu enviar manualmente**: o CRM cria a tarefa com o roteiro do dia e você envia pelo próprio painel de conversa (ou pelo celular).
 
+### Modelos do funil Reativação
+
+Leads que ficam 4 meses no Arquivado da Mentoria passam sozinhos para o **Dia 1 do funil Reativação** (configurável em *Configurações → Funis e etapas → Mentoria*). Quem não responder na Reativação fica 4 meses arquivado e recomeça a Reativação. Crie estes 5 modelos (Marketing, Português (BR), variável tipo Número, exemplo "Fernanda"):
+
+**`reativacao_dia_1`**
+> Oi, {{1}}! Aqui é a Mari, do time do enfermeiro Murilo Pedroso. Há alguns meses você demonstrou interesse na consultoria gratuita para estruturar seu consultório de enfermagem. Como estão as coisas por aí? Esse ainda é um objetivo seu?
+
+**`reativacao_dia_2`**
+> Oi, {{1}}! Uma pergunta rápida: hoje, o que mais te impede de fazer seu consultório de enfermagem faturar mais? Pode me responder em uma frase que eu te ajudo a partir daí.
+
+**`reativacao_dia_3`**
+> Oi, {{1}}! O enfermeiro Murilo abriu novos horários para a consultoria gratuita. Nela, ele ajuda você a estruturar seu consultório com a meta de faturar pelo menos R$ 10 mil por mês. Quer que eu te envie as opções?
+
+**`reativacao_dia_4`**
+> Oi, {{1}}! Ainda tenho alguns horários livres nesta semana para a consultoria gratuita. Posso reservar um para você?
+
+**`reativacao_dia_5`**
+> Oi, {{1}}, esta é minha última mensagem por agora sobre a consultoria gratuita.
+> Se quiser agendar, responda SIM que te envio os horários. Se não for o momento, responda NÃO e encerro o contato por aqui.
+
 ## Passo 8 — Agendar o motor (roda sozinho, de hora em hora)
 
 1. **SQL Editor** → abra `supabase/migrations/0003_cron.sql`, troque `<SEU-PROJETO>` e `<CRON_SECRET>` pelos seus valores e execute.

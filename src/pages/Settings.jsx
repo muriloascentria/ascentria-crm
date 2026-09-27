@@ -100,6 +100,7 @@ function Pipelines() {
   }
   const setDailyLimit = async (m) => { await supabase.from('pipelines').update({ daily_limit: Number(m) }).eq('id', sel); reload() }
   const setArchiveMonths = async (m) => { await supabase.from('pipelines').update({ archive_months: Number(m) }).eq('id', sel); reload() }
+  const setReactivateTo = async (v) => { await supabase.from('pipelines').update({ reactivate_to_pipeline_id: v || null }).eq('id', sel); reload() }
   const removePipeline = async () => {
     const { error } = await supabase.from('pipelines').delete().eq('id', sel)
     if (error) return toast('Não é possível excluir: existem negócios neste funil.', 'err')
@@ -154,7 +155,11 @@ function Pipelines() {
           </div>
           <p className="small muted">Etapas do tipo <b>Ganho</b> e <b>Perdido</b> fecham o negócio automaticamente ao receber um card. A probabilidade alimenta a previsão ponderada do painel. O botão <b>⚙</b> define a função da coluna na sequência de WhatsApp (dia, responsivo, arquivado, reativar), a mensagem do dia e o avanço automático.</p>
           {draft.some((s) => s.role === 'archived') && (
-            <div className="row small wrap"><span>Leads arquivados voltam ao Dia 1 após</span><input className="input" type="number" min="1" defaultValue={pipe.archive_months ?? 4} onBlur={(e) => Number(e.target.value) !== pipe.archive_months && setArchiveMonths(e.target.value)} style={{ width: 70 }} /><span>meses</span>
+            <div className="row small wrap"><span>Leads arquivados, após</span><input className="input" type="number" min="1" defaultValue={pipe.archive_months ?? 4} onBlur={(e) => Number(e.target.value) !== pipe.archive_months && setArchiveMonths(e.target.value)} style={{ width: 70 }} /><span>meses, vão para</span>
+              <select className="select" style={{ width: 'auto' }} value={pipe.reactivate_to_pipeline_id || ''} onChange={(e) => setReactivateTo(e.target.value)}>
+                <option value="">o Dia 1 deste funil</option>
+                {pipelines.filter((p) => p.id !== pipe.id && stages.some((s) => s.pipeline_id === p.id && s.role === 'day')).map((p) => <option key={p.id} value={p.id}>o Dia 1 do funil {p.name}</option>)}
+              </select>
               <span style={{ marginLeft: 12 }}>Limite diário de envios (Meta):</span><input className="input" type="number" min="1" defaultValue={pipe.daily_limit ?? 250} onBlur={(e) => Number(e.target.value) !== pipe.daily_limit && setDailyLimit(e.target.value)} style={{ width: 90 }} /></div>
           )}
           <div className="list-edit">
