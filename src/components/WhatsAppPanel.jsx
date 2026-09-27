@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../lib/store'
-import { inWindow, sendWhatsApp, QUICK_STAGES, splitParts, pendingFields } from '../lib/wa'
+import { inWindow, sendWhatsApp, QUICK_STAGES, splitParts, pendingFields, fillMeeting, meetingDateLabel, meetingTimeLabel } from '../lib/wa'
 import { fmtDateTime } from '../lib/utils'
 import { Field } from './ui'
 
@@ -21,6 +21,11 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
   const [seq, setSeq] = useState({ parts: [], options: [] })
   const [stage, setStage] = useState('')
   const [progress, setProgress] = useState('')
+  // Encontro confirmado (dia, hora e link): preenche [DATA], [HORA], [HOJE OU AMANHÃ] e [LINK] sozinho.
+  const [meeting, setMeeting] = useState({ date: '', time: '', link: '' })
+  useEffect(() => {
+    setMeeting({ date: deal?.meeting_date || '', time: (deal?.meeting_time || '').slice(0, 5), link: deal?.meeting_link || '' })
+  }, [deal?.id]) // eslint-disable-line react-hooks/exhaustive-deps
   const [firstName, setFirstName] = useState('')
   const endRef = useRef(null)
   const win = inWindow(deal)
@@ -34,13 +39,24 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
     supabase.from('quick_replies').select('*').order('position').then(({ data }) => setQuick(data || []))
     supabase.from('contacts').select('name').eq('id', contactId).single().then(({ data }) => setFirstName((data?.name || '').split(' ')[0]))
   }, [contactId])
-  const fill = (t = '') => t.replace(/{{primeiro_nome}}/g, firstName).replace(/{{nome}}/g, firstName)
+  const fill = (t = '') => fillMeeting(t.replace(/{{primeiro_nome}}/g, firstName).replace(/{{nome}}/g, firstName), meeting)
   const pick = (q) => {
     setShowQuick(false)
     const parts = splitParts(q.body)
     if (parts.length > 1) { setSeq({ parts: parts.map(fill), options: [...(q.options || [])] }); setMode('sequence'); return }
     if (q.options?.length) { setQuestion({ body: fill(q.body), options: [...q.options] }); setMode('interactive') }
     else { setText(fill(q.body)); setMode('text') }
+  }
+  const saveMeeting = async (patch) => {
+    const novo = { ...meeting, ...patch }
+    setMeeting(novo)
+    // O que já estiver escrito na caixa de mensagem também recebe o dia e a hora na mesma hora.
+    setText((t) => fillMeeting(t, novo))
+    setQuestion((q) => ({ ...q, body: fillMeeting(q.body, novo) }))
+    setSeq((sq) => ({ ...sq, parts: sq.parts.map((x) => fillMeeting(x, novo)) }))
+    if (!deal?.id) return
+    const { error } = await supabase.from('deals').update({ meeting_date: novo.date || null, meeting_time: novo.time || null, meeting_link: novo.link.trim() || null }).eq('id', deal.id)
+    if (error) toast(error.message, 'err')
   }
   const quickVisiveis = quick.filter((q) => !stage || (stage === 'outras' ? !q.stage : q.stage === stage))
   useEffect(() => { endRef.current?.scrollIntoView?.({ block: 'end' }) }, [msgs.length])
@@ -96,6 +112,25 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
           </div>
         ))}
         <div ref={endRef} />
+      </div>
+      <div className="card" style={{ padding: 10, background: 'var(--surface-2, #f6f5f1)' }}>
+        <div className="small" style={{ fontWeight: 600, marginBottom: 6 }}>📅 Encontro confirmado</div>
+        <div className="row wrap" style={{ gap: 8, alignItems: 'flex-end' }}>
+          <label className="small stack" style={{ gap: 2 }}>Dia
+            <input className="input" type="date" value={meeting.date} onChange={(e) => saveMeeting({ date: e.target.value })} style={{ width: 160 }} />
+          </label>
+          <label className="small stack" style={{ gap: 2 }}>Hora
+            <input className="input" type="time" value={meeting.time} onChange={(e) => saveMeeting({ time: e.target.value })} style={{ width: 120 }} />
+          </label>
+          <label className="small stack grow" style={{ gap: 2, minWidth: 180 }}>Link do Google Meet (opcional)
+            <input className="input" value={meeting.link} placeholder="meet.google.com/..." onChange={(e) => setMeeting({ ...meeting, link: e.target.value })} onBlur={(e) => saveMeeting({ link: e.target.value })} />
+          </label>
+        </div>
+        <div className="small muted" style={{ marginTop: 6 }}>
+          {meeting.date && meeting.time
+            ? <>As mensagens prontas já saem com <b>{meetingDateLabel(meeting.date)} às {meetingTimeLabel(meeting.time)}</b>{meeting.link ? ' e o link' : ''}.</>
+            : 'Preencha depois que o lead escolher o horário: o dia e a hora entram sozinhos em todas as mensagens prontas.'}
+        </div>
       </div>
       <form onSubmit={send} className="stack">
         <div className="pills">

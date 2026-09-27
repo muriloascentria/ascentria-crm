@@ -90,3 +90,51 @@ export async function sentLast24h() {
   const { data } = await supabase.rpc('sent_last_24h')
   return data ?? 0
 }
+
+/* ------------------------------------------------------------------------------------------
+   Encontro confirmado: dia, hora e link guardados no negócio. Quem envia preenche uma vez e
+   os campos [DATA], [HORA], [HOJE OU AMANHÃ] e [LINK] das mensagens prontas saem preenchidos.
+   ------------------------------------------------------------------------------------------ */
+const DIAS_SEMANA = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado']
+
+/** "2026-09-29" → "29/09 (segunda-feira)" */
+export function meetingDateLabel(date) {
+  if (!date) return ''
+  const [y, m, d] = date.split('-').map(Number)
+  const dia = new Date(y, m - 1, d)
+  return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')} (${DIAS_SEMANA[dia.getDay()]})`
+}
+
+/** "09:30" → "9h30", "14:00" → "14h00" */
+export function meetingTimeLabel(time) {
+  if (!time) return ''
+  const [h, mi] = time.split(':')
+  return `${Number(h)}h${(mi || '00').slice(0, 2)}`
+}
+
+/** "hoje", "amanhã" ou "no dia 29/09", conforme a data do encontro em relação a agora. */
+export function meetingWhen(date, now = new Date()) {
+  if (!date) return ''
+  const [y, m, d] = date.split('-').map(Number)
+  const alvo = new Date(y, m - 1, d)
+  const hoje = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const dias = Math.round((alvo - hoje) / 86400000)
+  if (dias === 0) return 'hoje'
+  if (dias === 1) return 'amanhã'
+  return `no dia ${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`
+}
+
+/** Troca os campos do encontro que já estiverem preenchidos; os outros continuam entre colchetes. */
+export function fillMeeting(text = '', meeting = {}) {
+  let t = text
+  if (meeting.date) {
+    t = t.replace(/\[(DATA|DIA)\]/g, meetingDateLabel(meeting.date))
+    const quando = meetingWhen(meeting.date)
+    // No começo de uma linha a palavra ganha maiúscula ("Amanhã, antes do horário...").
+    t = t.replace(/(^|\n)\[HOJE OU AMANHÃ\]/g, (_, ini) => ini + quando.charAt(0).toUpperCase() + quando.slice(1))
+    t = t.replace(/\[HOJE OU AMANHÃ\]/g, quando)
+  }
+  if (meeting.time) t = t.replace(/\[HORA\]/g, meetingTimeLabel(meeting.time))
+  if (meeting.link) t = t.replace(/\[LINK\]/g, meeting.link.trim())
+  return t
+}
