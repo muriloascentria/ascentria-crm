@@ -77,7 +77,15 @@ export default function Pipeline() {
   useEffect(() => { if (hasCadence) sentLast24h().then(setSent24) }, [hasCadence, deals])
   const bulkMove = async () => {
     const inboxCount = deals.filter((d) => d.stage_id === pipeStages.find((s) => s.role === 'inbox')?.id).length
-    const v = window.prompt(`Quantos leads mover de "Recebidos" para o Dia 1? (mais antigos primeiro)\nDisponíveis: ${inboxCount} · Enviados nas últimas 24h: ${sent24 ?? '?'} / limite ${pipe?.daily_limit ?? 250}`, String(Math.min(inboxCount, Math.max(0, (pipe?.daily_limit ?? 250) - (sent24 ?? 0)))))
+    // Cada lead recebe 1 modelo por dia em todos os Dias da sequência; por isso a cota diária de NOVOS
+    // é o limite da Meta dividido pelo número de Dias (250 ÷ 5 = 50), menos quem já entrou no Dia 1 nas últimas 24h.
+    const limit = pipe?.daily_limit ?? 250
+    const dayStages = pipeStages.filter((s) => s.role === 'day')
+    const perDay = Math.floor(limit / Math.max(1, dayStages.length))
+    const day1 = dayStages.slice().sort((a, b) => a.position - b.position)[0]
+    const enteredToday = deals.filter((d) => d.stage_id === day1?.id && Date.now() - new Date(d.stage_entered_at).getTime() < 86_400_000).length
+    const suggested = Math.max(0, Math.min(inboxCount, perDay - enteredToday))
+    const v = window.prompt(`Quantos leads mover de "Recebidos" para o Dia 1? (mais antigos primeiro)\n\nCota segura de novos por dia: ${perDay} (limite da Meta ${limit} ÷ ${dayStages.length} dias da sequência).\nJá entraram no Dia 1 nas últimas 24h: ${enteredToday} · Disponíveis em Recebidos: ${inboxCount}`, String(suggested))
     if (v === null) return
     const n = Number(v); if (!n || n < 1) return
     try { const moved = await moveInboxToDay1(pipelineId, n); toast(`${moved} lead(s) movido(s) para o Dia 1`); load() } catch (e) { toast(e.message, 'err') }
