@@ -7,7 +7,7 @@ import { Field } from './ui'
 import { callCalendar, fillSlots, slotLabel } from '../lib/calendar'
 
 /** Conversa de WhatsApp de um contato (com envio). deal opcional para vincular e calcular a janela de 24h. */
-export default function WhatsAppPanel({ contactId, deal, onSent }) {
+export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged }) {
   const { toast, settings, waNumbers, sellers, stages } = useApp()
   const via = waNumbers.find((n) => n.id === deal?.wa_number_id) || waNumbers.find((n) => n.is_default) || waNumbers[0]
   const [msgs, setMsgs] = useState([])
@@ -96,6 +96,28 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
       setBooked(null)
       await saveMeeting({ date: '', time: '', link: '' })
       toast('Reserva desfeita')
+    } catch (e) { toast(e.message, 'err') } finally { setCalBusy('') }
+  }
+  const [curStageId, setCurStageId] = useState(deal?.stage_id)
+  useEffect(() => { setCurStageId(deal?.stage_id) }, [deal?.id, deal?.stage_id])
+  const remarcarStage = stages.find((s) => s.pipeline_id === deal?.pipeline_id && /remarc/i.test(s.name))
+  const naReuniao = /reuni/i.test(stages.find((s) => s.id === curStageId)?.name || '')
+  const podeCancelar = !!deal?.id && !!remarcarStage && curStageId !== remarcarStage.id && (naReuniao || !!booked || !!meeting.date)
+  const leadCancelou = async () => {
+    if (!window.confirm('O lead cancelou? O card vai para "Remarcar", o horário é liberado na agenda da vendedora e a pergunta de remarcação fica pronta para enviar.')) return
+    setCalBusy('cancel')
+    try {
+      if (booked) await callCalendar('release', { deal_id: deal.id })
+      const { error } = await supabase.from('deals').update({ stage_id: remarcarStage.id, meeting_date: null, meeting_time: null, meeting_link: null, calendar_event_id: null, offered_slots: [] }).eq('id', deal.id)
+      if (error) throw error
+      setBooked(null); setOffered([]); setFound(null)
+      setMeeting({ date: '', time: '', link: '' })
+      setCurStageId(remarcarStage.id)
+      onStageChanged?.(remarcarStage.id)
+      const pergunta = [...quick].filter((q) => q.stage === 'remarcacao').sort((a, b) => a.position - b.position)[0]
+      if (pergunta) pick(pergunta)
+      toast(win ? 'Card movido para Remarcar. A pergunta de remarcação está pronta: confira e clique em Enviar.' : 'Card movido para Remarcar. Atenção: fora da janela de 24h só é possível enviar template.')
+      onSent?.()
     } catch (e) { toast(e.message, 'err') } finally { setCalBusy('') }
   }
   const [firstName, setFirstName] = useState('')
@@ -216,7 +238,10 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
         <div ref={endRef} />
       </div>
       <div className="card" style={{ padding: 10, background: 'var(--surface-2, #f6f5f1)' }}>
-        <div className="small" style={{ fontWeight: 600, marginBottom: 6 }}>📅 Encontro confirmado</div>
+        <div className="between" style={{ marginBottom: 6, gap: 8 }}>
+          <div className="small" style={{ fontWeight: 600 }}>📅 Encontro confirmado</div>
+          {podeCancelar && <button type="button" className="btn sm" onClick={leadCancelou} disabled={calBusy === 'cancel'} title="Move para Remarcar, libera o horário na agenda e prepara a pergunta de remarcação">{calBusy === 'cancel' ? 'Movendo…' : '↺ Lead cancelou → Remarcar'}</button>}
+        </div>
         <div className="row wrap" style={{ gap: 8, alignItems: 'flex-end' }}>
           <label className="small stack" style={{ gap: 2 }}>Dia
             <input className="input" type="date" value={meeting.date} onChange={(e) => saveMeeting({ date: e.target.value })} style={{ width: 160 }} />

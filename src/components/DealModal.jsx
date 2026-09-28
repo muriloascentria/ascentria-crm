@@ -120,7 +120,7 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved, onMar
         </form>
         {deal?.id && (
           <div className="stack" style={{ gap: 18 }}>
-            {deal.contact_id && <WhatsAppPanel contactId={deal.contact_id} deal={deal} onSent={onSaved} />}
+            {deal.contact_id && <WhatsAppPanel contactId={deal.contact_id} deal={deal} onSent={onSaved} onStageChanged={(id) => set('stage_id', id)} />}
             <ActivityPanel link={{ deal_id: deal.id }} />
             {history.length > 0 && (
               <div className="stack">
