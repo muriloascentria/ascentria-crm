@@ -29,6 +29,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged 
   useEffect(() => { loadSends() }, [loadSends])
   // Encontro confirmado (dia, hora e link): preenche [DATA], [HORA], [HOJE OU AMANHÃ] e [LINK] sozinho.
   const [meeting, setMeeting] = useState({ date: '', time: '', link: '' })
+  const curStageRef = useRef(deal?.stage_id)
   useEffect(() => {
     setMeeting({ date: deal?.meeting_date || '', time: (deal?.meeting_time || '').slice(0, 5), link: deal?.meeting_link || '' })
   }, [deal?.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -99,7 +100,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged 
     } catch (e) { toast(e.message, 'err') } finally { setCalBusy('') }
   }
   const [curStageId, setCurStageId] = useState(deal?.stage_id)
-  useEffect(() => { setCurStageId(deal?.stage_id) }, [deal?.id, deal?.stage_id])
+  useEffect(() => { setCurStageId(deal?.stage_id); curStageRef.current = deal?.stage_id }, [deal?.id, deal?.stage_id])
   const remarcarStage = stages.find((s) => s.pipeline_id === deal?.pipeline_id && /remarc/i.test(s.name))
   const naReuniao = /reuni/i.test(stages.find((s) => s.id === curStageId)?.name || '')
   const podeCancelar = !!deal?.id && !!remarcarStage && curStageId !== remarcarStage.id && (naReuniao || !!booked || !!meeting.date)
@@ -112,7 +113,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged 
       if (error) throw error
       setBooked(null); setOffered([]); setFound(null)
       setMeeting({ date: '', time: '', link: '' })
-      setCurStageId(remarcarStage.id)
+      setCurStageId(remarcarStage.id); curStageRef.current = remarcarStage.id
       onStageChanged?.(remarcarStage.id)
       const pergunta = [...quick].filter((q) => q.stage === 'remarcacao').sort((a, b) => a.position - b.position)[0]
       if (pergunta) pick(pergunta)
@@ -151,7 +152,19 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged 
     setSeq((sq) => ({ ...sq, parts: sq.parts.map((x) => fillMeeting(x, novo)) }))
     if (!deal?.id) return
     const { error } = await supabase.from('deals').update({ meeting_date: novo.date || null, meeting_time: novo.time || null, meeting_link: novo.link.trim() || null }).eq('id', deal.id)
-    if (error) toast(error.message, 'err')
+    if (error) return toast(error.message, 'err')
+    // Encontro marcado (dia e hora preenchidos): o card vai sozinho para "Reunião agendada".
+    const reuniao = stages.find((s) => s.pipeline_id === deal.pipeline_id && /reuni/i.test(s.name))
+    const atual = stages.find((s) => s.id === curStageRef.current)
+    if (novo.date && novo.time && reuniao && atual && atual.id !== reuniao.id && atual.kind === 'open') {
+      const { error: e2 } = await supabase.from('deals').update({ stage_id: reuniao.id }).eq('id', deal.id)
+      if (e2) return toast(e2.message, 'err')
+      curStageRef.current = reuniao.id
+      setCurStageId(reuniao.id)
+      onStageChanged?.(reuniao.id)
+      toast('Card movido para Reunião agendada')
+      onSent?.()
+    }
   }
   const quickVisiveis = quick.filter((q) => !stage || (stage === 'outras' ? !q.stage : q.stage === stage))
   const enviadaEm = (q) => { const f = sends.filter((x) => x.quick_reply_id === q.id).map((x) => x.sent_at).sort(); return f.length ? f[f.length - 1] : null }
