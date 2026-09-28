@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../lib/store'
-import { inWindow, sendWhatsApp, QUICK_STAGES, quickStageLabel, splitParts, pendingFields, fillMeeting, meetingDateLabel, meetingTimeLabel } from '../lib/wa'
+import { inWindow, sendWhatsApp, QUICK_STAGES, SITUATIONAL_STAGES, quickStageLabel, splitParts, pendingFields, fillMeeting, meetingDateLabel, meetingTimeLabel } from '../lib/wa'
 import { fmtDateTime } from '../lib/utils'
 import { Field } from './ui'
 import { callCalendar, fillSlots, slotLabel } from '../lib/calendar'
@@ -134,9 +134,9 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
   const quickVisiveis = quick.filter((q) => !stage || (stage === 'outras' ? !q.stage : q.stage === stage))
   const enviadaEm = (q) => { const f = sends.filter((x) => x.quick_reply_id === q.id).map((x) => x.sent_at).sort(); return f.length ? f[f.length - 1] : null }
   const ORDEM_ETAPA = { agendamento: 1, qualificacao: 2, confirmacao: 3 }
-  const sequencia = [...quick].sort((a, b) => (ORDEM_ETAPA[a.stage] || 9) - (ORDEM_ETAPA[b.stage] || 9) || a.position - b.position)
+  const sequencia = quick.filter((q) => !SITUATIONAL_STAGES.includes(q.stage)).sort((a, b) => (ORDEM_ETAPA[a.stage] || 9) - (ORDEM_ETAPA[b.stage] || 9) || a.position - b.position)
   const proxima = sequencia.find((q) => !enviadaEm(q))
-  const totalEnviadas = quick.filter((q) => enviadaEm(q)).length
+  const totalEnviadas = sequencia.filter((q) => enviadaEm(q)).length
   const abrirMensagens = () => {
     // Ao abrir, a lista já vai para a etapa da próxima mensagem.
     if (!showQuick && proxima?.stage) setStage(proxima.stage)
@@ -285,7 +285,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
         </div>
         {showQuick && (
           <div className="card" style={{ padding: 6, maxHeight: 340, overflowY: 'auto' }}>
-            {quick.length > 0 && <div className="small muted" style={{ padding: '2px 4px 6px' }}>{totalEnviadas} de {quick.length} enviadas para este contato{proxima ? '' : ' · sequência completa ✓'}</div>}
+            {quick.length > 0 && <div className="small muted" style={{ padding: '2px 4px 6px' }}>{totalEnviadas} de {sequencia.length} enviadas para este contato{proxima ? '' : ' · sequência completa ✓'}</div>}
             {quick.length > 0 && (
               <select className="select" style={{ marginBottom: 6 }} value={stage} onChange={(e) => setStage(e.target.value)} aria-label="Etapa">
                 <option value="">Todas as etapas</option>
