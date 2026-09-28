@@ -267,7 +267,7 @@ function WhatsApp() {
         </div>
         <div className="card stack" style={{ gap: 10 }}>
           <h2>Motor da sequência</h2>
-          <p className="small muted">Roda automaticamente a cada hora. Avança os leads que cumpriram o prazo da coluna, move para Perdido cadência quem terminou sem responder, devolve ao Dia 1 quem completou {pipelinesArchiveMonths()} meses em uma coluna de perdido e envia as mensagens pendentes.</p>
+          <p className="small muted">Roda automaticamente a cada 5 minutos. Avança os leads que cumpriram o prazo da coluna, move para Perdido cadência quem terminou sem responder, devolve ao Dia 1 quem completou {pipelinesArchiveMonths()} meses em uma coluna de perdido e envia as mensagens pendentes.</p>
           <div><button className="btn primary" onClick={run} disabled={busy}>{busy ? 'Rodando…' : 'Rodar agora'}</button></div>
         </div>
         <div className="card stack" style={{ gap: 10 }}>
@@ -567,7 +567,7 @@ function QuickReplies() {
 
 function QuickReplyForm({ initial, onClose, onSaved }) {
   const { toast } = useApp()
-  const [f, setF] = useState({ stage: initial.stage || '', title: initial.title || '', body: initial.body || '', options: (initial.options || []).join('\n') })
+  const [f, setF] = useState({ stage: initial.stage || '', title: initial.title || '', body: initial.body || '', options: (initial.options || []).join('\n'), auto_before: initial.auto_before || '' })
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
   const opts = f.options.split('\n').map((s) => s.trim()).filter(Boolean)
   const maxLen = opts.length <= 3 ? 20 : 24
@@ -576,7 +576,7 @@ function QuickReplyForm({ initial, onClose, onSaved }) {
     e.preventDefault()
     if (opts.length > 10) return toast('No máximo 10 opções.', 'err')
     if (tooLong.length) return toast(`Opções com mais de ${maxLen} caracteres: ${tooLong.join(', ')}`, 'err')
-    const payload = { stage: f.stage || null, title: f.title.trim(), body: f.body.trim(), options: opts }
+    const payload = { stage: f.stage || null, title: f.title.trim(), body: f.body.trim(), options: opts, auto_before: f.auto_before || null }
     const q = initial.id ? supabase.from('quick_replies').update(payload).eq('id', initial.id) : supabase.from('quick_replies').insert({ ...payload, position: initial.position ?? 0 })
     const { error } = await q
     if (error) return toast(error.message, 'err')
@@ -598,6 +598,14 @@ function QuickReplyForm({ initial, onClose, onSaved }) {
           <textarea className="textarea" style={{ minHeight: 90 }} value={f.options} onChange={(e) => set('options', e.target.value)} placeholder={'Manhã\nTarde\nNoite'} />
         </Field>
         {tooLong.length > 0 && <div className="small" style={{ color: 'var(--danger)' }}>Muito longas: {tooLong.join(', ')}</div>}
+        <Field label="Envio automático antes do encontro" hint="Para cards com encontro marcado (dia e hora no Encontro confirmado). Dentro da janela de 24h sai este texto; fora dela, o modelo aprovado configurado, ou uma tarefa para envio manual.">
+          <select className="select" value={f.auto_before} onChange={(e) => set('auto_before', e.target.value)}>
+            <option value="">Não (só manual)</option>
+            <option value="4h">4 horas antes (na véspera às 18h, se o encontro for de manhã)</option>
+            <option value="1h">1 hora antes</option>
+            <option value="15m">15 minutos antes</option>
+          </select>
+        </Field>
       </form>
     </Modal>
   )
@@ -915,6 +923,19 @@ function Agenda() {
         <Field label="Título dos eventos de horário livre (maiúsculas e acentos não importam)">
           <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={salvarTitulo} />
         </Field>
+      </div>
+
+      <div className="card stack" style={{ gap: 8 }}>
+        <h2>Lembretes automáticos</h2>
+        <label className="row" style={{ gap: 8 }}>
+          <input type="checkbox" checked={settings?.reminders_enabled !== false} onChange={async (e) => {
+            const { error } = await supabase.from('org_settings').update({ reminders_enabled: e.target.checked }).eq('id', 1)
+            if (error) return toast(error.message, 'err')
+            toast(e.target.checked ? 'Lembretes ligados' : 'Lembretes desligados'); reload()
+          }} />
+          Enviar sozinho os lembretes do encontro (4h antes, 1h antes e o link 15 min antes)
+        </label>
+        <p className="small muted" style={{ margin: 0 }}>Usam as mensagens prontas da etapa Confirmação marcadas como automáticas (Configurações → Mensagens prontas). Dentro da janela de 24h sai o texto; fora dela, o modelo aprovado na Meta, se configurado. Sem modelo, o CRM cria uma tarefa "Enviar lembrete à mão" para o responsável.</p>
       </div>
 
       <div className="card stack" style={{ gap: 10 }}>

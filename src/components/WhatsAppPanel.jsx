@@ -309,6 +309,12 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged 
             )}
           </div>
         )}
+        {deal?.id && meeting.date && meeting.time && quick.some((q) => q.auto_before) && (
+          <div className="small" style={{ marginTop: 6 }}>⏰ Lembretes automáticos: {['4h', '1h', '15m'].filter((k) => quick.some((q) => q.auto_before === k)).map((k) => {
+            const v = (deal?.reminders || {})[k]
+            return <span key={k} style={{ marginRight: 10 }}>{AUTO_LABEL[k]} {v === 'tarefa' ? '⚠️ tarefa' : v === 'pulado' ? '— pulado' : v ? '✓' : '· agendado'}</span>
+          })}</div>
+        )}
         <div className="small muted" style={{ marginTop: 6 }}>
           {meeting.date && meeting.time
             ? <>As mensagens prontas já saem com <b>{meetingDateLabel(meeting.date)} às {meetingTimeLabel(meeting.time)}</b>{meeting.link ? ' e o link' : ''}.</>
@@ -347,7 +353,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged 
               <div key={q.id} className="row" style={{ gap: 4, alignItems: 'flex-start', borderLeft: eProxima ? '3px solid var(--accent)' : '3px solid transparent', background: eProxima ? 'var(--surface-2)' : undefined, borderRadius: 6 }}>
               <button type="button" className="btn ghost sm" style={{ padding: '6px 6px', fontSize: 16, lineHeight: 1, color: em ? 'var(--success)' : 'var(--border-strong, #bbb)' }} onClick={() => toggleSent(q)} title={em ? 'Enviada. Clique para desmarcar' : 'Marcar como enviada'} aria-label={em ? 'Desmarcar como enviada' : 'Marcar como enviada'}>{em ? '✓' : '○'}</button>
               <button type="button" className="btn ghost grow" style={{ display: 'block', textAlign: 'left', whiteSpace: 'normal', padding: '6px 8px', opacity: em ? 0.6 : 1 }} onClick={() => pick(q)}>
-                <b>{q.title}</b>{eProxima && <span className="chip" style={{ marginLeft: 6, '--chip-color': 'var(--accent)', color: 'var(--accent)', fontWeight: 600 }}>próxima</span>}{em && <span className="small" style={{ marginLeft: 6, color: 'var(--success)' }}>enviada {fmtDateTime(em)}</span>}{splitParts(q.body).length > 1 && <span className="chip" style={{ marginLeft: 6 }}>{splitParts(q.body).length} mensagens</span>}{q.options?.length > 0 && <span className="chip" style={{ marginLeft: 6 }}>{q.options.length} opções</span>}
+                <b>{q.title}</b>{eProxima && <span className="chip" style={{ marginLeft: 6, '--chip-color': 'var(--accent)', color: 'var(--accent)', fontWeight: 600 }}>próxima</span>}{em && <span className="small" style={{ marginLeft: 6, color: 'var(--success)' }}>enviada {fmtDateTime(em)}</span>}{splitParts(q.body).length > 1 && <span className="chip" style={{ marginLeft: 6 }}>{splitParts(q.body).length} mensagens</span>}{q.options?.length > 0 && <span className="chip" style={{ marginLeft: 6 }}>{q.options.length} opções</span>}{q.auto_before && <span className="chip" style={{ marginLeft: 6 }} title="Sai sozinha antes do encontro">⏰ automática · {AUTO_LABEL[q.auto_before]}</span>}
                 <div className="small muted">{splitParts(fill(q.body)).join(' · ').slice(0, 110)}{q.body.length > 110 ? '…' : ''}</div>
               </button>
               </div>
@@ -390,4 +396,5 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged 
   )
 }
 
+const AUTO_LABEL = { '4h': '4h antes', '1h': '1h antes', '15m': '15 min antes' }
 const statusLabel = (s) => ({ sent: 'enviado', delivered: 'entregue', read: 'lido', failed: 'falhou' }[s] || s || '')
