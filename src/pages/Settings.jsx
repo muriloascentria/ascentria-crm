@@ -305,13 +305,15 @@ function WhatsApp() {
 }
 
 function MetaCheck() {
-  const { toast } = useApp()
+  const { toast, settings } = useApp()
   const [waba, setWaba] = useState(() => { try { return localStorage.getItem('crm.waba_id') || '' } catch { return '' } })
+  useEffect(() => { if (!waba && settings?.wa_waba_id) setWaba(settings.wa_waba_id) }, [settings?.wa_waba_id]) // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false)
   const [res, setRes] = useState(null)
   const check = async () => {
     setBusy(true); setRes(null)
     try { localStorage.setItem('crm.waba_id', waba.trim()) } catch { /* ignore */ }
+    if (waba.trim() && waba.trim() !== settings?.wa_waba_id) supabase.from('org_settings').update({ wa_waba_id: waba.trim() }).eq('id', 1).then(() => {})
     try { setRes(await connectWaba(waba)) } catch (e) { toast(e.message, 'err') } finally { setBusy(false) }
   }
   return (
