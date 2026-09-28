@@ -1,12 +1,13 @@
-// Motor da cadência: roda 1x por hora (pg_cron) ou quando você clica em "Rodar agora" nas configurações.
-//  1. chama run_cadence() no banco (avança dias, arquiva, reativa)
+// Motor da cadência: roda a cada 5 minutos (pg_cron) ou quando você clica em "Rodar agora" nas configurações.
+//  0. confere na Meta se os modelos dos lembretes já foram aprovados
+//  1. chama run_cadence() no banco (avança dias, arquiva, reativa, enfileira lembretes do encontro)
 //  2. envia as mensagens pendentes em wa_outbox pela API da Meta
 //
 // Autorização: header "Authorization: Bearer <segredo cron_secret do Vault>"  (pg_cron)
 //              ou token de um usuário administrador (botão no CRM)
 // Secrets: WA_ACCESS_TOKEN (o segredo do cron fica no Vault do banco, não em variável de ambiente)
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { cors, json, resolveNumber, sendTemplate, sendText } from '../_shared/wa.ts'
+import { GRAPH_VERSION, cors, json, resolveNumber, sendTemplate, sendText } from '../_shared/wa.ts'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -29,6 +30,9 @@ Deno.serve(async (req) => {
     }
   }
   if (!authorized) return json({ error: 'Não autorizado' }, 401)
+
+  // 0) modelos dos lembretes ainda não aprovados: confere o status na Meta (liga sozinho quando aprovar)
+  await syncReminderTemplates(admin)
 
   // 1) motor no banco
   const { data: cadence, error: cadErr } = await admin.rpc('run_cadence')
@@ -67,3 +71,22 @@ Deno.serve(async (req) => {
 
   return json({ ok: true, cadence, outbox: { sent, failed, pending_without_credentials: !canSend ? (queue?.length ?? 0) : 0 } })
 })
+
+async function syncReminderTemplates(admin: any) {
+  try {
+    const token = Deno.env.get('WA_ACCESS_TOKEN')
+    const { data: st } = await admin.from('org_settings').select('wa_waba_id, reminder_templates').eq('id', 1).single()
+    const rt: Record<string, any> = st?.reminder_templates || {}
+    const pend = Object.entries(rt).filter(([, v]) => v?.name && v.approved !== true)
+    if (!token || !st?.wa_waba_id || !pend.length) return
+    const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${st.wa_waba_id}/message_templates?fields=name,status,language&limit=200`, { headers: { Authorization: `Bearer ${token}` } })
+    const data: any = await res.json().catch(() => ({}))
+    if (!res.ok) return
+    let changed = false
+    for (const [k, v] of pend) {
+      const t = (data.data ?? []).find((x: any) => x.name === v.name && (!v.lang || x.language === v.lang))
+      if (t?.status === 'APPROVED') { rt[k] = { ...v, approved: true }; changed = true }
+    }
+    if (changed) await admin.from('org_settings').update({ reminder_templates: rt }).eq('id', 1)
+  } catch (e) { console.error('syncReminderTemplates', (e as Error).message) }
+}
