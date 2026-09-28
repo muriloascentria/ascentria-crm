@@ -155,7 +155,7 @@ export default function Pipeline() {
                 <div className="col-head" style={{ '--stage-color': s.color }}>
                   <div className="name"><span>{s.name}{unreadN > 0 && <span className="unread-pill" title="respostas não lidas">{unreadN} {unreadN === 1 ? 'nova' : 'novas'}</span>}</span><span className="muted">{items.length}</span></div>
                   <div className="small muted">{fmtMoney(sum, settings.currency)} · {s.probability}%{s.role === 'day' && s.advance_after_days ? ` · ${s.advance_after_days}d` : ''}</div>
-                  {s.role && <div className="role-chip">{{ inbox: 'entrada automática · mover manualmente', day: s.auto_send ? 'envio automático' : 'mensagem manual', responsive: 'respondeu · conversa manual', archived: 'volta ao Dia 1 em 4 meses', reactivate: 'chamar de novo' }[s.role]}</div>}
+                  {s.role && <div className="role-chip">{{ inbox: 'entrada automática · mover manualmente', day: s.auto_send ? 'envio automático' : 'mensagem manual', responsive: 'respondeu · volta à sequência após 24h parado', archived: 'volta ao Dia 1 em 4 meses', reactivate: 'chamar de novo' }[s.role]}</div>}
                   {s.role === 'inbox' && items.length > 0 && <button className="btn sm" style={{ marginTop: 4, justifyContent: 'center' }} onClick={bulkMove}>Mover em lote para o Dia 1 →</button>}
                   {s.role === 'day' && s.id === pipeStages.find((x) => x.role === 'day')?.id && sent24 !== null && (
                     <div className="small" style={{ marginTop: 2, color: sent24 >= (pipe?.daily_limit ?? 250) ? 'var(--danger)' : 'var(--muted)' }} title="Conversas iniciadas pela empresa (templates) nas últimas 24h × limite da Meta">últimas 24h: <b>{sent24}</b> / {pipe?.daily_limit ?? 250} envios</div>
