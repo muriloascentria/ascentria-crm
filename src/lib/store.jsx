@@ -12,6 +12,7 @@ export function AppProvider({ children }) {
   const [users, setUsers] = useState([])
   const [customFields, setCustomFields] = useState([])
   const [waNumbers, setWaNumbers] = useState([])
+  const [sellers, setSellers] = useState([])
   const [toasts, setToasts] = useState([])
 
   // ---- sessão ----
@@ -41,7 +42,7 @@ export function AppProvider({ children }) {
   }, [session])
 
   const loadMeta = useCallback(async () => {
-    const [p, s, pl, st, us, cf, wn] = await Promise.all([
+    const [p, s, pl, st, us, cf, wn, cs] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', session.user.id).single(),
       supabase.from('org_settings').select('*').eq('id', 1).single(),
       supabase.from('pipelines').select('*').order('position'),
@@ -49,6 +50,7 @@ export function AppProvider({ children }) {
       supabase.from('profiles').select('*').order('full_name'),
       supabase.from('custom_fields').select('*').order('position'),
       supabase.from('wa_numbers').select('*').order('is_default', { ascending: false }).order('created_at'),
+      supabase.from('calendar_sellers').select('*').order('position').order('name'),
     ])
     setProfile(p.data ?? null)
     setSettings(s.data ?? null)
@@ -57,6 +59,7 @@ export function AppProvider({ children }) {
     setUsers(us.data ?? [])
     setCustomFields(cf.data ?? [])
     setWaNumbers(wn.data ?? [])
+    setSellers(cs.data ?? [])
   }, [session])
 
   useEffect(() => {
@@ -80,12 +83,12 @@ export function AppProvider({ children }) {
   const label = useCallback((key) => settings?.labels?.[key] ?? key, [settings])
 
   const value = useMemo(() => ({
-    session, profile, settings, pipelines, stages, users, customFields, waNumbers,
+    session, profile, settings, pipelines, stages, users, customFields, waNumbers, sellers,
     isAdmin: profile?.role === 'admin',
     isManager: profile?.role === 'admin' || profile?.role === 'manager',
     reload: loadMeta, toast, toasts, label,
     signOut: () => supabase.auth.signOut(),
-  }), [session, profile, settings, pipelines, stages, users, customFields, waNumbers, loadMeta, toast, toasts, label])
+  }), [session, profile, settings, pipelines, stages, users, customFields, waNumbers, sellers, loadMeta, toast, toasts, label])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

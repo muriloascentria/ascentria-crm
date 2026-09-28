@@ -4,10 +4,11 @@ import { useApp } from '../lib/store'
 import { inWindow, sendWhatsApp, QUICK_STAGES, quickStageLabel, splitParts, pendingFields, fillMeeting, meetingDateLabel, meetingTimeLabel } from '../lib/wa'
 import { fmtDateTime } from '../lib/utils'
 import { Field } from './ui'
+import { callCalendar, fillSlots, slotLabel } from '../lib/calendar'
 
 /** Conversa de WhatsApp de um contato (com envio). deal opcional para vincular e calcular a janela de 24h. */
 export default function WhatsAppPanel({ contactId, deal, onSent }) {
-  const { toast, settings, waNumbers } = useApp()
+  const { toast, settings, waNumbers, sellers } = useApp()
   const via = waNumbers.find((n) => n.id === deal?.wa_number_id) || waNumbers.find((n) => n.is_default) || waNumbers[0]
   const [msgs, setMsgs] = useState([])
   const [text, setText] = useState('')
@@ -31,6 +32,72 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
   useEffect(() => {
     setMeeting({ date: deal?.meeting_date || '', time: (deal?.meeting_time || '').slice(0, 5), link: deal?.meeting_link || '' })
   }, [deal?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Agenda Google: horários livres da vendedora → [DIA 1]/[HORA 1] e [DIA 2]/[HORA 2]; reserva com Meet.
+  const [sellerId, setSellerId] = useState('')
+  const [found, setFound] = useState(null)
+  const [offered, setOffered] = useState([])
+  const [booked, setBooked] = useState(null)
+  const [calBusy, setCalBusy] = useState('')
+  const activeSellers = (sellers || []).filter((s) => s.active)
+  useEffect(() => {
+    setOffered(Array.isArray(deal?.offered_slots) ? deal.offered_slots : [])
+    setBooked(deal?.calendar_event_id ? { eventId: deal.calendar_event_id, sellerId: deal.seller_id } : null)
+    setSellerId(deal?.seller_id || '')
+    setFound(null)
+  }, [deal?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!sellerId && activeSellers[0]) setSellerId(activeSellers[0].id) }, [activeSellers.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  const sellerName = (id) => activeSellers.find((s) => s.id === id)?.name || (sellers || []).find((s) => s.id === id)?.name || ''
+  const aplicarNaMensagem = (fn) => {
+    setText((t) => fn(t))
+    setQuestion((q) => ({ ...q, body: fn(q.body) }))
+    setSeq((sq) => ({ ...sq, parts: sq.parts.map(fn) }))
+  }
+  const oferecer = async (lista) => {
+    const ord = [...lista].sort((a, b) => (a.start < b.start ? -1 : 1)).slice(0, 2)
+    setOffered(ord)
+    aplicarNaMensagem((t) => fillSlots(t, ord))
+    if (deal?.id) { try { await callCalendar('offer', { deal_id: deal.id, slots: ord }) } catch (e) { toast(e.message, 'err') } }
+  }
+  const buscarHorarios = async () => {
+    if (!sellerId) return toast('Escolha a vendedora', 'err')
+    setCalBusy('buscar')
+    try {
+      const r = await callCalendar('slots', { seller_id: sellerId })
+      setFound(r.slots || [])
+      if (!r.slots?.length) toast(`Nenhum horário "${settings?.slot_title || 'DISPONÍVEL PARA AGENDAMENTO'}" nos próximos 30 dias da agenda de ${r.seller}.`, 'err')
+      else {
+        // por padrão: o primeiro horário livre + o primeiro de OUTRO dia (a mensagem oferece dois dias diferentes)
+        const [a, ...resto] = r.slots
+        const b = resto.find((x) => x.date !== a.date) || resto[0]
+        await oferecer(b ? [a, b] : [a])
+      }
+    } catch (e) { toast(e.message, 'err') } finally { setCalBusy('') }
+  }
+  const alternarOferta = (s) => {
+    const tem = offered.some((o) => o.event_id === s.event_id)
+    const nova = tem ? offered.filter((o) => o.event_id !== s.event_id) : [...offered, s].slice(-2)
+    oferecer(nova)
+  }
+  const reservar = async (s) => {
+    if (!deal?.id) return
+    setCalBusy(s.event_id)
+    try {
+      const r = await callCalendar('book', { deal_id: deal.id, seller_id: s.seller_id, event_id: s.event_id })
+      setBooked({ eventId: s.event_id, sellerId: s.seller_id })
+      await saveMeeting({ date: r.date, time: r.time, link: r.link || '' })
+      toast(`Reservado na agenda de ${r.seller}${r.link ? ' · Google Meet criado' : ''}`)
+    } catch (e) { toast(e.message, 'err') } finally { setCalBusy('') }
+  }
+  const desfazerReserva = async () => {
+    if (!deal?.id || !window.confirm('Desfazer a reserva? O horário volta a ficar disponível na agenda da vendedora.')) return
+    setCalBusy('release')
+    try {
+      await callCalendar('release', { deal_id: deal.id })
+      setBooked(null)
+      await saveMeeting({ date: '', time: '', link: '' })
+      toast('Reserva desfeita')
+    } catch (e) { toast(e.message, 'err') } finally { setCalBusy('') }
+  }
   const [firstName, setFirstName] = useState('')
   const endRef = useRef(null)
   const win = inWindow(deal)
@@ -44,7 +111,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
     supabase.from('quick_replies').select('*').order('position').then(({ data }) => setQuick(data || []))
     supabase.from('contacts').select('name').eq('id', contactId).single().then(({ data }) => setFirstName((data?.name || '').split(' ')[0]))
   }, [contactId])
-  const fill = (t = '') => fillMeeting(t.replace(/{{primeiro_nome}}/g, firstName).replace(/{{nome}}/g, firstName), meeting)
+  const fill = (t = '') => fillSlots(fillMeeting(t.replace(/{{primeiro_nome}}/g, firstName).replace(/{{nome}}/g, firstName), meeting), offered)
   const pick = (q) => {
     setShowQuick(false)
     setPickedId(q.id)
@@ -158,6 +225,49 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
             <input className="input" value={meeting.link} placeholder="meet.google.com/..." onChange={(e) => setMeeting({ ...meeting, link: e.target.value })} onBlur={(e) => saveMeeting({ link: e.target.value })} />
           </label>
         </div>
+        {deal?.id && (
+          <div className="cal-box">
+            <div className="small" style={{ fontWeight: 600 }}>Agenda Google</div>
+            {activeSellers.length === 0 ? (
+              <div className="small muted">Cadastre as vendedoras em Configurações → Agenda Google para buscar os horários automaticamente.</div>
+            ) : booked ? (
+              <div className="row wrap small" style={{ gap: 8 }}>
+                <span style={{ color: 'var(--success)', fontWeight: 600 }}>✓ Reservado na agenda de {sellerName(booked.sellerId) || 'vendedora'}{meeting.link ? ' · com Google Meet' : ''}</span>
+                <button type="button" className="btn ghost sm" onClick={desfazerReserva} disabled={calBusy === 'release'}>{calBusy === 'release' ? 'Desfazendo…' : 'Desfazer reserva'}</button>
+              </div>
+            ) : (
+              <>
+                <div className="row wrap" style={{ gap: 6, alignItems: 'center' }}>
+                  <select className="select" value={sellerId} onChange={(e) => { setSellerId(e.target.value); setFound(null) }} aria-label="Vendedora" style={{ width: 'auto', minWidth: 160 }}>
+                    {activeSellers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                  <button type="button" className="btn sm" onClick={buscarHorarios} disabled={calBusy === 'buscar'}>{calBusy === 'buscar' ? 'Buscando…' : 'Buscar horários livres'}</button>
+                </div>
+                {found && found.length > 0 && (
+                  <div className="stack" style={{ gap: 4 }}>
+                    <div className="small muted">Toque para escolher os 2 horários oferecidos (entram em [DIA 1]/[HORA 1] e [DIA 2]/[HORA 2]):</div>
+                    <div className="row wrap" style={{ gap: 6 }}>
+                      {found.map((s) => {
+                        const on = offered.some((o) => o.event_id === s.event_id)
+                        return <button key={s.event_id} type="button" className={'slot-chip' + (on ? ' on' : '')} onClick={() => alternarOferta(s)} aria-pressed={on}>{on ? '✓ ' : ''}{slotLabel(s)}</button>
+                      })}
+                    </div>
+                  </div>
+                )}
+                {offered.length > 0 && (
+                  <div className="stack" style={{ gap: 4 }}>
+                    <div className="small">Oferecidos{offered[0]?.seller_id ? ` (agenda de ${sellerName(offered[0].seller_id)})` : ''}. Quando o lead escolher, reserve:</div>
+                    <div className="row wrap" style={{ gap: 6 }}>
+                      {offered.map((s) => (
+                        <button key={s.event_id} type="button" className="btn primary sm" onClick={() => reservar(s)} disabled={!!calBusy}>{calBusy === s.event_id ? 'Reservando…' : `Reservar ${slotLabel(s)}`}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
         <div className="small muted" style={{ marginTop: 6 }}>
           {meeting.date && meeting.time
             ? <>As mensagens prontas já saem com <b>{meetingDateLabel(meeting.date)} às {meetingTimeLabel(meeting.time)}</b>{meeting.link ? ' e o link' : ''}.</>

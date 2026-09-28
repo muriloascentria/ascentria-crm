@@ -7,8 +7,9 @@ import { QUICK_STAGES, STAGE_ROLES, quickStageLabel, splitParts, connectWaba, in
 import { UserSelect } from '../components/ui'
 import { DEMO } from '../lib/supabase'
 import WhatsAppPanel from '../components/WhatsAppPanel'
+import { callCalendar } from '../lib/calendar'
 
-const TABS = [['brand', 'Marca'], ['pipelines', 'Funis e etapas'], ['whatsapp', 'WhatsApp'], ['quick', 'Mensagens prontas'], ['fields', 'Campos personalizados'], ['users', 'Usuários e permissões'], ['automations', 'Automações']]
+const TABS = [['brand', 'Marca'], ['pipelines', 'Funis e etapas'], ['whatsapp', 'WhatsApp'], ['quick', 'Mensagens prontas'], ['agenda', 'Agenda Google'], ['fields', 'Campos personalizados'], ['users', 'Usuários e permissões'], ['automations', 'Automações']]
 
 export default function Settings() {
   const [tab, setTab] = useState('brand')
@@ -20,6 +21,7 @@ export default function Settings() {
       {tab === 'pipelines' && <Pipelines />}
       {tab === 'fields' && <Fields />}
       {tab === 'quick' && <QuickReplies />}
+      {tab === 'agenda' && <Agenda />}
       {tab === 'users' && <Users />}
       {tab === 'automations' && <Automations />}
       {tab === 'whatsapp' && <WhatsApp />}
@@ -864,5 +866,91 @@ function AutomationForm({ initial, onClose, onSaved }) {
         <label className="check"><input type="checkbox" checked={f.active} onChange={(e) => set('active', e.target.checked)} /> Ativa</label>
       </form>
     </Modal>
+  )
+}
+
+/* ------------------------------------------------------------------ Agenda Google */
+function Agenda() {
+  const { settings, sellers, reload, toast } = useApp()
+  const [title, setTitle] = useState(settings?.slot_title || 'DISPONÍVEL PARA AGENDAMENTO')
+  const [novo, setNovo] = useState({ name: '', email: '' })
+  const [status, setStatus] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const salvarTitulo = async () => {
+    const t = title.trim()
+    if (!t || t === settings?.slot_title) return
+    const { error } = await supabase.from('org_settings').update({ slot_title: t }).eq('id', 1)
+    if (error) return toast(error.message, 'err')
+    toast('Título salvo'); reload()
+  }
+  const adicionar = async (e) => {
+    e.preventDefault()
+    const email = novo.email.trim().toLowerCase()
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast('E-mail inválido', 'err')
+    const { error } = await supabase.from('calendar_sellers').insert({ name: novo.name.trim(), email, position: (sellers?.length || 0) + 1 })
+    if (error) return toast(/duplicate/i.test(error.message) ? 'Essa vendedora já está cadastrada' : error.message, 'err')
+    setNovo({ name: '', email: '' }); toast('Vendedora adicionada'); reload()
+  }
+  const alternar = async (s) => {
+    const { error } = await supabase.from('calendar_sellers').update({ active: !s.active }).eq('id', s.id)
+    if (error) return toast(error.message, 'err')
+    reload()
+  }
+  const remover = async (s) => {
+    const { error } = await supabase.from('calendar_sellers').delete().eq('id', s.id)
+    if (error) return toast(error.message, 'err')
+    toast('Vendedora removida'); reload()
+  }
+  const testar = async () => {
+    setBusy(true); setStatus(null)
+    try { setStatus(await callCalendar('status')) } catch (e) { setStatus({ error: e.message }) } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="stack" style={{ gap: 16, maxWidth: 820 }}>
+      <div className="card stack" style={{ gap: 10 }}>
+        <h2>Horários livres</h2>
+        <p className="small muted" style={{ margin: 0 }}>A vendedora cria, na agenda Google dela, eventos com exatamente este título nos horários em que pode atender. No card do lead, o CRM busca os próximos, preenche os dois horários da mensagem e, quando o lead escolhe, renomeia o evento para "Consultoria – Nome do lead" e cria o Google Meet.</p>
+        <Field label="Título dos eventos de horário livre (maiúsculas e acentos não importam)">
+          <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={salvarTitulo} />
+        </Field>
+      </div>
+
+      <div className="card stack" style={{ gap: 10 }}>
+        <h2>Vendedoras</h2>
+        {(sellers || []).length === 0 && <div className="small muted">Nenhuma vendedora cadastrada.</div>}
+        {(sellers || []).map((s) => (
+          <div key={s.id} className="row between wrap" style={{ gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+            <div><b>{s.name}</b> <span className="small muted">{s.email}</span>{!s.active && <span className="chip" style={{ marginLeft: 6 }}>inativa</span>}</div>
+            <div className="row" style={{ gap: 6 }}>
+              <button className="btn sm" onClick={() => alternar(s)}>{s.active ? 'Desativar' : 'Ativar'}</button>
+              <ConfirmButton className="btn danger sm" onConfirm={() => remover(s)}>Remover</ConfirmButton>
+            </div>
+          </div>
+        ))}
+        <form className="row wrap" style={{ gap: 8, alignItems: 'flex-end' }} onSubmit={adicionar}>
+          <label className="small stack" style={{ gap: 2 }}>Nome<input className="input" required value={novo.name} onChange={(e) => setNovo({ ...novo, name: e.target.value })} placeholder="Mariana" /></label>
+          <label className="small stack grow" style={{ gap: 2, minWidth: 220 }}>E-mail da agenda (@ascentria.com.br)<input className="input" type="email" required value={novo.email} onChange={(e) => setNovo({ ...novo, email: e.target.value })} placeholder="mariana@ascentria.com.br" /></label>
+          <button className="btn primary">Adicionar</button>
+        </form>
+      </div>
+
+      <div className="card stack" style={{ gap: 10 }}>
+        <h2>Conexão com o Google</h2>
+        <p className="small muted" style={{ margin: 0 }}>Testa se o CRM consegue ler a agenda de cada vendedora ativa e conta quantos horários livres ela tem.</p>
+        <div><button className="btn" onClick={testar} disabled={busy}>{busy ? 'Testando…' : 'Testar conexão'}</button></div>
+        {status?.error && <div className="small" style={{ color: 'var(--danger)' }}>{status.error}</div>}
+        {status?.sellers && (
+          <div className="stack" style={{ gap: 4 }}>
+            <div className="small muted">Conta de serviço: <span className="code" style={{ display: 'inline' }}>{status.service_account}</span></div>
+            {status.sellers.length === 0 && <div className="small muted">Cadastre ao menos uma vendedora ativa.</div>}
+            {status.sellers.map((s) => (
+              <div key={s.email} className="small">{s.ok ? '✅' : '⚠️'} <b>{s.name}</b> — {s.ok ? `${s.free} horário(s) livre(s) encontrados` : s.error}</div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   )
 }

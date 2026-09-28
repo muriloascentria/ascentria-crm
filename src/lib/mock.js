@@ -26,8 +26,13 @@ const db = {
     { id: U_ANA, email: 'ana@ascentria.com.br', full_name: 'Ana Paula Ribeiro', role: 'seller', team: 'Comercial', active: true, created_at: daysFromNow(-30) },
     { id: 'u-0000-0000-0000-000000000003', email: 'novo@ascentria.com.br', full_name: 'Carlos Mendes', role: 'seller', team: null, active: false, created_at: daysFromNow(-1) },
   ],
+  calendar_sellers: [
+    { id: 'cs1', name: 'Mariana', email: 'mariana@ascentria.com.br', active: true, position: 1 },
+    { id: 'cs2', name: 'Fernanda', email: 'fernanda@ascentria.com.br', active: true, position: 2 },
+    { id: 'cs3', name: 'Juliana', email: 'juliana@ascentria.com.br', active: true, position: 3 },
+  ],
   org_settings: [{
-    id: 1, company_name: 'Ascentria', logo_url: null, primary_color: '#2e381a', accent_color: '#ab6f30', currency: 'BRL', seller_visibility: 'all',
+    id: 1, company_name: 'Ascentria', slot_title: 'DISPONÍVEL PARA AGENDAMENTO', logo_url: null, primary_color: '#2e381a', accent_color: '#ab6f30', currency: 'BRL', seller_visibility: 'all',
     wa_phone_display: '+55 48 99999-0000', wa_connected: true, wa_last_event_at: daysFromNow(0, 8), labels: { contacts: 'Contatos', companies: 'Empresas', deals: 'Negócios', pipeline: 'Funil', activities: 'Atividades', dashboard: 'Painel' }, updated_at: now(),
   }],
   pipelines: [
@@ -412,6 +417,33 @@ const functions = {
         if (d) { const st = db.stages.find((s) => s.id === d.stage_id); const resp = db.stages.find((s) => s.pipeline_id === d.pipeline_id && s.role === 'responsive'); const old = { ...d }; d.last_inbound_at = now(); if (['inbox', 'day', 'archived', 'reactivate'].includes(st.role) && resp) { d.stage_id = resp.id; beforeWrite('deals', d, old); afterWrite('deals', d, old) } }
       }, 2000)
       return { data: { ok: true, id: 'wamid.demo' }, error: null }
+    }
+    if (name === 'calendar') {
+      // demo: agenda fictícia com blocos livres nos próximos dias úteis (10h e 15h)
+      const seller = db.calendar_sellers.find((s) => s.id === body.seller_id)
+      const deal = db.deals.find((d) => d.id === body.deal_id)
+      const pad = (n) => String(n).padStart(2, '0')
+      if (body.action === 'status') return { data: { ok: true, service_account: 'crm-agenda@demo.iam.gserviceaccount.com', sellers: db.calendar_sellers.filter((s) => s.active).map((s) => ({ name: s.name, email: s.email, ok: true, free: 6 })) }, error: null }
+      if (body.action === 'slots') {
+        const slots = []
+        for (let d = 1; slots.length < 6 && d < 14; d++) {
+          const dt = new Date(); dt.setDate(dt.getDate() + d)
+          if ([0, 6].includes(dt.getDay())) continue
+          for (const h of [10, 15]) {
+            const date = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`
+            slots.push({ event_id: `ev-${body.seller_id}-${date}-${h}`, seller_id: body.seller_id, start: `${date}T${pad(h)}:00:00-03:00`, date, time: `${pad(h)}:00` })
+          }
+        }
+        return { data: { ok: true, seller: seller?.name, slots }, error: null }
+      }
+      if (body.action === 'offer') { if (deal) { deal.offered_slots = body.slots; deal.seller_id = body.slots?.[0]?.seller_id || null }; return { data: { ok: true }, error: null } }
+      if (body.action === 'book') {
+        const parts = body.event_id.split('-'); const h = parts.pop(); const date = parts.slice(-3).join('-')
+        const link = 'https://meet.google.com/abc-defg-hij'
+        if (deal) Object.assign(deal, { seller_id: body.seller_id, calendar_event_id: body.event_id, meeting_date: date, meeting_time: `${h}:00`, meeting_link: link })
+        return { data: { ok: true, date, time: `${h}:00`, link, seller: seller?.name }, error: null }
+      }
+      if (body.action === 'release') { if (deal) Object.assign(deal, { calendar_event_id: null, meeting_date: null, meeting_time: null, meeting_link: null }); return { data: { ok: true }, error: null } }
     }
     if (name === 'invite-user') {
       if (db.profiles.some((p) => p.email === body.email)) return { data: { ok: false, error: 'Já existe uma conta com este e-mail.' }, error: null }
