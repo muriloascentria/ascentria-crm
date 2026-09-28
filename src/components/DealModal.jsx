@@ -9,9 +9,10 @@ import { daysIn } from '../lib/wa'
 
 /**
  * Modal de criação/edição de negócio.
- * props: deal (null para novo), defaults { pipeline_id, stage_id, contact_id }, onClose, onSaved
+ * props: deal (null para novo), defaults { pipeline_id, stage_id, contact_id }, onClose, onSaved,
+ *        onMarkUnread (opcional: mostra "Marcar como não lida" nas 24h seguintes à última resposta do lead)
  */
-export default function DealModal({ deal, defaults = {}, onClose, onSaved }) {
+export default function DealModal({ deal, defaults = {}, onClose, onSaved, onMarkUnread }) {
   const { stages, pipelines, profile, toast, isManager, users, waNumbers } = useApp()
   const [contacts, setContacts] = useState([])
   const [history, setHistory] = useState([])
@@ -57,6 +58,7 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved }) {
     if (error) return toast(error.message, 'err')
     toast('Negócio excluído'); onSaved?.(); onClose()
   }
+  const canMarkUnread = !!onMarkUnread && !!deal?.last_inbound_at && Date.now() - new Date(deal.last_inbound_at).getTime() < 86_400_000
   const stageName = (id) => stages.find((s) => s.id === id)?.name || '—'
   const userName = (id) => users.find((u) => u.id === id)?.full_name || ''
 
@@ -64,6 +66,7 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved }) {
     <Modal title={deal?.id ? 'Negócio' : 'Novo negócio'} onClose={onClose} wide={!!deal?.id}
       footer={<>
         {deal?.id && (isManager || deal.owner_id === profile.id) && <ConfirmButton onConfirm={remove} className="btn danger" >Excluir</ConfirmButton>}
+        {canMarkUnread && <button className="btn" type="button" onClick={onMarkUnread} title="Volta a bolinha vermelha no card (disponível por 24h após a resposta do lead)"><span className="unread-dot-inline" aria-hidden="true" />Marcar como não lida</button>}
         <span className="grow" />
         <button className="btn" type="button" onClick={onClose}>Cancelar</button>
         <button className="btn primary" form="dealform">Salvar</button>

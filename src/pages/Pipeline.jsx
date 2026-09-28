@@ -186,7 +186,14 @@ export default function Pipeline() {
         </div>
       )}
 
-      {modal && <DealModal deal={modal.deal} defaults={modal.defaults} onClose={async () => { const id = modal.deal?.id; setModal(null); if (id) { await supabase.from('deals').update({ seen_at: new Date().toISOString() }).eq('id', id); window.dispatchEvent(new Event('crm:unread')) } load() }} onSaved={load} />}
+      {modal && <DealModal deal={modal.deal} defaults={modal.defaults} onClose={async () => { const id = modal.deal?.id; setModal(null); if (id) { await supabase.from('deals').update({ seen_at: new Date().toISOString() }).eq('id', id); window.dispatchEvent(new Event('crm:unread')) } load() }} onSaved={load}
+        onMarkUnread={async () => {
+          const id = modal.deal?.id
+          setModal(null)
+          const { error } = await supabase.from('deals').update({ seen_at: null }).eq('id', id)
+          if (error) toast(error.message, 'err'); else toast('Marcado como não lido')
+          window.dispatchEvent(new Event('crm:unread')); load()
+        }} />}
     </>
   )
 }
