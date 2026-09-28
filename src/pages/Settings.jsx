@@ -331,7 +331,7 @@ function MetaCheck() {
           {res.permissions && <div><b>Permissões do token:</b> {res.permissions.join(', ') || '—'}{!res.permissions.includes('whatsapp_business_messaging') && <span style={{ color: 'var(--danger)' }}> — falta whatsapp_business_messaging (necessária para enviar)</span>}</div>}
           {res.assigned_users && <div><b>Acessos na conta:</b> {res.assigned_users.join(' · ') || '—'}</div>}
           {res.phones?.length > 0 && <div><b>Número do CRM na Meta:</b> {res.phones.map((ph) => ph.error ? `erro: ${ph.error}` : `${ph.display_phone_number} · ${ph.status} · ${ph.platform_type} · ${ph.account_mode}`).join(' · ')}</div>}
-          {res.templates && <div><b>Modelos de mensagem na Meta:</b> {res.templates.length ? res.templates.map((t) => `${t.name} (${t.language}) — ${t.status}`).join(' · ') : 'nenhum'}</div>}
+          {res.templates && <div><b>Modelos de mensagem na Meta:</b> {res.templates.length ? res.templates.map((t) => `${t.name} (${t.language}) — ${t.status}${t.category ? ` · ${({ MARKETING: 'Marketing', UTILITY: 'Utilidade', AUTHENTICATION: 'Autenticação' })[t.category] || t.category}` : ''}`).join(' · ') : 'nenhum'}</div>}
           {res.waba && !res.waba.error && <div><b>Conta do WhatsApp:</b> {res.waba.name} · dono: {res.waba.owner || '—'}{res.waba.on_behalf_of ? ` · em nome de: ${res.waba.on_behalf_of}` : ''}</div>}
           {res.ok && !res.error && <div style={{ color: 'var(--success)', fontWeight: 600 }}>✓ Token válido e CRM ligado à conta.</div>}
         </div>
