@@ -442,6 +442,7 @@ const functions = {
 export const mockClient = { auth, from: (t) => new Query(t), functions, rpc: async (name, args = {}) => {
   if (name === 'run_cadence') return { data: runCadence(), error: null }
   if (name === 'sent_last_24h') return { data: db.wa_messages.filter((m) => m.direction === 'out' && m.type === 'template' && Date.now() - new Date(m.created_at).getTime() < 86400000).length, error: null }
+  if (name === 'unread_deals_count') return { data: db.deals.filter((d) => d.status === 'open' && d.last_inbound_at && (!d.seen_at || d.last_inbound_at > d.seen_at)).length, error: null }
   if (name === 'move_inbox_to_day1') {
     const inbox = db.stages.find((s) => s.pipeline_id === args.p_pipeline && s.role === 'inbox')
     const day1 = db.stages.filter((s) => s.pipeline_id === args.p_pipeline && s.role === 'day').sort((a, b) => a.position - b.position)[0]

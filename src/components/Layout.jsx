@@ -4,7 +4,8 @@ import { Avatar, Toasts } from './ui'
 import { ROLES } from '../lib/utils'
 import { DEMO } from '../lib/supabase'
 import logoEcrm from '../assets/brand/ecrm-branco.svg'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { supabase } from '../lib/supabase'
 import ProfileModal from './ProfileModal'
 
 function FunnelIcon() {
@@ -18,6 +19,15 @@ function FunnelIcon() {
 export default function Layout() {
   const { profile, settings, signOut, isAdmin, label } = useApp()
   const [editingProfile, setEditingProfile] = useState(false)
+  const [unread, setUnread] = useState(0)
+  useEffect(() => {
+    const get = () => supabase.rpc('unread_deals_count').then(({ data }) => setUnread(typeof data === 'number' ? data : 0))
+    get()
+    const iv = setInterval(() => { if (document.visibilityState === 'visible') get() }, 30_000)
+    window.addEventListener('crm:unread', get)
+    return () => { clearInterval(iv); window.removeEventListener('crm:unread', get) }
+  }, [])
+  useEffect(() => { document.title = unread > 0 ? `(${unread}) eCRM` : 'eCRM' }, [unread])
   const items = [
     { to: '/', ico: '◫', text: label('dashboard') },
     { to: '/funil', ico: <FunnelIcon />, text: label('pipeline') },
@@ -40,7 +50,7 @@ export default function Layout() {
         </div>
         <nav className="nav stack">
           {items.map((i) => (
-            <NavLink key={i.to} to={i.to} end={i.to === '/'}><span className="ico">{i.ico}</span>{i.text}</NavLink>
+            <NavLink key={i.to} to={i.to} end={i.to === '/'}><span className="ico">{i.ico}</span>{i.text}{i.to === '/funil' && unread > 0 && <span className="nav-badge" title="Respostas não lidas">{unread}</span>}</NavLink>
           ))}
         </nav>
         <div className="me">
@@ -56,7 +66,7 @@ export default function Layout() {
       </aside>
       <div className="grow" style={{ minWidth: 0 }}>
         <div className="topbar-mobile">
-          {items.map((i) => <NavLink key={i.to} to={i.to} end={i.to === '/'}>{i.text}</NavLink>)}
+          {items.map((i) => <NavLink key={i.to} to={i.to} end={i.to === '/'}>{i.text}{i.to === '/funil' && unread > 0 && <span className="nav-badge" style={{ marginLeft: 6 }}>{unread}</span>}</NavLink>)}
           <a onClick={() => setEditingProfile(true)} style={{ marginLeft: 'auto' }}>Perfil</a>
           <a onClick={signOut}>Sair</a>
         </div>

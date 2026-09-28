@@ -140,6 +140,13 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .deal { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; cursor: grab; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
 .deal:hover { border-color: #cbd5e1; }
 .deal.dragging { opacity: .4; }
+.deal { position: relative; }
+.deal.unread { border-color: #d64545; box-shadow: 0 0 0 1px #d64545, 0 2px 8px rgba(214,69,69,.18); }
+.unread-dot { position: absolute; top: -5px; right: -5px; width: 14px; height: 14px; border-radius: 50%; background: #d64545; border: 2px solid var(--surface); box-shadow: 0 0 0 0 rgba(214,69,69,.6); animation: unread-pulse 1.8s ease-out infinite; }
+@keyframes unread-pulse { 0% { box-shadow: 0 0 0 0 rgba(214,69,69,.55); } 80%, 100% { box-shadow: 0 0 0 8px rgba(214,69,69,0); } }
+@media (prefers-reduced-motion: reduce) { .unread-dot { animation: none; } }
+.unread-pill { margin-left: 6px; font-size: 11px; font-weight: 700; color: #fff; background: #d64545; border-radius: 999px; padding: 1px 7px; vertical-align: 1px; }
+.nav-badge { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: #d64545; color: #fff; font-size: 11px; font-weight: 700; display: inline-grid; place-items: center; }
 .deal .title { font-weight: 600; margin-bottom: 4px; }
 .deal .val { font-weight: 600; color: var(--primary); }
 .deal.overdue { border-left: 3px solid var(--danger); }

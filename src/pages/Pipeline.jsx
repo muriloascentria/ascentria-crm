@@ -47,6 +47,8 @@ function useWheelToHorizontal() {
   return ref
 }
 
+const isUnread = (d) => !!d.last_inbound_at && (!d.seen_at || new Date(d.last_inbound_at) > new Date(d.seen_at))
+
 export default function Pipeline() {
   const { pipelines, stages, users, settings, toast, label, profile } = useApp()
   const boardRef = useWheelToHorizontal()
@@ -70,6 +72,18 @@ export default function Pipeline() {
     setDeals(data || [])
   }, [pipelineId, toast])
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    const iv = setInterval(() => { if (document.visibilityState === 'visible' && !dragId && !modal) load() }, 30_000)
+    return () => clearInterval(iv)
+  }, [load, dragId, modal])
+  const openDeal = (d) => {
+    setModal({ deal: d })
+    if (isUnread(d)) {
+      const seen = new Date().toISOString()
+      setDeals((all) => all.map((x) => (x.id === d.id ? { ...x, seen_at: seen } : x)))
+      supabase.from('deals').update({ seen_at: seen }).eq('id', d.id).then(() => window.dispatchEvent(new Event('crm:unread')))
+    }
+  }
 
   const pipeStages = stages.filter((s) => s.pipeline_id === pipelineId)
   const pipe = pipelines.find((p) => p.id === pipelineId)
@@ -130,7 +144,8 @@ export default function Pipeline() {
       {pipeStages.length === 0 ? <Empty title="Nenhuma etapa" text="Configure as etapas deste funil em Configurações → Funis." /> : (
         <div className="kanban" ref={boardRef}>
           {pipeStages.map((s) => {
-            const items = filtered.filter((d) => d.stage_id === s.id)
+            const items = filtered.filter((d) => d.stage_id === s.id).sort((a, b) => Number(isUnread(b)) - Number(isUnread(a)))
+            const unreadN = items.filter(isUnread).length
             const sum = items.reduce((a, d) => a + Number(d.value), 0)
             return (
               <div key={s.id} className={'col' + (over === s.id ? ' over' : '')}
@@ -138,7 +153,7 @@ export default function Pipeline() {
                 onDragLeave={() => setOver(null)}
                 onDrop={(e) => { e.preventDefault(); setOver(null); moveTo(dragId, s.id); setDragId(null) }}>
                 <div className="col-head" style={{ '--stage-color': s.color }}>
-                  <div className="name"><span>{s.name}</span><span className="muted">{items.length}</span></div>
+                  <div className="name"><span>{s.name}{unreadN > 0 && <span className="unread-pill" title="respostas não lidas">{unreadN} {unreadN === 1 ? 'nova' : 'novas'}</span>}</span><span className="muted">{items.length}</span></div>
                   <div className="small muted">{fmtMoney(sum, settings.currency)} · {s.probability}%{s.role === 'day' && s.advance_after_days ? ` · ${s.advance_after_days}d` : ''}</div>
                   {s.role && <div className="role-chip">{{ inbox: 'entrada automática · mover manualmente', day: s.auto_send ? 'envio automático' : 'mensagem manual', responsive: 'respondeu · conversa manual', archived: 'volta ao Dia 1 em 4 meses', reactivate: 'chamar de novo' }[s.role]}</div>}
                   {s.role === 'inbox' && items.length > 0 && <button className="btn sm" style={{ marginTop: 4, justifyContent: 'center' }} onClick={bulkMove}>Mover em lote para o Dia 1 →</button>}
@@ -150,9 +165,10 @@ export default function Pipeline() {
                   {items.map((d) => {
                     const overdue = d.status === 'open' && d.expected_close && new Date(d.expected_close) < new Date(new Date().toDateString())
                     return (
-                      <div key={d.id} className={'deal' + (dragId === d.id ? ' dragging' : '') + (overdue ? ' overdue' : '')} draggable
+                      <div key={d.id} className={'deal' + (dragId === d.id ? ' dragging' : '') + (overdue ? ' overdue' : '') + (isUnread(d) ? ' unread' : '')} draggable
                         onDragStart={() => setDragId(d.id)} onDragEnd={() => { setDragId(null); setOver(null) }}
-                        onClick={() => setModal({ deal: d })}>
+                        onClick={() => openDeal(d)}>
+                        {isUnread(d) && <span className="unread-dot" title="Nova mensagem do lead" aria-label="Nova mensagem" />}
                         <div className="title">{d.title}</div>
                         <div className="small muted">{d.contact?.name || '—'}</div>
                         <div className="between" style={{ marginTop: 6 }}>
@@ -170,7 +186,7 @@ export default function Pipeline() {
         </div>
       )}
 
-      {modal && <DealModal deal={modal.deal} defaults={modal.defaults} onClose={() => { setModal(null); load() }} onSaved={load} />}
+      {modal && <DealModal deal={modal.deal} defaults={modal.defaults} onClose={async () => { const id = modal.deal?.id; setModal(null); if (id) { await supabase.from('deals').update({ seen_at: new Date().toISOString() }).eq('id', id); window.dispatchEvent(new Event('crm:unread')) } load() }} onSaved={load} />}
     </>
   )
 }

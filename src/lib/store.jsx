@@ -69,7 +69,6 @@ export function AppProvider({ children }) {
     const root = document.documentElement
     if (settings?.primary_color) root.style.setProperty('--primary', settings.primary_color)
     if (settings?.accent_color) root.style.setProperty('--accent', settings.accent_color)
-    document.title = 'eCRM'
   }, [settings])
 
   const toast = useCallback((message, kind = 'ok') => {
