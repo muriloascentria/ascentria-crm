@@ -8,7 +8,7 @@ import { callCalendar, fillSlots, slotLabel } from '../lib/calendar'
 
 /** Conversa de WhatsApp de um contato (com envio). deal opcional para vincular e calcular a janela de 24h. */
 export default function WhatsAppPanel({ contactId, deal, onSent }) {
-  const { toast, settings, waNumbers, sellers } = useApp()
+  const { toast, settings, waNumbers, sellers, stages } = useApp()
   const via = waNumbers.find((n) => n.id === deal?.wa_number_id) || waNumbers.find((n) => n.is_default) || waNumbers[0]
   const [msgs, setMsgs] = useState([])
   const [text, setText] = useState('')
@@ -139,7 +139,10 @@ export default function WhatsAppPanel({ contactId, deal, onSent }) {
   const totalEnviadas = sequencia.filter((q) => enviadaEm(q)).length
   const abrirMensagens = () => {
     // Ao abrir, a lista já vai para a etapa da próxima mensagem.
-    if (!showQuick && proxima?.stage) setStage(proxima.stage)
+    // Card na coluna "Remarcar": abre direto nas mensagens de Remarcação.
+    const naRemarcar = /remarc/i.test(stages.find((s) => s.id === deal?.stage_id)?.name || '')
+    if (!showQuick && naRemarcar) setStage('remarcacao')
+    else if (!showQuick && proxima?.stage) setStage(proxima.stage)
     setShowQuick((v) => !v)
   }
   useEffect(() => { endRef.current?.scrollIntoView?.({ block: 'end' }) }, [msgs.length])
