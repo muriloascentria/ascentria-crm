@@ -448,6 +448,15 @@ const functions = {
         if (deal) Object.assign(deal, { seller_id: body.seller_id, calendar_event_id: body.event_id, meeting_date: date, meeting_time: `${h}:00`, meeting_link: link })
         return { data: { ok: true, date, time: `${h}:00`, link, seller: seller?.name }, error: null }
       }
+      if (body.action === 'transfer') {
+        const from = db.calendar_sellers.find((s) => s.id === body.from_seller_id); const to = db.calendar_sellers.find((s) => s.id === body.to_seller_id)
+        const date = deal?.meeting_date || new Date(Date.now() + 86_400_000).toISOString().slice(0, 10); const time = (deal?.meeting_time || '10:00').slice(0, 5)
+        const name = db.contacts.find((c) => c.id === deal?.contact_id)?.name || deal?.title
+        if (body.dry_run) return { data: { ok: true, dry_run: true, from: from?.name, to: to?.name, event: { id: 'ev-x', summary: `${from?.name} | Consultoria | ${name}`, date, time } }, error: null }
+        const link = 'https://meet.google.com/xyz-trnf-new'
+        if (deal) Object.assign(deal, { seller_id: to?.id, calendar_event_id: 'ev-moved', meeting_date: date, meeting_time: time, meeting_link: link })
+        return { data: { ok: true, from: from?.name, to: to?.name, date, time, link }, error: null }
+      }
       if (body.action === 'release') { if (deal) Object.assign(deal, { calendar_event_id: null, meeting_date: null, meeting_time: null, meeting_link: null }); return { data: { ok: true }, error: null } }
     }
     if (name === 'invite-user') {

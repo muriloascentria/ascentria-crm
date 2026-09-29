@@ -99,6 +99,30 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged 
       toast('Reserva desfeita')
     } catch (e) { toast(e.message, 'err') } finally { setCalBusy('') }
   }
+  // Trocar de vendedora mantendo o horário (também acha encontros marcados direto na agenda do Google)
+  const [moveOpen, setMoveOpen] = useState(false)
+  const [moveFrom, setMoveFrom] = useState('')
+  const [moveTo, setMoveTo] = useState('')
+  const abrirTroca = () => {
+    const de = booked?.sellerId || deal?.seller_id || sellerId || activeSellers[0]?.id || ''
+    setMoveFrom(de)
+    setMoveTo(activeSellers.find((s) => s.id !== de)?.id || '')
+    setMoveOpen((v) => !v)
+  }
+  const trocarVendedora = async () => {
+    if (!deal?.id || !moveFrom || !moveTo || moveFrom === moveTo) return toast('Escolha duas vendedoras diferentes', 'err')
+    setCalBusy('transfer')
+    try {
+      const prev = await callCalendar('transfer', { deal_id: deal.id, from_seller_id: moveFrom, to_seller_id: moveTo, dry_run: true })
+      if (!window.confirm(`Mover "${prev.event.summary}" (${prev.event.date.split('-').reverse().join('/')} às ${prev.event.time}) da agenda de ${prev.from} para a de ${prev.to}, no mesmo horário?\n\nO horário na agenda de ${prev.from} volta a ficar disponível e um novo link do Meet é criado.`)) return
+      const r = await callCalendar('transfer', { deal_id: deal.id, from_seller_id: moveFrom, to_seller_id: moveTo })
+      setBooked({ eventId: 'moved', sellerId: moveTo })
+      setSellerId(moveTo)
+      setMoveOpen(false)
+      await saveMeeting({ date: r.date, time: r.time, link: r.link || '' })
+      toast(`Encontro passado para a agenda de ${r.to}${r.link ? ' · novo link do Meet criado' : ''}`)
+    } catch (e) { toast(e.message, 'err') } finally { setCalBusy('') }
+  }
   const [curStageId, setCurStageId] = useState(deal?.stage_id)
   useEffect(() => { setCurStageId(deal?.stage_id); curStageRef.current = deal?.stage_id }, [deal?.id, deal?.stage_id])
   const remarcarStage = stages.find((s) => s.pipeline_id === deal?.pipeline_id && /remarc/i.test(s.name))
@@ -306,6 +330,24 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged 
                   </div>
                 )}
               </>
+            )}
+            {activeSellers.length > 1 && (
+              <div className="stack" style={{ gap: 4 }}>
+                <button type="button" className="btn ghost sm" style={{ alignSelf: 'flex-start' }} onClick={abrirTroca}>⇄ Trocar de vendedora (mesmo horário)</button>
+                {moveOpen && (
+                  <div className="row wrap small" style={{ gap: 6, alignItems: 'center' }}>
+                    Da agenda de
+                    <select className="select" value={moveFrom} onChange={(e) => setMoveFrom(e.target.value)} aria-label="Agenda atual" style={{ width: 'auto' }}>
+                      {activeSellers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                    para
+                    <select className="select" value={moveTo} onChange={(e) => setMoveTo(e.target.value)} aria-label="Nova agenda" style={{ width: 'auto' }}>
+                      {activeSellers.filter((s) => s.id !== moveFrom).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                    <button type="button" className="btn primary sm" onClick={trocarVendedora} disabled={calBusy === 'transfer'}>{calBusy === 'transfer' ? 'Procurando…' : 'Mover encontro'}</button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}

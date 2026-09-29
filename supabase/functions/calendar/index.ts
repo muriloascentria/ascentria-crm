@@ -9,6 +9,8 @@
 //   book    { deal_id, seller_id, event_id } → reserva o bloco: renomeia para "Vendedora | Consultoria | Nome",
 //                             cria o Google Meet e preenche o Encontro confirmado do negócio
 //   release { deal_id }     → desfaz a reserva: o bloco volta a ser "disponível" e o encontro é apagado
+//   transfer { deal_id, from_seller_id, to_seller_id, dry_run? } → passa o encontro para outra vendedora no
+//                             mesmo horário (acha também encontros marcados direto na agenda, pelo nome do lead)
 //
 // Secret: GOOGLE_SERVICE_ACCOUNT_JSON (o arquivo .json da conta de serviço, inteiro)
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -57,7 +59,7 @@ async function gcal(token: string, path: string, init: RequestInit = {}) {
   return data
 }
 
-const norm = (s = '') => s.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase().replace(/\s+/g, ' ')
+const norm = (s = '') => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase().replace(/\s+/g, ' ')
 
 function spParts(iso: string) {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
@@ -179,6 +181,57 @@ Deno.serve(async (req) => {
       }
       await admin.from('deals').update({ calendar_event_id: null, meeting_date: null, meeting_time: null, meeting_link: null }).eq('id', deal.id)
       return json({ ok: true })
+    }
+
+    if (b.action === 'transfer') {
+      // Passa o encontro para outra vendedora no MESMO horário.
+      // Acha o evento pelo calendar_event_id do negócio ou, se foi marcado direto na agenda, pelo nome do lead.
+      const deal = await dealFor(b.deal_id)
+      const fromId = b.from_seller_id || deal.seller_id
+      if (!fromId) return json({ ok: false, error: 'Não sei em qual agenda o encontro está.' })
+      const from = await seller(fromId)
+      const to = await seller(b.to_seller_id)
+      if (from.id === to.id) return json({ ok: false, error: 'O encontro já está na agenda dessa vendedora.' })
+      const tkFrom = await googleToken(sa, from.email)
+      const nome = deal.contact?.name || deal.title
+      let ev: any = null
+      if (deal.calendar_event_id && deal.seller_id === from.id) ev = await gcal(tkFrom, `/${encodeURIComponent(deal.calendar_event_id)}`).catch(() => null)
+      if (!ev) {
+        const words = norm(nome).split(' ').filter((w) => w.length > 2)
+        const key = (w: string) => w.replace(/Z/g, 'S') // Luiz / Luis
+        const r = await gcal(tkFrom, `?singleEvents=true&orderBy=startTime&maxResults=250&timeMin=${encodeURIComponent(new Date(Date.now() - 86_400_000).toISOString())}&timeMax=${encodeURIComponent(new Date(Date.now() + 90 * 86_400_000).toISOString())}`)
+        const found = (r.items ?? []).filter((e: any) => e.status !== 'cancelled' && e.start?.dateTime && norm(e.summary) !== norm(TITLE)
+          && words.filter((w) => key(norm(`${e.summary} ${e.description ?? ''}`)).includes(key(w))).length >= Math.min(2, words.length))
+        if (!found.length) return json({ ok: false, error: `Não achei o encontro de ${nome} na agenda de ${from.name}.` })
+        if (found.length > 1) return json({ ok: false, error: 'Achei mais de um encontro com esse nome.', candidates: found.map((e: any) => ({ id: e.id, summary: e.summary, ...spParts(e.start.dateTime) })) })
+        ev = found[0]
+      }
+      const when = spParts(ev.start.dateTime)
+      if (b.dry_run) return json({ ok: true, dry_run: true, from: from.name, to: to.name, event: { id: ev.id, summary: ev.summary, ...when, end: ev.end?.dateTime } })
+
+      const tkTo = await googleToken(sa, to.email)
+      const fone = deal.contact?.wa_id ? '+' + deal.contact.wa_id : (deal.contact?.phone || '')
+      const body = {
+        summary: `${to.name} | Consultoria | ${nome}`,
+        description: `Lead: ${nome}\nWhatsApp: ${fone}\nAgendado pelo eCRM (https://ecrm.digital)`,
+      }
+      // usa o bloco "disponível" da nova vendedora que começa no mesmo horário; se não tiver, cria o evento
+      const r2 = await gcal(tkTo, `?singleEvents=true&timeMin=${encodeURIComponent(new Date(new Date(ev.start.dateTime).getTime() - 60_000).toISOString())}&timeMax=${encodeURIComponent(new Date(new Date(ev.start.dateTime).getTime() + 60_000).toISOString())}`)
+      const same = (r2.items ?? []).find((e: any) => norm(e.summary) === norm(TITLE) && e.start?.dateTime && new Date(e.start.dateTime).getTime() === new Date(ev.start.dateTime).getTime())
+      const conf = { createRequest: { requestId: crypto.randomUUID(), conferenceSolutionKey: { type: 'hangoutsMeet' } } }
+      // convidados do evento antigo (ex.: e-mail do lead) vão junto, sem a vendedora anterior
+      const guests = (ev.attendees ?? []).filter((a: any) => !a.self && !a.organizer && norm(a.email) !== norm(from.email)).map((a: any) => ({ email: a.email }))
+      const extra = guests.length ? { attendees: guests } : {}
+      const created = same
+        ? await gcal(tkTo, `/${encodeURIComponent(same.id)}?conferenceDataVersion=1&sendUpdates=none`, { method: 'PATCH', body: JSON.stringify({ ...body, ...extra, conferenceData: same.conferenceData ?? conf }) })
+        : await gcal(tkTo, `?conferenceDataVersion=1&sendUpdates=none`, { method: 'POST', body: JSON.stringify({ ...body, ...extra, start: ev.start, end: ev.end, conferenceData: conf }) })
+
+      // a agenda antiga: o horário volta a ficar disponível
+      await gcal(tkFrom, `/${encodeURIComponent(ev.id)}?conferenceDataVersion=1&sendUpdates=none`, { method: 'PATCH', body: JSON.stringify({ summary: TITLE, description: '', conferenceData: null, ...(guests.length ? { attendees: [] } : {}) }) })
+
+      const link = created.hangoutLink || created.conferenceData?.entryPoints?.find((p: any) => p.entryPointType === 'video')?.uri || null
+      await admin.from('deals').update({ seller_id: to.id, calendar_event_id: created.id, meeting_date: when.date, meeting_time: when.time, meeting_link: link }).eq('id', deal.id)
+      return json({ ok: true, from: from.name, to: to.name, date: when.date, time: when.time, link, reused_free_slot: !!same })
     }
 
     return json({ ok: false, error: 'Ação desconhecida' }, 400)
