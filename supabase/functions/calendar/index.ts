@@ -6,7 +6,7 @@
 //   status  (admin)         → testa o acesso à agenda de cada vendedora cadastrada
 //   slots   { seller_id, deal_id? } → próximos blocos com o título de disponibilidade (até 8)
 //                             e, com deal_id, grava no negócio quais horários foram oferecidos
-//   book    { deal_id, seller_id, event_id } → reserva o bloco: renomeia para "Consultoria – Nome",
+//   book    { deal_id, seller_id, event_id } → reserva o bloco: renomeia para "Vendedora | Consultoria | Nome",
 //                             cria o Google Meet e preenche o Encontro confirmado do negócio
 //   release { deal_id }     → desfaz a reserva: o bloco volta a ser "disponível" e o encontro é apagado
 //
@@ -159,7 +159,7 @@ Deno.serve(async (req) => {
       const patched = await gcal(tk, `/${encodeURIComponent(b.event_id)}?conferenceDataVersion=1`, {
         method: 'PATCH',
         body: JSON.stringify({
-          summary: `Consultoria – ${nome}`,
+          summary: `${s.name} | Consultoria | ${nome}`,
           description: `Lead: ${nome}\nWhatsApp: ${fone}\nAgendado pelo eCRM (https://ecrm.digital)`,
           conferenceData: ev.conferenceData ?? { createRequest: { requestId: crypto.randomUUID(), conferenceSolutionKey: { type: 'hangoutsMeet' } } },
         }),
