@@ -144,7 +144,8 @@ export default function Pipeline() {
       {pipeStages.length === 0 ? <Empty title="Nenhuma etapa" text="Configure as etapas deste funil em Configurações → Funis." /> : (
         <div className="kanban" ref={boardRef}>
           {pipeStages.map((s) => {
-            const items = filtered.filter((d) => d.stage_id === s.id).sort((a, b) => Number(isUnread(b)) - Number(isUnread(a)))
+            // Ordem: respostas não lidas primeiro; depois quem respondeu por último no topo; quem nunca respondeu fica abaixo.
+            const items = filtered.filter((d) => d.stage_id === s.id).sort((a, b) => (Number(isUnread(b)) - Number(isUnread(a))) || ((b.last_inbound_at ? Date.parse(b.last_inbound_at) : 0) - (a.last_inbound_at ? Date.parse(a.last_inbound_at) : 0)))
             const unreadN = items.filter(isUnread).length
             const sum = items.reduce((a, d) => a + Number(d.value), 0)
             return (
