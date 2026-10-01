@@ -7,7 +7,7 @@ import { Field } from './ui'
 import { callCalendar, fillSlots, slotLabel } from '../lib/calendar'
 
 /** Conversa de WhatsApp de um contato (com envio). deal opcional para vincular e calcular a janela de 24h. */
-export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged }) {
+export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged, header, stageId }) {
   const { toast, settings, waNumbers, sellers, stages } = useApp()
   const via = waNumbers.find((n) => n.id === deal?.wa_number_id) || waNumbers.find((n) => n.is_default) || waNumbers[0]
   const [msgs, setMsgs] = useState([])
@@ -125,6 +125,8 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged 
   }
   const [curStageId, setCurStageId] = useState(deal?.stage_id)
   useEffect(() => { setCurStageId(deal?.stage_id); curStageRef.current = deal?.stage_id }, [deal?.id, deal?.stage_id])
+  // etapa trocada no cabeçalho do card (fora deste painel)
+  useEffect(() => { if (stageId) { setCurStageId(stageId); curStageRef.current = stageId } }, [stageId])
   const remarcarStage = stages.find((s) => s.pipeline_id === deal?.pipeline_id && /remarc/i.test(s.name))
   const naReuniao = /reuni/i.test(stages.find((s) => s.id === curStageId)?.name || '')
   const podeCancelar = !!deal?.id && !!remarcarStage && curStageId !== remarcarStage.id && (naReuniao || !!booked || !!meeting.date)
@@ -146,7 +148,6 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged 
     } catch (e) { toast(e.message, 'err') } finally { setCalBusy('') }
   }
   const [firstName, setFirstName] = useState('')
-  const endRef = useRef(null)
   const win = inWindow(deal)
 
   const load = useCallback(async () => {
@@ -204,7 +205,12 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged 
     else if (!showQuick && proxima?.stage) setStage(proxima.stage)
     setShowQuick((v) => !v)
   }
-  useEffect(() => { endRef.current?.scrollIntoView?.({ block: 'end' }) }, [msgs.length])
+  // Rola só a caixa da conversa (nunca a janela inteira), e só se a pessoa já estava vendo o fim:
+  // assim a tela não "pula" quando chega mensagem nova enquanto ela escreve ou escolhe outra mensagem.
+  const chatRef = useRef(null)
+  const stickRef = useRef(true)
+  const onChatScroll = () => { const c = chatRef.current; if (c) stickRef.current = c.scrollHeight - c.scrollTop - c.clientHeight < 60 }
+  useEffect(() => { const c = chatRef.current; if (c && stickRef.current) c.scrollTop = c.scrollHeight }, [msgs.length])
   useEffect(() => { setMode(win ? 'text' : 'template') }, [win])
 
   const registrarEnvio = async () => {
@@ -256,7 +262,9 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged 
   }
 
   return (
-    <div className="stack">
+    <div className="wa-split">
+     <div className="wa-left stack">
+      {header}
       <div className="between">
         <h3>WhatsApp {via && <span className="small muted" style={{ fontWeight: 400 }}>· via {via.label} ({via.phone_display})</span>}</h3>
         {deal && (win
@@ -264,7 +272,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged 
           : <span className="chip" title="Fora da janela de 24h só é possível enviar templates aprovados pela Meta">fora da janela · só template</span>)}
       </div>
       {!settings?.wa_connected && <div className="small muted">WhatsApp ainda não conectado. Configure em Configurações → WhatsApp.</div>}
-      <div className="chat">
+      <div className="chat" ref={chatRef} onScroll={onChatScroll}>
         {msgs.length === 0 && <div className="small muted" style={{ textAlign: 'center', padding: 12 }}>Nenhuma mensagem ainda.</div>}
         {msgs.map((m) => (
           <div key={m.id} className={'bubble ' + m.direction}>
@@ -274,8 +282,80 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged 
             <div className="meta">{m.channel === 'instagram' && '📷 Instagram · '}{fmtDateTime(m.created_at)}{m.direction === 'out' && ` · ${statusLabel(m.status)}`}{m.error && <span className="late"> · {m.error}</span>}</div>
           </div>
         ))}
-        <div ref={endRef} />
       </div>
+     </div>
+     <div className="wa-right stack">
+      <form onSubmit={send} className="stack">
+        <div className="pills">
+          <button type="button" className={mode === 'text' ? 'active' : ''} onClick={() => setMode('text')} disabled={deal && !win} title={deal && !win ? 'Texto livre só dentro das 24h após a última mensagem do lead' : ''}>Texto</button>
+          <button type="button" className={mode === 'template' ? 'active' : ''} onClick={() => setMode('template')}>Template</button>
+          {mode === 'interactive' && <button type="button" className="active">Pergunta com opções</button>}
+          {mode === 'sequence' && <button type="button" className="active">Sequência · {seq.parts.length} mensagens</button>}
+          <span className="grow" />
+          <button type="button" onClick={abrirMensagens} disabled={deal && !win} title={deal && !win ? 'Mensagens prontas só dentro das 24h após a última mensagem do lead' : 'Escolher uma mensagem pronta'}>⚡ Mensagens prontas</button>
+        </div>
+        {mode === 'sequence' ? (
+          <div className="stack" style={{ gap: 6 }}>
+            {seq.parts.map((t, i) => (
+              <div key={i} className="stack" style={{ gap: 2 }}>
+                <span className="small muted">Mensagem {i + 1}{i === seq.parts.length - 1 && seq.options.length > 0 ? ` · com ${seq.options.length <= 3 ? 'botões' : 'lista de opções'}` : ''}</span>
+                <textarea className="textarea" style={{ minHeight: 48 }} value={t} onChange={(e) => setSeq({ ...seq, parts: seq.parts.map((x, j) => (j === i ? e.target.value : x)) })} />
+              </div>
+            ))}
+            {seq.options.length > 0 && <div className="row wrap" style={{ gap: 6 }}>{seq.options.map((o, i) => <span key={i} className="chip">{o}</span>)}</div>}
+            <div className="small muted">As mensagens saem uma depois da outra, nesta ordem. Troque o que estiver entre colchetes, como [DATA], antes de enviar. <button type="button" className="btn ghost sm" onClick={() => { setMode('text'); setSeq({ parts: [], options: [] }); setPickedId(null) }}>cancelar</button></div>
+          </div>
+        ) : mode === 'interactive' ? (
+          <div className="stack" style={{ gap: 6 }}>
+            <textarea className="textarea" style={{ minHeight: 60 }} value={question.body} onChange={(e) => setQuestion({ ...question, body: e.target.value })} required />
+            <div className="row wrap" style={{ gap: 6 }}>
+              {question.options.map((o, i) => (
+                <span key={i} className="chip">{o} <button type="button" className="close" style={{ fontSize: 13 }} onClick={() => setQuestion({ ...question, options: question.options.filter((_, j) => j !== i) })} aria-label="Remover opção">×</button></span>
+              ))}
+            </div>
+            <div className="small muted">{question.options.length <= 3 ? 'O lead recebe as opções como botões.' : 'O lead recebe um botão "Ver opções" com a lista.'} <button type="button" className="btn ghost sm" onClick={() => { setMode('text'); setQuestion({ body: '', options: [] }); setPickedId(null) }}>cancelar</button></div>
+          </div>
+        ) : mode === 'text' ? (
+          <textarea className="textarea" style={{ minHeight: 60 }} placeholder="Escreva a mensagem…" value={text} onChange={(e) => setText(e.target.value)} required />
+        ) : (
+          <div className="grid2">
+            <Field label="Nome do template (aprovado na Meta)"><input className="input" value={tpl.name} onChange={(e) => setTpl({ ...tpl, name: e.target.value })} placeholder="mentoria_dia_2" required /></Field>
+            <Field label="Variáveis ({{1}}, {{2}}…) separadas por vírgula"><input className="input" value={tpl.params} onChange={(e) => setTpl({ ...tpl, params: e.target.value })} placeholder="Fernanda" /></Field>
+          </div>
+        )}
+        <div className="row" style={{ justifyContent: 'flex-end' }}><button className="btn primary sm" disabled={busy}>{busy ? (progress ? `Enviando ${progress}…` : 'Enviando…') : mode === 'sequence' ? `Enviar ${seq.parts.length} mensagens` : 'Enviar'}</button></div>
+        {showQuick && (
+          <div className="card" style={{ padding: 6, maxHeight: 340, overflowY: 'auto' }}>
+            {quick.length > 0 && <div className="small muted" style={{ padding: '2px 4px 6px' }}>{totalEnviadas} de {sequencia.length} enviadas para este contato{proxima ? '' : ' · sequência completa ✓'}</div>}
+            {quick.length > 0 && (
+              <select className="select" style={{ marginBottom: 6 }} value={stage} onChange={(e) => setStage(e.target.value)} aria-label="Etapa">
+                <option value="">Todas as etapas</option>
+                {QUICK_STAGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                {quick.some((q) => !q.stage) && <option value="outras">Outras</option>}
+              </select>
+            )}
+            {quick.length === 0 && <div className="small muted" style={{ padding: 8 }}>Nenhuma mensagem pronta. Cadastre em Configurações → Mensagens prontas.</div>}
+            {proxima && stage && stage !== 'outras' && proxima.stage !== stage && (
+              <button type="button" className="btn ghost sm" style={{ display: 'block', width: '100%', textAlign: 'left', margin: '2px 0 6px' }} onClick={() => setStage(proxima.stage || 'outras')}>
+                ✓ Etapa em dia. Próxima: <b>{proxima.title}</b> ({quickStageLabel(proxima.stage)}) →
+              </button>
+            )}
+            {quickVisiveis.map((q) => {
+              const em = enviadaEm(q)
+              const eProxima = proxima?.id === q.id
+              return (
+              <div key={q.id} className="row" style={{ gap: 4, alignItems: 'flex-start', borderLeft: eProxima ? '3px solid var(--accent)' : '3px solid transparent', background: eProxima ? 'var(--surface-2)' : undefined, borderRadius: 6 }}>
+              <button type="button" className="btn ghost sm" style={{ padding: '6px 6px', fontSize: 16, lineHeight: 1, color: em ? 'var(--success)' : 'var(--border-strong, #bbb)' }} onClick={() => toggleSent(q)} title={em ? 'Enviada. Clique para desmarcar' : 'Marcar como enviada'} aria-label={em ? 'Desmarcar como enviada' : 'Marcar como enviada'}>{em ? '✓' : '○'}</button>
+              <button type="button" className="btn ghost grow" style={{ display: 'block', textAlign: 'left', whiteSpace: 'normal', padding: '6px 8px', opacity: em ? 0.6 : 1 }} onClick={() => pick(q)}>
+                <b>{q.title}</b>{eProxima && <span className="chip" style={{ marginLeft: 6, '--chip-color': 'var(--accent)', color: 'var(--accent)', fontWeight: 600 }}>próxima</span>}{em && <span className="small" style={{ marginLeft: 6, color: 'var(--success)' }}>enviada {fmtDateTime(em)}</span>}{splitParts(q.body).length > 1 && <span className="chip" style={{ marginLeft: 6 }}>{splitParts(q.body).length} mensagens</span>}{q.options?.length > 0 && <span className="chip" style={{ marginLeft: 6 }}>{q.options.length} opções</span>}{q.auto_before && <span className="chip" style={{ marginLeft: 6 }} title="Sai sozinha antes do encontro">⏰ automática · {AUTO_LABEL[q.auto_before]}</span>}
+                <div className="small muted">{splitParts(fill(q.body)).join(' · ').slice(0, 110)}{q.body.length > 110 ? '…' : ''}</div>
+              </button>
+              </div>
+              )
+            })}
+          </div>
+        )}
+      </form>
       <div className="card" style={{ padding: 10, background: 'var(--surface-2, #f6f5f1)' }}>
         <div className="between" style={{ marginBottom: 6, gap: 8 }}>
           <div className="small" style={{ fontWeight: 600 }}>📅 Encontro confirmado</div>
@@ -365,77 +445,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged 
             : 'Preencha depois que o lead escolher o horário: o dia e a hora entram sozinhos em todas as mensagens prontas.'}
         </div>
       </div>
-      <form onSubmit={send} className="stack">
-        <div className="pills">
-          <button type="button" className={mode === 'text' ? 'active' : ''} onClick={() => setMode('text')} disabled={deal && !win} title={deal && !win ? 'Texto livre só dentro das 24h após a última mensagem do lead' : ''}>Texto</button>
-          <button type="button" className={mode === 'template' ? 'active' : ''} onClick={() => setMode('template')}>Template</button>
-          {mode === 'interactive' && <button type="button" className="active">Pergunta com opções</button>}
-          {mode === 'sequence' && <button type="button" className="active">Sequência · {seq.parts.length} mensagens</button>}
-          <span className="grow" />
-          <button type="button" onClick={abrirMensagens} disabled={deal && !win} title={deal && !win ? 'Mensagens prontas só dentro das 24h após a última mensagem do lead' : 'Escolher uma mensagem pronta'}>⚡ Mensagens prontas</button>
-        </div>
-        {showQuick && (
-          <div className="card" style={{ padding: 6, maxHeight: 340, overflowY: 'auto' }}>
-            {quick.length > 0 && <div className="small muted" style={{ padding: '2px 4px 6px' }}>{totalEnviadas} de {sequencia.length} enviadas para este contato{proxima ? '' : ' · sequência completa ✓'}</div>}
-            {quick.length > 0 && (
-              <select className="select" style={{ marginBottom: 6 }} value={stage} onChange={(e) => setStage(e.target.value)} aria-label="Etapa">
-                <option value="">Todas as etapas</option>
-                {QUICK_STAGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                {quick.some((q) => !q.stage) && <option value="outras">Outras</option>}
-              </select>
-            )}
-            {quick.length === 0 && <div className="small muted" style={{ padding: 8 }}>Nenhuma mensagem pronta. Cadastre em Configurações → Mensagens prontas.</div>}
-            {proxima && stage && stage !== 'outras' && proxima.stage !== stage && (
-              <button type="button" className="btn ghost sm" style={{ display: 'block', width: '100%', textAlign: 'left', margin: '2px 0 6px' }} onClick={() => setStage(proxima.stage || 'outras')}>
-                ✓ Etapa em dia. Próxima: <b>{proxima.title}</b> ({quickStageLabel(proxima.stage)}) →
-              </button>
-            )}
-            {quickVisiveis.map((q) => {
-              const em = enviadaEm(q)
-              const eProxima = proxima?.id === q.id
-              return (
-              <div key={q.id} className="row" style={{ gap: 4, alignItems: 'flex-start', borderLeft: eProxima ? '3px solid var(--accent)' : '3px solid transparent', background: eProxima ? 'var(--surface-2)' : undefined, borderRadius: 6 }}>
-              <button type="button" className="btn ghost sm" style={{ padding: '6px 6px', fontSize: 16, lineHeight: 1, color: em ? 'var(--success)' : 'var(--border-strong, #bbb)' }} onClick={() => toggleSent(q)} title={em ? 'Enviada. Clique para desmarcar' : 'Marcar como enviada'} aria-label={em ? 'Desmarcar como enviada' : 'Marcar como enviada'}>{em ? '✓' : '○'}</button>
-              <button type="button" className="btn ghost grow" style={{ display: 'block', textAlign: 'left', whiteSpace: 'normal', padding: '6px 8px', opacity: em ? 0.6 : 1 }} onClick={() => pick(q)}>
-                <b>{q.title}</b>{eProxima && <span className="chip" style={{ marginLeft: 6, '--chip-color': 'var(--accent)', color: 'var(--accent)', fontWeight: 600 }}>próxima</span>}{em && <span className="small" style={{ marginLeft: 6, color: 'var(--success)' }}>enviada {fmtDateTime(em)}</span>}{splitParts(q.body).length > 1 && <span className="chip" style={{ marginLeft: 6 }}>{splitParts(q.body).length} mensagens</span>}{q.options?.length > 0 && <span className="chip" style={{ marginLeft: 6 }}>{q.options.length} opções</span>}{q.auto_before && <span className="chip" style={{ marginLeft: 6 }} title="Sai sozinha antes do encontro">⏰ automática · {AUTO_LABEL[q.auto_before]}</span>}
-                <div className="small muted">{splitParts(fill(q.body)).join(' · ').slice(0, 110)}{q.body.length > 110 ? '…' : ''}</div>
-              </button>
-              </div>
-              )
-            })}
-          </div>
-        )}
-        {mode === 'sequence' ? (
-          <div className="stack" style={{ gap: 6 }}>
-            {seq.parts.map((t, i) => (
-              <div key={i} className="stack" style={{ gap: 2 }}>
-                <span className="small muted">Mensagem {i + 1}{i === seq.parts.length - 1 && seq.options.length > 0 ? ` · com ${seq.options.length <= 3 ? 'botões' : 'lista de opções'}` : ''}</span>
-                <textarea className="textarea" style={{ minHeight: 48 }} value={t} onChange={(e) => setSeq({ ...seq, parts: seq.parts.map((x, j) => (j === i ? e.target.value : x)) })} />
-              </div>
-            ))}
-            {seq.options.length > 0 && <div className="row wrap" style={{ gap: 6 }}>{seq.options.map((o, i) => <span key={i} className="chip">{o}</span>)}</div>}
-            <div className="small muted">As mensagens saem uma depois da outra, nesta ordem. Troque o que estiver entre colchetes, como [DATA], antes de enviar. <button type="button" className="btn ghost sm" onClick={() => { setMode('text'); setSeq({ parts: [], options: [] }); setPickedId(null) }}>cancelar</button></div>
-          </div>
-        ) : mode === 'interactive' ? (
-          <div className="stack" style={{ gap: 6 }}>
-            <textarea className="textarea" style={{ minHeight: 60 }} value={question.body} onChange={(e) => setQuestion({ ...question, body: e.target.value })} required />
-            <div className="row wrap" style={{ gap: 6 }}>
-              {question.options.map((o, i) => (
-                <span key={i} className="chip">{o} <button type="button" className="close" style={{ fontSize: 13 }} onClick={() => setQuestion({ ...question, options: question.options.filter((_, j) => j !== i) })} aria-label="Remover opção">×</button></span>
-              ))}
-            </div>
-            <div className="small muted">{question.options.length <= 3 ? 'O lead recebe as opções como botões.' : 'O lead recebe um botão "Ver opções" com a lista.'} <button type="button" className="btn ghost sm" onClick={() => { setMode('text'); setQuestion({ body: '', options: [] }); setPickedId(null) }}>cancelar</button></div>
-          </div>
-        ) : mode === 'text' ? (
-          <textarea className="textarea" style={{ minHeight: 60 }} placeholder="Escreva a mensagem…" value={text} onChange={(e) => setText(e.target.value)} required />
-        ) : (
-          <div className="grid2">
-            <Field label="Nome do template (aprovado na Meta)"><input className="input" value={tpl.name} onChange={(e) => setTpl({ ...tpl, name: e.target.value })} placeholder="mentoria_dia_2" required /></Field>
-            <Field label="Variáveis ({{1}}, {{2}}…) separadas por vírgula"><input className="input" value={tpl.params} onChange={(e) => setTpl({ ...tpl, params: e.target.value })} placeholder="Fernanda" /></Field>
-          </div>
-        )}
-        <div className="row" style={{ justifyContent: 'flex-end' }}><button className="btn primary sm" disabled={busy}>{busy ? (progress ? `Enviando ${progress}…` : 'Enviando…') : mode === 'sequence' ? `Enviar ${seq.parts.length} mensagens` : 'Enviar'}</button></div>
-      </form>
+     </div>
     </div>
   )
 }

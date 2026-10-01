@@ -125,6 +125,14 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, .45); z-index: 40; display: flex; align-items: center; justify-content: center; padding: 16px; }
 .modal { background: var(--surface); border-radius: 14px; width: 100%; max-width: 620px; max-height: 92vh; overflow: auto; box-shadow: var(--shadow); }
 .modal.wide { max-width: 920px; }
+.modal.xwide { max-width: 1240px; }
+/* card do lead: conversa à esquerda, escrever/mensagens prontas à direita, lado a lado */
+.wa-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.wa-split .wa-left { position: sticky; top: 64px; }
+.wa-split .chat { max-height: none; height: min(58vh, 560px); }
+.deal-head { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.deal-head-name { font-size: 18px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+@media (max-width: 900px) { .wa-split { grid-template-columns: 1fr; } .wa-split .wa-left { position: static; } .wa-split .chat { height: 46vh; } }
 .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); z-index: 1; }
 .modal-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
 .modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--border); position: sticky; bottom: 0; background: var(--surface); }

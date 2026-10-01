@@ -27,7 +27,7 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved, onMar
   const curStage = stages.find((s) => s.id === f.stage_id)
 
   useEffect(() => {
-    supabase.from('contacts').select('id,name').order('name').then(({ data }) => setContacts(data || []))
+    supabase.from('contacts').select('id,name,phone,wa_id').order('name').then(({ data }) => setContacts(data || []))
     if (deal?.id) supabase.from('deal_stage_history').select('*').eq('deal_id', deal.id).order('changed_at', { ascending: false }).then(({ data }) => setHistory(data || []))
   }, [deal?.id])
 
@@ -61,9 +61,20 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved, onMar
   const canMarkUnread = !!onMarkUnread && !!deal?.last_inbound_at && Date.now() - new Date(deal.last_inbound_at).getTime() < 86_400_000
   const stageName = (id) => stages.find((s) => s.id === id)?.name || '—'
   const userName = (id) => users.find((u) => u.id === id)?.full_name || ''
+  const contato = contacts.find((c) => c.id === f.contact_id)
+  const fone = contato?.wa_id ? '+' + contato.wa_id : contato?.phone || ''
+  // troca de coluna direto do topo da conversa (salva na hora, sem precisar do botão Salvar)
+  const moverPara = async (id) => {
+    if (!id || id === f.stage_id) return
+    const { error } = await supabase.from('deals').update({ stage_id: id }).eq('id', deal.id)
+    if (error) return toast(error.message, 'err')
+    set('stage_id', id)
+    toast(`Card movido para ${stageName(id)}`)
+    onSaved?.()
+  }
 
   return (
-    <Modal title={deal?.id ? 'Negócio' : 'Novo negócio'} onClose={onClose} wide={!!deal?.id}
+    <Modal title={deal?.id ? 'Negócio' : 'Novo negócio'} onClose={onClose} wide={deal?.id ? (deal.contact_id ? 'x' : true) : false}
       footer={<>
         {deal?.id && (isManager || deal.owner_id === profile.id) && <ConfirmButton onConfirm={remove} className="btn danger" >Excluir</ConfirmButton>}
         {canMarkUnread && <button className="btn" type="button" onClick={onMarkUnread} title="Volta a bolinha vermelha no card (disponível por 24h após a resposta do lead)"><span className="unread-dot-inline" aria-hidden="true" />Marcar como não lida</button>}
@@ -71,9 +82,27 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved, onMar
         <button className="btn" type="button" onClick={onClose}>Cancelar</button>
         <button className="btn primary" form="dealform">Salvar</button>
       </>}>
+      {deal?.id && deal.contact_id && (
+        <WhatsAppPanel contactId={deal.contact_id} deal={deal} onSent={onSaved} stageId={f.stage_id}
+          onStageChanged={(id) => set('stage_id', id)}
+          header={
+            <div className="deal-head">
+              <div className="grow" style={{ minWidth: 0 }}>
+                <div className="deal-head-name">{contato?.name || f.title}</div>
+                {fone && <div className="small muted">{fone}</div>}
+              </div>
+              <label className="small stack" style={{ gap: 2 }}>Coluna
+                <select className="select" value={f.stage_id || ''} onChange={(e) => moverPara(e.target.value)} aria-label="Mover para a coluna" style={{ width: 'auto', minWidth: 170 }}>
+                  {pipeStages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </label>
+            </div>
+          } />
+      )}
+      {deal?.id && deal.contact_id && <h3 style={{ marginTop: 8, paddingTop: 14, borderTop: '1px solid var(--border)' }}>Dados do negócio</h3>}
       <div className={deal?.id ? 'detail-grid' : ''}>
         <form id="dealform" onSubmit={save} className="stack" style={{ gap: 12 }}>
-          <Field label="Título"><input className="input" value={f.title} onChange={(e) => set('title', e.target.value)} required autoFocus /></Field>
+          <Field label="Título"><input className="input" value={f.title} onChange={(e) => set('title', e.target.value)} required autoFocus={!deal?.id} /></Field>
           <div className="grid2">
             <Field label="Valor (R$)"><input className="input" type="number" step="0.01" min="0" value={f.value} onChange={(e) => set('value', e.target.value)} /></Field>
             <Field label="Previsão de fechamento"><input className="input" type="date" value={f.expected_close || ''} onChange={(e) => set('expected_close', e.target.value)} /></Field>
@@ -120,7 +149,6 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved, onMar
         </form>
         {deal?.id && (
           <div className="stack" style={{ gap: 18 }}>
-            {deal.contact_id && <WhatsAppPanel contactId={deal.contact_id} deal={deal} onSent={onSaved} onStageChanged={(id) => set('stage_id', id)} />}
             <ActivityPanel link={{ deal_id: deal.id }} />
             {history.length > 0 && (
               <div className="stack">
