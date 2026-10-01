@@ -138,6 +138,7 @@ const db = {
     { id: 'm8', contact_id: WC.c3, deal_id: 'w3', direction: 'out', wa_message_id: 'wamid.8', type: 'text', body: 'Oi, Renata! Aqui é o Murilo, da Ascentria. Vi que você chamou aqui — me conta rapidinho: o que te trouxe até a mentoria?', status: 'read', created_at: daysFromNow(-3, 10.02) },
     { id: 'm9', contact_id: WC.c3, deal_id: 'w3', direction: 'out', wa_message_id: 'wamid.9', type: 'template', template_name: 'mentoria_dia_2', body: '[template mentoria_dia_2] Renata', status: 'read', created_at: daysFromNow(-2, 9) },
     { id: 'm10', contact_id: WC.c3, deal_id: 'w3', direction: 'in', wa_message_id: 'wamid.10', type: 'text', body: 'Pode mandar o áudio sim! Quero entender melhor', status: 'received', created_at: daysFromNow(-2, 14) },
+    { id: 'm10a', contact_id: WC.c3, deal_id: 'w3', direction: 'in', wa_message_id: 'wamid.10a', type: 'audio', body: '[áudio]', status: 'received', created_at: daysFromNow(-2, 14) },
     { id: 'm11', contact_id: WC.c4, deal_id: 'w4', direction: 'in', wa_message_id: 'wamid.11', type: 'text', body: 'Olá', status: 'received', created_at: daysFromNow(-125, 11) },
     { id: 'm13', contact_id: WC.c6, deal_id: null, direction: 'in', channel: 'instagram', wa_message_id: 'igmid.13', type: 'text', body: 'Oi, vi o post sobre a mentoria! Meu whats: (48) 99911-0006', status: 'received', created_at: daysFromNow(0, 7) },
     { id: 'm14', contact_id: WC.c7, deal_id: null, direction: 'in', channel: 'instagram', wa_message_id: 'igmid.14', type: 'text', body: 'quero saber valores. 48 99911-0007', status: 'received', created_at: daysFromNow(0, 7.5) },
@@ -422,6 +423,15 @@ const functions = {
         if (d) { const st = db.stages.find((s) => s.id === d.stage_id); const resp = db.stages.find((s) => s.pipeline_id === d.pipeline_id && s.role === 'responsive'); const old = { ...d }; d.last_inbound_at = now(); if (['inbox', 'day', 'archived', 'reactivate'].includes(st.role) && resp) { d.stage_id = resp.id; beforeWrite('deals', d, old); afterWrite('deals', d, old) } }
       }, 2000)
       return { data: { ok: true, id: 'wamid.demo' }, error: null }
+    }
+    if (name === 'wa-media') {
+      // demo: 1 segundo de silêncio em WAV
+      const n = 8000, buf = new Uint8Array(44 + n), dv = new DataView(buf.buffer)
+      const w = (o, t) => [...t].forEach((c, i) => buf[o + i] = c.charCodeAt(0))
+      w(0, 'RIFF'); dv.setUint32(4, 36 + n, true); w(8, 'WAVEfmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true)
+      dv.setUint32(24, 8000, true); dv.setUint32(28, 8000, true); dv.setUint16(32, 1, true); dv.setUint16(34, 8, true); w(36, 'data'); dv.setUint32(40, n, true); buf.fill(128, 44)
+      const url = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }))
+      return { data: { ok: true, url, mime: 'audio/wav', type: 'audio' }, error: null }
     }
     if (name === 'calendar') {
       // demo: agenda fictícia com blocos livres nos próximos dias úteis (10h e 15h)

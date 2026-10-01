@@ -41,6 +41,17 @@ export async function sendWhatsApp(payload) {
   return data
 }
 
+/** Tipos de mensagem que trazem arquivo (áudio, foto, vídeo, documento, figurinha). */
+export const MEDIA_TYPES = ['audio', 'image', 'video', 'document', 'sticker']
+
+/** Link temporário (1h) do arquivo recebido no WhatsApp. */
+export async function getMedia(messageId) {
+  const { data, error } = await invokeFn('wa-media', { body: { message_id: messageId } })
+  if (error) throw new Error(await describeError(error))
+  if (data && data.ok === false) throw new Error(data.error || 'Não consegui abrir o arquivo')
+  return data
+}
+
 /** Verifica o token da Meta e inscreve o app nos webhooks da conta do WhatsApp (admin). */
 export async function connectWaba(wabaId) {
   const { data, error } = await invokeFn('wa-connect', { body: { waba_id: String(wabaId).trim() } })

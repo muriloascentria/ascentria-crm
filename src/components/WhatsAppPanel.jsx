@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../lib/store'
-import { inWindow, sendWhatsApp, QUICK_STAGES, SITUATIONAL_STAGES, quickStageLabel, splitParts, pendingFields, fillMeeting, meetingDateLabel, meetingTimeLabel } from '../lib/wa'
+import { inWindow, sendWhatsApp, getMedia, MEDIA_TYPES, QUICK_STAGES, SITUATIONAL_STAGES, quickStageLabel, splitParts, pendingFields, fillMeeting, meetingDateLabel, meetingTimeLabel } from '../lib/wa'
 import { fmtDateTime } from '../lib/utils'
 import { Field } from './ui'
 import { callCalendar, fillSlots, slotLabel } from '../lib/calendar'
@@ -268,7 +268,9 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged 
         {msgs.length === 0 && <div className="small muted" style={{ textAlign: 'center', padding: 12 }}>Nenhuma mensagem ainda.</div>}
         {msgs.map((m) => (
           <div key={m.id} className={'bubble ' + m.direction}>
-            <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
+            {MEDIA_TYPES.includes(m.type) && m.direction === 'in'
+              ? <MediaContent m={m} />
+              : <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>}
             <div className="meta">{m.channel === 'instagram' && '📷 Instagram · '}{fmtDateTime(m.created_at)}{m.direction === 'out' && ` · ${statusLabel(m.status)}`}{m.error && <span className="late"> · {m.error}</span>}</div>
           </div>
         ))}
@@ -440,3 +442,39 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged 
 
 const AUTO_LABEL = { '4h': '4h antes', '1h': '1h antes', '15m': '15 min antes' }
 const statusLabel = (s) => ({ sent: 'enviado', delivered: 'entregue', read: 'lido', failed: 'falhou' }[s] || s || '')
+
+const MEDIA_LABEL = { audio: '▶ Ouvir áudio', image: '🖼 Ver foto', video: '▶ Ver vídeo', document: '📄 Abrir documento', sticker: '🖼 Ver figurinha' }
+
+/** Áudio/foto/vídeo/documento recebido: busca o arquivo só quando a pessoa clica. */
+function MediaContent({ m }) {
+  const [media, setMedia] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState('')
+  const caption = (m.body || '').replace(/^\[[^\]]+\]\s*/, '')
+  const abrir = async () => {
+    setLoading(true); setErr('')
+    try { setMedia(await getMedia(m.id)) } catch (e) { setErr(e.message) } finally { setLoading(false) }
+  }
+  return (
+    <div className="stack" style={{ gap: 6 }}>
+      {!media && (
+        <button type="button" className="btn sm" onClick={abrir} disabled={loading} style={{ alignSelf: 'flex-start' }}>
+          {loading ? 'Carregando…' : MEDIA_LABEL[m.type] || 'Abrir arquivo'}
+        </button>
+      )}
+      {media && m.type === 'audio' && (
+        <div className="stack" style={{ gap: 2 }}>
+          <audio controls autoPlay src={media.url} style={{ maxWidth: 260 }} />
+          <a className="small" href={media.url} target="_blank" rel="noreferrer">baixar áudio</a>
+        </div>
+      )}
+      {media && (m.type === 'image' || m.type === 'sticker') && (
+        <a href={media.url} target="_blank" rel="noreferrer"><img src={media.url} alt="Foto enviada pelo lead" style={{ maxWidth: 240, maxHeight: 240, borderRadius: 8, display: 'block' }} /></a>
+      )}
+      {media && m.type === 'video' && <video controls src={media.url} style={{ maxWidth: 260, borderRadius: 8 }} />}
+      {media && m.type === 'document' && <a href={media.url} target="_blank" rel="noreferrer">📄 Abrir documento</a>}
+      {err && <div className="small late">{err}</div>}
+      {caption && <div style={{ whiteSpace: 'pre-wrap' }}>{caption}</div>}
+    </div>
+  )
+}
