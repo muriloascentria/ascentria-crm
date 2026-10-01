@@ -1,9 +1,9 @@
-import { supabase } from './supabase'
+import { invokeFn } from './supabase'
 import { meetingDateLabel, meetingTimeLabel } from './wa'
 
 /** Chama a função "calendar" (Agenda Google das vendedoras). Lança erro com a mensagem pronta para o usuário. */
 export async function callCalendar(action, body = {}) {
-  const { data, error } = await supabase.functions.invoke('calendar', { body: { action, ...body } })
+  const { data, error } = await invokeFn('calendar', { body: { action, ...body } })
   if (error) {
     let msg = error.message
     try { const j = await error.context?.json?.(); if (j?.error) msg = j.error } catch { /* mantém a mensagem */ }

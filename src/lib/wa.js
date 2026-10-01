@@ -1,4 +1,4 @@
-import { supabase, DEMO } from './supabase'
+import { supabase, DEMO, invokeFn } from './supabase'
 
 export const STAGE_ROLES = {
   '': 'Coluna comum',
@@ -28,14 +28,14 @@ export const instagramWebhookUrl = () => `${functionsUrl()}/instagram-webhook`
 
 /** Demo: simula uma DM do Instagram com número (só no modo demonstração). */
 export async function simulateInstagramDM(text) {
-  const { data, error } = await supabase.functions.invoke('demo-instagram', { body: { text } })
+  const { data, error } = await invokeFn('demo-instagram', { body: { text } })
   if (error) throw new Error(error.message)
   return data
 }
 
 /** Envia mensagem pelo WhatsApp via Edge Function (texto na janela de 24h, template fora dela). */
 export async function sendWhatsApp(payload) {
-  const { data, error } = await supabase.functions.invoke('whatsapp-send', { body: payload })
+  const { data, error } = await invokeFn('whatsapp-send', { body: payload })
   if (error) throw new Error(await describeError(error))
   if (data && data.ok === false) throw new Error(data.error || 'Falha no envio')
   return data
@@ -43,28 +43,28 @@ export async function sendWhatsApp(payload) {
 
 /** Verifica o token da Meta e inscreve o app nos webhooks da conta do WhatsApp (admin). */
 export async function connectWaba(wabaId) {
-  const { data, error } = await supabase.functions.invoke('wa-connect', { body: { waba_id: String(wabaId).trim() } })
+  const { data, error } = await invokeFn('wa-connect', { body: { waba_id: String(wabaId).trim() } })
   if (error) throw new Error(await describeError(error))
   return data
 }
 
 /** Registra um número na Cloud API com o PIN de 6 dígitos da verificação em duas etapas (admin). */
 export async function registerNumber(phoneNumberId, pin) {
-  const { data, error } = await supabase.functions.invoke('wa-connect', { body: { action: 'register', phone_number_id: String(phoneNumberId), pin: String(pin).trim() } })
+  const { data, error } = await invokeFn('wa-connect', { body: { action: 'register', phone_number_id: String(phoneNumberId), pin: String(pin).trim() } })
   if (error) throw new Error(await describeError(error))
   return data
 }
 
 /** Reverificação do número: pede código por SMS/ligação (request_code) e confirma (verify_code). */
 export async function verifyNumberStep(action, phoneNumberId, extra = {}) {
-  const { data, error } = await supabase.functions.invoke('wa-connect', { body: { action, phone_number_id: String(phoneNumberId), ...extra } })
+  const { data, error } = await invokeFn('wa-connect', { body: { action, phone_number_id: String(phoneNumberId), ...extra } })
   if (error) throw new Error(await describeError(error))
   return data
 }
 
 /** Roda o motor da cadência agora (admin). */
 export async function runCadenceNow() {
-  const { data, error } = await supabase.functions.invoke('cadence-run', { body: {} })
+  const { data, error } = await invokeFn('cadence-run', { body: {} })
   if (error) throw new Error(await describeError(error))
   return data
 }

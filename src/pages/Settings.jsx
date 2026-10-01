@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, invokeFn } from '../lib/supabase'
 import { useApp } from '../lib/store'
 import { Avatar, ConfirmButton, Field, Modal } from '../components/ui'
 import { ACTIVITY_TYPES, ROLES, fmtDate, slugify } from '../lib/utils'
@@ -679,7 +679,7 @@ function InviteForm({ onClose, onSaved }) {
     e.preventDefault()
     setBusy(true)
     try {
-      const { data, error } = await supabase.functions.invoke('invite-user', { body: f })
+      const { data, error } = await invokeFn('invite-user', { body: f })
       if (error) throw new Error((await error.context?.json?.().catch(() => null))?.error || error.message)
       if (!data?.ok) throw new Error(data?.error || 'Não foi possível convidar')
       toast(`Convite enviado para ${data.email}`); onSaved(); onClose()

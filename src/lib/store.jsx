@@ -28,9 +28,14 @@ export function AppProvider({ children }) {
     const KEY = 'crm.lastActive', LIMIT = 8 * 60 * 60 * 1000
     const get = () => { try { return Number(localStorage.getItem(KEY)) || 0 } catch { return 0 } }
     const touch = () => { try { localStorage.setItem(KEY, String(Date.now())) } catch { /* sem armazenamento: segue sem o controle */ } }
+    // Acabou de entrar (login depois do último uso registrado): começa a contar de novo,
+    // em vez de sair na hora por causa do horário antigo guardado neste navegador.
+    const signedInAt = Date.parse(session.user?.last_sign_in_at || '') || 0
+    if (get() < signedInAt) touch()
     const check = () => {
       const last = get()
-      if (last && Date.now() - last > LIMIT) { try { localStorage.removeItem(KEY) } catch { /* ignora */ } supabase.auth.signOut() }
+      // sai só DESTE navegador: não derruba a mesma conta aberta em outro computador/celular
+      if (last && Date.now() - last > LIMIT) { try { localStorage.removeItem(KEY) } catch { /* ignora */ } supabase.auth.signOut({ scope: 'local' }) }
     }
     check(); touch()
     let t = 0
@@ -87,7 +92,7 @@ export function AppProvider({ children }) {
     isAdmin: profile?.role === 'admin',
     isManager: profile?.role === 'admin' || profile?.role === 'manager',
     reload: loadMeta, toast, toasts, label,
-    signOut: () => supabase.auth.signOut(),
+    signOut: () => supabase.auth.signOut({ scope: 'local' }),
   }), [session, profile, settings, pipelines, stages, users, customFields, waNumbers, sellers, loadMeta, toast, toasts, label])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
