@@ -511,7 +511,10 @@ function MeetingFiles({ deal }) {
   }, [deal.id])
   // ao abrir o card depois da reunião: busca sozinho (no máximo a cada 30 min) enquanto os arquivos não aparecem
   useEffect(() => {
-    if (passou && !files.length && (!checkedAt || Date.now() - new Date(checkedAt).getTime() > 30 * 60_000)) buscar()
+    const semArquivos = !files.length && (!checkedAt || Date.now() - new Date(checkedAt).getTime() > 30 * 60_000)
+    // já tem gravação/anotações mas a sessão ainda não foi para o Essência Plat: busca de novo, que a função leva
+    const faltaNoPlat = files.length > 0 && !deal.plat_sessao_id
+    if (passou && (semArquivos || faltaNoPlat)) buscar()
   }, [deal.id]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!passou) return null
   return (

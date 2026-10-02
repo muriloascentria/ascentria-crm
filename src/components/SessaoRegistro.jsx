@@ -14,7 +14,8 @@ const RESULTADOS = ['Vendido', 'Não vendido', 'Incompleto', 'Desqualificado']
 const primeiroNome = (s) => String(s || '').trim().split(/\s+/)[0] || ''
 export const linksReuniao = (files) => {
   const url = (k) => (Array.isArray(files) ? files : []).find((x) => x?.kind === k && x?.url)?.url || ''
-  return { video: url('gravacao'), transcricao: url('transcricao') }
+  // sem a transcrição do Meet, vale o documento de anotações do Gemini (traz resumo e transcrição)
+  return { video: url('gravacao'), transcricao: url('transcricao') || url('anotacoes') }
 }
 const naLista = (nome, lista) => lista.find((o) => o.toLowerCase() === String(nome || '').toLowerCase()) || ''
 
