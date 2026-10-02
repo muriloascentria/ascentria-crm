@@ -627,6 +627,14 @@ function Users() {
     toast('Usuário atualizado'); reload()
   }
 
+  const reenviar = async (u) => {
+    if (!window.confirm(`Enviar um novo link de acesso para ${u.email}?`)) return
+    const { data, error } = await invokeFn('invite-user', { body: { email: u.email, resend: true } })
+    if (error) return toast((await error.context?.json?.().catch(() => null))?.error || error.message, 'err')
+    if (!data?.ok) return toast(data?.error || 'Não foi possível enviar', 'err')
+    toast(data.resent === 'senha' ? `Link para criar nova senha enviado para ${u.email}` : `Convite reenviado para ${u.email}`)
+  }
+
   return (
     <div className="stack" style={{ gap: 16 }}>
       <div className="card small muted">
@@ -659,7 +667,7 @@ function Users() {
                       ? <div className="row"><span className="chip dot" style={{ '--chip-color': 'var(--success)' }}>Ativo</span>{!me && <button className="btn ghost sm" onClick={() => window.confirm(`Desativar ${u.full_name || u.email}? A pessoa perde o acesso ao CRM.`) && update(u, { active: false })}>Desativar</button>}</div>
                       : <div className="row"><span className="chip dot" style={{ '--chip-color': 'var(--accent)' }}>Aguardando</span><button className="btn primary sm" onClick={() => update(u, { active: true })}>Aprovar</button></div>}
                   </td>
-                  <td className="small muted">{fmtDate(u.created_at)}</td>
+                  <td className="small muted">{fmtDate(u.created_at)}{!me && <div><button className="btn ghost sm" style={{ paddingLeft: 0 }} onClick={() => reenviar(u)} title="Manda de novo o e-mail de convite (ou de criar nova senha, se a pessoa já tinha entrado)">✉ Enviar novo link de acesso</button></div>}</td>
                 </tr>
               )
             })}

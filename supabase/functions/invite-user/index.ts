@@ -25,6 +25,26 @@ Deno.serve(async (req) => {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ ok: false, error: 'E-mail inválido.' })
 
   const { data: existing } = await admin.from('profiles').select('id').eq('email', email).maybeSingle()
+
+  // Reenviar acesso para quem já tem conta: convite de novo (se nunca aceitou) ou link para criar nova senha.
+  if (body.resend === true) {
+    if (!existing) return json({ ok: false, error: 'Não existe conta com este e-mail.' })
+    const { data: au } = await admin.auth.admin.getUserById(existing.id)
+    const aceitou = !!au?.user?.email_confirmed_at
+    const redirectTo = `${SITE_URL}/redefinir-senha`
+    let tipo = aceitou ? 'senha' : 'convite'
+    let { error: rErr } = aceitou
+      ? await admin.auth.resetPasswordForEmail(email, { redirectTo })
+      : await admin.auth.admin.inviteUserByEmail(email, { redirectTo })
+    if (rErr && !aceitou) {
+      // se o servidor não aceitar um segundo convite, manda o link de criar senha
+      ;({ error: rErr } = await admin.auth.resetPasswordForEmail(email, { redirectTo }))
+      tipo = 'senha'
+    }
+    if (rErr) return json({ ok: false, error: rErr.message })
+    return json({ ok: true, email, resent: tipo })
+  }
+
   if (existing) return json({ ok: false, error: 'Já existe uma conta com este e-mail. Ajuste o perfil dela na lista.' })
 
   const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
