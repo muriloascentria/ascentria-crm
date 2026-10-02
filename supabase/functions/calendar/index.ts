@@ -17,6 +17,7 @@
 // Secret: GOOGLE_SERVICE_ACCOUNT_JSON (o arquivo .json da conta de serviço, inteiro)
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { cors, json } from '../_shared/wa.ts'
+import { levarArquivosParaSessao } from '../_shared/plat.ts'
 
 const TZ = 'America/Sao_Paulo'
 const SCOPE = 'https://www.googleapis.com/auth/calendar.events'
@@ -217,7 +218,9 @@ Deno.serve(async (req) => {
         : /anota|notes|gemini/i.test(a.title || '') ? 'anotacoes' : 'arquivo'
       const files = (ev.attachments ?? []).map((a: any) => ({ kind: tipo(a), title: a.title || 'Arquivo', url: a.fileUrl, mime: a.mimeType || null }))
       await admin.from('deals').update({ meeting_files: files, meeting_files_checked_at: new Date().toISOString() }).eq('id', deal.id)
-      return json({ ok: true, files, found_event: true })
+      // gravação e transcrição entram também no registro da sessão 1:1 (e no Essência Plat, se já registrada)
+      const sessao = await levarArquivosParaSessao(admin, deal.id, files)
+      return json({ ok: true, files, found_event: true, sessao_atualizada: sessao.atualizado })
     }
 
     if (b.action === 'transfer') {

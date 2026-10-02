@@ -6,12 +6,13 @@
 // apresentado; No-show → Remarcar).
 //
 // Body: { deal_id, dados: { data, lead, whatsapp, vendedor, produto, upsell, formato, presenca,
-//         resultado, valor, objecao1, objecao2, observacoes, contrato, video } }
+//         resultado, valor, objecao1, objecao2, observacoes, contrato, video, transcricao } }
+// Gravação e transcrição vazias são completadas com os anexos da reunião já encontrados no card.
 // Secrets: PLAT_SERVICE_KEY (chave de serviço do projeto do Essência Plat)
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { cors, json } from '../_shared/wa.ts'
+import { linksReuniao, platClient } from '../_shared/plat.ts'
 
-const PLAT_URL = Deno.env.get('PLAT_URL') ?? 'https://yahjhvnubmmfvxbjxmoo.supabase.co'
 const SEM_OBJECAO = 'Não foram registradas objeções.'
 const SEM_OBSERVACAO = 'Não foram registradas observações.'
 
@@ -39,12 +40,12 @@ Deno.serve(async (req) => {
   const { data: me } = await admin.from('profiles').select('active').eq('id', user.id).single()
   if (!me?.active) return json({ error: 'Usuário inativo' }, 403)
 
-  const platKey = Deno.env.get('PLAT_SERVICE_KEY')
-  if (!platKey) return json({ ok: false, error: 'Falta a chave do Essência Plat (segredo PLAT_SERVICE_KEY no Supabase do CRM).' })
+  const plat = platClient()
+  if (!plat) return json({ ok: false, error: 'Falta a chave do Essência Plat (segredo PLAT_SERVICE_KEY no Supabase do CRM).' })
 
   const b = await req.json().catch(() => ({}))
   // o card é lido com as permissões de quem está logado: só salva quem pode ver o negócio
-  const { data: deal } = await userClient.from('deals').select('id, pipeline_id, stage_id, plat_sessao_id').eq('id', String(b.deal_id ?? '')).maybeSingle()
+  const { data: deal } = await userClient.from('deals').select('id, pipeline_id, stage_id, plat_sessao_id, meeting_files').eq('id', String(b.deal_id ?? '')).maybeSingle()
   if (!deal) return json({ ok: false, error: 'Negócio não encontrado.' })
 
   const d = b.dados ?? {}
@@ -56,11 +57,13 @@ Deno.serve(async (req) => {
     data: dataIso, lead, whatsapp: txt(d.whatsapp, 40), vendedor: txt(d.vendedor, 80), produto: txt(d.produto, 80),
     upsell: d.upsell === true, formato: txt(d.formato, 80), presenca: txt(d.presenca, 40), resultado: txt(d.resultado, 40),
     valor: valorTexto, objecao1: txt(d.objecao1), objecao2: txt(d.objecao2), observacoes: txt(d.observacoes),
-    contrato: txt(d.contrato, 1000), video: txt(d.video, 1000),
+    contrato: txt(d.contrato, 1000), video: txt(d.video, 1000), transcricao: txt(d.transcricao, 1000),
   }
+  const anexos = linksReuniao(Array.isArray(deal.meeting_files) ? deal.meeting_files : [])
+  if (!registro.video) registro.video = anexos.video
+  if (!registro.transcricao) registro.transcricao = anexos.transcricao
 
   // 1) Essência Plat
-  const plat = createClient(PLAT_URL, platKey, { auth: { persistSession: false } })
   const linha = {
     data_sessao: dataIso || null, data_texto: dataIso ? dataBR(dataIso) : null,
     lead_nome: lead, whatsapp: registro.whatsapp || null, vendedor: registro.vendedor || null, produto: registro.produto || null,
@@ -68,7 +71,7 @@ Deno.serve(async (req) => {
     valor_texto: valorTexto || null, valor_numerico: valorTexto ? valorNumero(valorTexto) : null,
     objecoes: ouPadrao(registro.objecao1, SEM_OBJECAO), objecoes2: ouPadrao(registro.objecao2, SEM_OBJECAO),
     observacoes: ouPadrao(registro.observacoes, SEM_OBSERVACAO),
-    contrato_texto: registro.contrato || null, video_venda: registro.video || null,
+    contrato_texto: registro.contrato || null, video_venda: registro.video || null, transcricao: registro.transcricao || null,
   }
   let platId: string | null = deal.plat_sessao_id ?? null
   let numero: number | null = null

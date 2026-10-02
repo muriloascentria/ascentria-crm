@@ -505,6 +505,7 @@ function MeetingFiles({ deal }) {
     try {
       const r = await callCalendar('files', { deal_id: deal.id })
       setFiles(r.files || []); setCheckedAt(new Date().toISOString())
+      window.dispatchEvent(new CustomEvent('crm:meeting-files', { detail: { dealId: deal.id, files: r.files || [] } }))
       if (!r.found_event) setErr('Não achei o evento desta reunião na agenda das vendedoras.')
     } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }, [deal.id])

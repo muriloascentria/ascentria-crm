@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { invokeFn } from '../lib/supabase'
 import { useApp } from '../lib/store'
 import { fmtDateTime } from '../lib/utils'
@@ -12,6 +12,10 @@ const PRESENCAS = ['Show', 'No-show']
 const RESULTADOS = ['Vendido', 'Não vendido', 'Incompleto', 'Desqualificado']
 
 const primeiroNome = (s) => String(s || '').trim().split(/\s+/)[0] || ''
+export const linksReuniao = (files) => {
+  const url = (k) => (Array.isArray(files) ? files : []).find((x) => x?.kind === k && x?.url)?.url || ''
+  return { video: url('gravacao'), transcricao: url('transcricao') }
+}
 const naLista = (nome, lista) => lista.find((o) => o.toLowerCase() === String(nome || '').toLowerCase()) || ''
 
 /**
@@ -28,17 +32,27 @@ export default function SessaoRegistro({ deal, contato, onSaved, onStageChanged 
     if (salvo) return { ...salvo }
     // primeira vez: já vem preenchido com o que o CRM sabe
     const vendedora = sellers.find((s) => s.id === deal.seller_id)?.name
-    const gravacao = (Array.isArray(deal.meeting_files) ? deal.meeting_files : []).find((x) => x.kind === 'gravacao')?.url
+    const { video, transcricao } = linksReuniao(deal.meeting_files)
     return {
       data: deal.meeting_date || new Date().toISOString().slice(0, 10),
       lead: contato?.name || deal.title || '',
       whatsapp: contato?.wa_id ? '+' + contato.wa_id : contato?.phone || '',
       vendedor: naLista(primeiroNome(vendedora), VENDEDORES) || naLista(primeiroNome(profile.full_name), VENDEDORES),
       produto: 'Mentoria Essência', upsell: false, formato: 'Videochamada', presenca: '', resultado: '',
-      valor: '', objecao1: '', objecao2: '', observacoes: '', contrato: '', video: gravacao || '',
+      valor: '', objecao1: '', objecao2: '', observacoes: '', contrato: '', video, transcricao,
     }
   })
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
+  // a gravação/transcrição chegou com o card aberto: completa os campos ainda vazios
+  useEffect(() => {
+    const onFiles = (e) => {
+      if (e.detail?.dealId !== deal.id) return
+      const l = linksReuniao(e.detail.files)
+      setF((x) => ({ ...x, video: x.video || l.video, transcricao: x.transcricao || l.transcricao }))
+    }
+    window.addEventListener('crm:meeting-files', onFiles)
+    return () => window.removeEventListener('crm:meeting-files', onFiles)
+  }, [deal.id])
   const opts = (lista, atual) => (
     <>
       <option value="">—</option>
@@ -102,6 +116,10 @@ export default function SessaoRegistro({ deal, contato, onSaved, onStageChanged 
       <div className="grid2">
         <Field label="Link do contrato"><input className="input" value={f.contrato || ''} onChange={(e) => set('contrato', e.target.value)} placeholder="https://..." /></Field>
         <Field label="Link da gravação"><input className="input" value={f.video || ''} onChange={(e) => set('video', e.target.value)} placeholder="https://..." /></Field>
+      </div>
+      <div className="grid2">
+        <Field label="Link da transcrição"><input className="input" value={f.transcricao || ''} onChange={(e) => set('transcricao', e.target.value)} placeholder="https://..." /></Field>
+        <div className="small muted" style={{ alignSelf: 'end', paddingBottom: 8 }}>A gravação e a transcrição entram sozinhas quando o Google anexa à reunião (e vão para o Plat se a sessão já estiver registrada).</div>
       </div>
       <div className="small muted">
         Ao salvar, o card muda de coluna sozinho: <b>Vendido</b> → Fechou mentoria · <b>Não vendido</b> → Perdido apresentado · <b>No-show</b> → Remarcar.
