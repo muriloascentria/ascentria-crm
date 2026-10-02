@@ -75,18 +75,27 @@ Deno.serve(async (req) => {
 async function syncReminderTemplates(admin: any) {
   try {
     const token = Deno.env.get('WA_ACCESS_TOKEN')
-    const { data: st } = await admin.from('org_settings').select('wa_waba_id, reminder_templates').eq('id', 1).single()
+    const { data: st } = await admin.from('org_settings').select('wa_waba_id, reminder_templates, wa_templates_checked_at').eq('id', 1).single()
     const rt: Record<string, any> = st?.reminder_templates || {}
     const pend = Object.entries(rt).filter(([, v]) => v?.name && v.approved !== true)
-    if (!token || !st?.wa_waba_id || !pend.length) return
-    const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${st.wa_waba_id}/message_templates?fields=name,status,language&limit=200`, { headers: { Authorization: `Bearer ${token}` } })
+    if (!token || !st?.wa_waba_id) return
+    // no máximo 1 consulta a cada 30 min quando não há modelo de lembrete esperando aprovação
+    const last = Date.parse(st.wa_templates_checked_at || '') || 0
+    if (!pend.length && Date.now() - last < 30 * 60_000) return
+    const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${st.wa_waba_id}/message_templates?fields=name,status,language,category,rejected_reason&limit=200`, { headers: { Authorization: `Bearer ${token}` } })
     const data: any = await res.json().catch(() => ({}))
     if (!res.ok) return
     let changed = false
     for (const [k, v] of pend) {
       const t = (data.data ?? []).find((x: any) => x.name === v.name && (!v.lang || x.language === v.lang))
-      if (t?.status === 'APPROVED') { rt[k] = { ...v, approved: true }; changed = true }
+      // guarda o status da Meta (em análise, rejeitado, motivo) para aparecer no CRM
+      const status = t?.status ?? 'NAO_ENCONTRADO'
+      const info = { status, category: t?.category ?? null, rejected_reason: t?.rejected_reason && t.rejected_reason !== 'NONE' ? t.rejected_reason : null }
+      if (status === 'APPROVED') { rt[k] = { ...v, ...info, approved: true }; changed = true }
+      else if (v.status !== info.status || v.category !== info.category || v.rejected_reason !== info.rejected_reason) { rt[k] = { ...v, ...info }; changed = true }
     }
-    if (changed) await admin.from('org_settings').update({ reminder_templates: rt }).eq('id', 1)
+    // retrato de todos os modelos da conta (nome, status, categoria) para conferir sem abrir a Meta
+    const snapshot = (data.data ?? []).map((x: any) => ({ name: x.name, language: x.language, status: x.status, category: x.category, rejected_reason: x.rejected_reason && x.rejected_reason !== 'NONE' ? x.rejected_reason : null }))
+    await admin.from('org_settings').update({ ...(changed ? { reminder_templates: rt } : {}), wa_templates: snapshot, wa_templates_checked_at: new Date().toISOString() }).eq('id', 1)
   } catch (e) { console.error('syncReminderTemplates', (e as Error).message) }
 }
