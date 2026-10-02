@@ -226,3 +226,7 @@ input[type=color] { width: 40px; height: 32px; padding: 2px; border: 1px solid v
 .steps > div::before { counter-increment: s; content: counter(s); width: 22px; height: 22px; border-radius: 50%; background: var(--copper); color: #fff; font-size: 12px; font-weight: 600; display: grid; place-items: center; flex-shrink: 0; }
 .auth .logo { margin-bottom: 16px; }
 .auth h1 { font-weight: 500; font-size: 18px; color: var(--muted); }
+
+/* lembrete do encontro que não saiu sozinho */
+.alert-lembrete { background: #fdecea; border: 1px solid #f3b8b1; color: #8a1f12; border-radius: 10px; padding: 10px 14px; margin: 0 0 12px; font-size: 13px; }
+.tag-lembrete { display: inline-block; margin-top: 4px; font-size: 11px; font-weight: 600; color: #fff; background: var(--danger, #c0392b); border-radius: 6px; padding: 2px 6px; }

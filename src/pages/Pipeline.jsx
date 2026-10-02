@@ -60,6 +60,8 @@ export default function Pipeline() {
   const [dragId, setDragId] = useState(null)
   const [over, setOver] = useState(null)
   const [sent24, setSent24] = useState(null)
+  // lembretes do encontro que não saíram sozinhos (viraram tarefa) e ainda não foram feitos
+  const [pendLembretes, setPendLembretes] = useState([])
 
   useEffect(() => { if (!pipelineId && pipelines.length) setPipelineId(pipelines.find((p) => p.is_default)?.id || pipelines[0].id) }, [pipelines, pipelineId])
 
@@ -70,6 +72,9 @@ export default function Pipeline() {
       .eq('pipeline_id', pipelineId).order('position').order('created_at', { ascending: false })
     if (error) toast(error.message, 'err')
     setDeals(data || [])
+    const { data: acts } = await supabase.from('activities').select('id, deal_id, title, created_at')
+      .eq('done', false).like('title', 'Enviar lembrete à mão%').gte('created_at', new Date(Date.now() - 2 * 86_400_000).toISOString())
+    setPendLembretes(acts || [])
   }, [pipelineId, toast])
   useEffect(() => { load() }, [load])
   useEffect(() => {
@@ -118,6 +123,10 @@ export default function Pipeline() {
   }
 
   const userName = (id) => users.find((u) => u.id === id)?.full_name || ''
+  // some sozinho quando a tarefa é concluída ou 1h depois do horário do encontro
+  const encontroAindaVale = (d) => !d.meeting_date || !d.meeting_time || new Date(`${d.meeting_date}T${String(d.meeting_time).slice(0, 5)}:00-03:00`).getTime() > Date.now() - 3_600_000
+  const lembretePend = (d) => encontroAindaVale(d) && pendLembretes.some((a) => a.deal_id === d.id)
+  const dealsComLembrete = deals.filter(lembretePend)
   const totalOpen = filtered.filter((d) => d.status === 'open').reduce((s, d) => s + Number(d.value), 0)
 
   return (
@@ -140,6 +149,18 @@ export default function Pipeline() {
           <button className="btn primary" onClick={() => setModal({ deal: null, defaults: { pipeline_id: pipelineId } })}>+ Negócio</button>
         </div>
       </div>
+      {dealsComLembrete.length > 0 && (
+        <div className="alert-lembrete" role="alert">
+          <b>⚠ {dealsComLembrete.length === 1 ? 'Um lembrete de encontro não saiu sozinho' : `${dealsComLembrete.length} lembretes de encontro não saíram sozinhos`}</b> (janela de 24h do WhatsApp fechada). Abra o card e envie à mão, o texto pronto está em Atividades:
+          <span className="row wrap" style={{ gap: 6, marginTop: 6 }}>
+            {dealsComLembrete.map((d) => (
+              <button key={d.id} type="button" className="btn sm" onClick={() => openDeal(d)}>
+                {d.contact?.name || d.title}{d.meeting_time ? ` · ${d.meeting_date ? fmtDate(d.meeting_date).slice(0, 5) + ' ' : ''}${String(d.meeting_time).slice(0, 5)}` : ''}
+              </button>
+            ))}
+          </span>
+        </div>
+      )}
 
       {pipeStages.length === 0 ? <Empty title="Nenhuma etapa" text="Configure as etapas deste funil em Configurações → Funis." /> : (
         <div className="kanban" ref={boardRef}>
@@ -171,6 +192,7 @@ export default function Pipeline() {
                         onClick={() => openDeal(d)}>
                         {isUnread(d) && <span className="unread-dot" title="Nova mensagem do lead" aria-label="Nova mensagem" />}
                         <div className="title">{d.title}</div>
+                        {lembretePend(d) && <div className="tag-lembrete" title="O lembrete do encontro não saiu sozinho: envie à mão (texto pronto em Atividades, dentro do card)">⚠ lembrete não enviado</div>}
                         <div className="small muted">{d.contact?.name || '—'}</div>
                         <div className="between" style={{ marginTop: 6 }}>
                           <span className="val">{fmtMoney(d.value, settings.currency)}</span>

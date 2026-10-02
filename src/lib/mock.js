@@ -150,6 +150,7 @@ const db = {
     { id: 'n2', label: 'Comercial', phone_display: '+55 48 98888-0000', phone_number_id: '104857600002', is_default: false, active: true, owner_id: U_ANA, created_at: daysFromNow(-10) },
   ],
   activities: [
+    { id: 'a0', type: 'whatsapp', title: 'Enviar lembrete à mão — Envio do link (15 min antes): Renata Souza — WhatsApp', description: 'O lembrete automático não saiu: fora da janela de 24h do WhatsApp.\n\nSegue link conforme combinado.', due_at: daysFromNow(0, 9), done: false, done_at: null, deal_id: 'w3', contact_id: WC.c3, company_id: null, assigned_to: U_ME, created_by: U_ME, created_at: new Date().toISOString() },
     { id: 'a9', type: 'whatsapp', title: 'Enviar mensagem — Dia 5: Aline Castro — WhatsApp', description: 'Última mensagem por aqui: se quiser retomar depois, é só me chamar. Deixo a porta aberta. 🙂', due_at: daysFromNow(0, 9), done: false, done_at: null, deal_id: 'w5', contact_id: WC.c5, company_id: null, assigned_to: U_ME, created_by: U_ME, created_at: daysFromNow(0, 9) },
     { id: 'a1', type: 'call', title: 'Ligar para alinhar condições de pagamento', description: null, due_at: daysFromNow(0, 11), done: false, done_at: null, deal_id: 'd1', contact_id: C.c1, company_id: E.e1, assigned_to: U_ME, created_by: U_ME, created_at: daysFromNow(-4) },
     { id: 'a2', type: 'task', title: 'Enviar proposta revisada', description: 'Incluir opção de 12x.', due_at: daysFromNow(-1, 15), done: false, done_at: null, deal_id: 'd2', contact_id: C.c2, company_id: E.e2, assigned_to: U_ANA, created_by: U_ANA, created_at: daysFromNow(-6) },
@@ -315,6 +316,8 @@ class Query {
   delete() { this.op = 'delete'; return this }
   eq(k, v) { this.filters.push((r) => r[k] === v); return this }
   neq(k, v) { this.filters.push((r) => r[k] !== v); return this }
+  like(k, pat) { const re = new RegExp('^' + pat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*') + '$'); this.filters.push((r) => re.test(String(r[k] ?? ''))); return this }
+  gte(k, v) { this.filters.push((r) => r[k] >= v); return this }
   order(k, o = {}) { this.orders.push({ k, asc: o.ascending !== false, nullsFirst: o.nullsFirst }); return this }
   limit(n) { this.lim = n; return this }
   single() { this.wantSingle = true; return this }
