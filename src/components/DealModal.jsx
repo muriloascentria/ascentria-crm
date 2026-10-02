@@ -5,6 +5,7 @@ import { ConfirmButton, CustomFieldsForm, Field, Modal, UserSelect } from './ui'
 import { ActivityPanel } from './ActivityPanel'
 import { fmtDateTime, fmtDate } from '../lib/utils'
 import WhatsAppPanel from './WhatsAppPanel'
+import SessaoRegistro from './SessaoRegistro'
 import { daysIn } from '../lib/wa'
 
 /**
@@ -16,6 +17,7 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved, onMar
   const { stages, pipelines, profile, toast, isManager, users, waNumbers } = useApp()
   const [contacts, setContacts] = useState([])
   const [history, setHistory] = useState([])
+  const [aba, setAba] = useState('dados') // 'dados' | 'sessao' (registro da sessão 1:1 de venda)
   const [f, setF] = useState(() => ({
     title: '', value: '', contact_id: '', owner_id: profile.id, expected_close: '', custom: {}, lost_reason: '', wa_number_id: '',
     pipeline_id: defaults.pipeline_id || pipelines.find((p) => p.is_default)?.id || pipelines[0]?.id,
@@ -80,7 +82,7 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved, onMar
         {canMarkUnread && <button className="btn" type="button" onClick={onMarkUnread} title="Volta a bolinha vermelha no card (disponível por 24h após a resposta do lead)"><span className="unread-dot-inline" aria-hidden="true" />Marcar como não lida</button>}
         <span className="grow" />
         <button className="btn" type="button" onClick={onClose}>Cancelar</button>
-        <button className="btn primary" form="dealform">Salvar</button>
+        {aba === 'dados' && <button className="btn primary" form="dealform">Salvar</button>}
       </>}>
       {deal?.id && deal.contact_id && (
         <WhatsAppPanel contactId={deal.contact_id} deal={deal} onSent={onSaved} stageId={f.stage_id}
@@ -99,8 +101,18 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved, onMar
             </div>
           } />
       )}
-      {deal?.id && deal.contact_id && <h3 style={{ marginTop: 8, paddingTop: 14, borderTop: '1px solid var(--border)' }}>Dados do negócio</h3>}
-      <div className={deal?.id ? 'detail-grid' : ''}>
+      {deal?.id && (
+        <div className="tabs" style={{ scrollMarginTop: 16, marginTop: deal.contact_id ? 8 : 0, ...(deal.contact_id ? { paddingTop: 6, borderTop: '1px solid var(--border)' } : {}) }}>
+          <button type="button" className={aba === 'dados' ? 'active' : ''} onClick={() => setAba('dados')}>Dados do negócio</button>
+          <button type="button" className={aba === 'sessao' ? 'active' : ''} onClick={(e) => { setAba('sessao'); const el = e.currentTarget.parentElement; setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0) }}>
+            Registro da sessão{deal.sessao_salva_em ? ' ✓' : ''}
+          </button>
+        </div>
+      )}
+      {deal?.id && aba === 'sessao' && (
+        <SessaoRegistro deal={deal} contato={contato} onSaved={onSaved} onStageChanged={(id) => set('stage_id', id)} />
+      )}
+      <div className={deal?.id ? 'detail-grid' : ''} style={deal?.id && aba !== 'dados' ? { display: 'none' } : undefined}>
         <form id="dealform" onSubmit={save} className="stack" style={{ gap: 12 }}>
           <Field label="Título"><input className="input" value={f.title} onChange={(e) => set('title', e.target.value)} required autoFocus={!deal?.id} /></Field>
           <div className="grid2">

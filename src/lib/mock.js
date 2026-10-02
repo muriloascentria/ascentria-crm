@@ -427,6 +427,19 @@ const functions = {
       }, 2000)
       return { data: { ok: true, id: 'wamid.demo' }, error: null }
     }
+    if (name === 'plat-sessao') {
+      // demo: salva no card e simula a linha no Essência Plat; move a coluna conforme o resultado
+      const d = db.deals.find((x) => x.id === body.deal_id)
+      if (!d) return { data: { ok: false, error: 'Negócio não encontrado.' }, error: null }
+      const r = body.dados || {}
+      const st = db.stages.filter((s) => s.pipeline_id === d.pipeline_id)
+      const destino = r.presenca === 'No-show' ? st.find((s) => s.name === 'Remarcar') : r.resultado === 'Vendido' ? st.find((s) => s.kind === 'won') : r.resultado === 'Não vendido' ? st.find((s) => s.name === 'Perdido apresentado') : null
+      const old = { ...d }
+      Object.assign(d, { sessao_registro: r, plat_sessao_id: d.plat_sessao_id || uid(), sessao_salva_em: now(), sessao_salva_por: session.user.id })
+      const movido = destino && destino.id !== d.stage_id ? destino.name : null
+      if (movido) { d.stage_id = destino.id; beforeWrite('deals', d, old); afterWrite('deals', d, old) }
+      return { data: { ok: true, numero: 128, plat_id: d.plat_sessao_id, movido, salvo_em: d.sessao_salva_em }, error: null }
+    }
     if (name === 'wa-media') {
       // demo: 1 segundo de silêncio em WAV
       const n = 8000, buf = new Uint8Array(44 + n), dv = new DataView(buf.buffer)
