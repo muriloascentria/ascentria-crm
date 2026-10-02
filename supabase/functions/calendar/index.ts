@@ -9,6 +9,8 @@
 //   book    { deal_id, seller_id, event_id } → reserva o bloco: renomeia para "Vendedora | Consultoria | Nome",
 //                             cria o Google Meet e preenche o Encontro confirmado do negócio
 //   release { deal_id }     → desfaz a reserva: o bloco volta a ser "disponível" e o encontro é apagado
+//   files   { deal_id }     → depois da reunião: lê os anexos que o Google Meet coloca no evento
+//                             (gravação, transcrição, anotações do Gemini) e guarda os links no card
 //   transfer { deal_id, from_seller_id, to_seller_id, dry_run? } → passa o encontro para outra vendedora no
 //                             mesmo horário (acha também encontros marcados direto na agenda, pelo nome do lead)
 //
@@ -95,7 +97,7 @@ Deno.serve(async (req) => {
   }
   // O negócio precisa ser visível para quem pede (regras de acesso do banco).
   const dealFor = async (id: string) => {
-    const { data } = await userClient.from('deals').select('id, title, seller_id, calendar_event_id, contact:contacts(name, phone, wa_id)').eq('id', id).maybeSingle()
+    const { data } = await userClient.from('deals').select('id, title, seller_id, calendar_event_id, meeting_date, meeting_time, contact:contacts(name, phone, wa_id)').eq('id', id).maybeSingle()
     if (!data) throw new Error('Negócio não encontrado.')
     return data as any
   }
@@ -181,6 +183,41 @@ Deno.serve(async (req) => {
       }
       await admin.from('deals').update({ calendar_event_id: null, meeting_date: null, meeting_time: null, meeting_link: null }).eq('id', deal.id)
       return json({ ok: true })
+    }
+
+    if (b.action === 'files') {
+      const deal = await dealFor(b.deal_id)
+      const nome = deal.contact?.name || deal.title
+      // 1) o evento reservado pelo CRM, na agenda da vendedora
+      let ev: any = null
+      if (deal.calendar_event_id && deal.seller_id) {
+        const s = await seller(deal.seller_id).catch(() => null)
+        if (s) ev = await gcal(await googleToken(sa, s.email), `/${encodeURIComponent(deal.calendar_event_id)}`).catch(() => null)
+      }
+      // 2) encontro marcado direto na agenda: procura pelo nome do lead no dia da reunião, em todas as vendedoras
+      if (!ev && deal.meeting_date) {
+        const words = norm(nome).split(' ').filter((w) => w.length > 2)
+        const key = (w: string) => w.replace(/Z/g, 'S')
+        const ini = new Date(`${deal.meeting_date}T00:00:00-03:00`).toISOString()
+        const fim = new Date(`${deal.meeting_date}T23:59:59-03:00`).toISOString()
+        const { data: list } = await admin.from('calendar_sellers').select('id, email').eq('active', true)
+        for (const s of list ?? []) {
+          const r = await gcal(await googleToken(sa, s.email), `?singleEvents=true&timeMin=${encodeURIComponent(ini)}&timeMax=${encodeURIComponent(fim)}`).catch(() => null)
+          ev = (r?.items ?? []).find((e: any) => e.status !== 'cancelled' && norm(e.summary) !== norm(TITLE)
+            && words.filter((w) => key(norm(`${e.summary} ${e.description ?? ''}`)).includes(key(w))).length >= Math.min(2, words.length))
+          if (ev) break
+        }
+      }
+      if (!ev) {
+        await admin.from('deals').update({ meeting_files_checked_at: new Date().toISOString() }).eq('id', deal.id)
+        return json({ ok: true, files: [], found_event: false })
+      }
+      const tipo = (a: any) => /^video\//.test(a.mimeType || '') ? 'gravacao'
+        : /transcri/i.test(a.title || '') ? 'transcricao'
+        : /anota|notes|gemini/i.test(a.title || '') ? 'anotacoes' : 'arquivo'
+      const files = (ev.attachments ?? []).map((a: any) => ({ kind: tipo(a), title: a.title || 'Arquivo', url: a.fileUrl, mime: a.mimeType || null }))
+      await admin.from('deals').update({ meeting_files: files, meeting_files_checked_at: new Date().toISOString() }).eq('id', deal.id)
+      return json({ ok: true, files, found_event: true })
     }
 
     if (b.action === 'transfer') {

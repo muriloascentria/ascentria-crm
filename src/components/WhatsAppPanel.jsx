@@ -445,6 +445,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
             : 'Preencha depois que o lead escolher o horário: o dia e a hora entram sozinhos em todas as mensagens prontas.'}
         </div>
       </div>
+      {deal?.id && <MeetingFiles deal={deal} />}
      </div>
     </div>
   )
@@ -485,6 +486,50 @@ function MediaContent({ m }) {
       {media && m.type === 'document' && <a href={media.url} target="_blank" rel="noreferrer">📄 Abrir documento</a>}
       {err && <div className="small late">{err}</div>}
       {caption && <div style={{ whiteSpace: 'pre-wrap' }}>{caption}</div>}
+    </div>
+  )
+}
+
+const FILE_LABEL = { gravacao: '🎥 Gravação', transcricao: '📝 Transcrição', anotacoes: '✨ Anotações do Gemini', arquivo: '📎 Arquivo' }
+
+/** Depois da reunião: links da gravação, transcrição e anotações que o Google Meet anexa ao evento da agenda. */
+function MeetingFiles({ deal }) {
+  const [files, setFiles] = useState(Array.isArray(deal.meeting_files) ? deal.meeting_files : [])
+  const [checkedAt, setCheckedAt] = useState(deal.meeting_files_checked_at || null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const inicio = deal.meeting_date && deal.meeting_time ? new Date(`${deal.meeting_date}T${String(deal.meeting_time).slice(0, 5)}:00-03:00`).getTime() : null
+  const passou = inicio && Date.now() > inicio + 20 * 60_000
+  const buscar = useCallback(async () => {
+    setBusy(true); setErr('')
+    try {
+      const r = await callCalendar('files', { deal_id: deal.id })
+      setFiles(r.files || []); setCheckedAt(new Date().toISOString())
+      if (!r.found_event) setErr('Não achei o evento desta reunião na agenda das vendedoras.')
+    } catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }, [deal.id])
+  // ao abrir o card depois da reunião: busca sozinho (no máximo a cada 30 min) enquanto os arquivos não aparecem
+  useEffect(() => {
+    if (passou && !files.length && (!checkedAt || Date.now() - new Date(checkedAt).getTime() > 30 * 60_000)) buscar()
+  }, [deal.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (!passou) return null
+  return (
+    <div className="card" style={{ padding: 10, background: 'var(--surface-2, #f6f5f1)' }}>
+      <div className="between" style={{ gap: 8 }}>
+        <div className="small" style={{ fontWeight: 600 }}>🎥 Reunião gravada</div>
+        <button type="button" className="btn ghost sm" onClick={buscar} disabled={busy}>{busy ? 'Buscando…' : '↻ Buscar na agenda'}</button>
+      </div>
+      {files.length > 0 ? (
+        <div className="stack" style={{ gap: 4, marginTop: 6 }}>
+          {files.map((f, i) => <a key={i} className="small" href={f.url} target="_blank" rel="noreferrer">{FILE_LABEL[f.kind] || FILE_LABEL.arquivo}: {f.title}</a>)}
+        </div>
+      ) : (
+        <div className="small muted" style={{ marginTop: 4 }}>
+          {busy ? 'Procurando a gravação e a transcrição no evento da agenda…'
+            : 'Ainda não há gravação nem transcrição no evento da agenda. O Google costuma anexar alguns minutos (às vezes horas) depois da reunião, se ela foi gravada ou transcrita no Meet.'}
+        </div>
+      )}
+      {err && <div className="small late" style={{ marginTop: 4 }}>{err}</div>}
     </div>
   )
 }
