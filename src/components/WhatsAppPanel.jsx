@@ -197,6 +197,13 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
   const sequencia = quick.filter((q) => !SITUATIONAL_STAGES.includes(q.stage)).sort((a, b) => (ORDEM_ETAPA[a.stage] || 9) - (ORDEM_ETAPA[b.stage] || 9) || a.position - b.position)
   const proxima = sequencia.find((q) => !enviadaEm(q))
   const totalEnviadas = sequencia.filter((q) => enviadaEm(q)).length
+  // chave Pix vai para a caixa de mensagem (no fim do que já estiver escrito); a vendedora só envia
+  const inserirPix = () => {
+    const chave = String(settings?.pix_key || '').trim()
+    if (!chave) return
+    setMode('text')
+    setText((t) => (t.trim() ? `${t.replace(/\s+$/, '')}\n${chave}` : chave))
+  }
   const abrirMensagens = () => {
     // Ao abrir, a lista já vai para a etapa da próxima mensagem.
     // Card na coluna "Remarcar": abre direto nas mensagens de Remarcação.
@@ -292,6 +299,10 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
           {mode === 'interactive' && <button type="button" className="active">Pergunta com opções</button>}
           {mode === 'sequence' && <button type="button" className="active">Sequência · {seq.parts.length} mensagens</button>}
           <span className="grow" />
+          {settings?.pix_key && (
+            <button type="button" onClick={inserirPix} disabled={deal && !win}
+              title={deal && !win ? 'Texto livre só dentro das 24h após a última mensagem do lead' : 'Coloca a chave Pix na caixa de mensagem'}>💠 Chave Pix</button>
+          )}
           <button type="button" onClick={abrirMensagens} disabled={deal && !win} title={deal && !win ? 'Mensagens prontas só dentro das 24h após a última mensagem do lead' : 'Escolher uma mensagem pronta'}>⚡ Mensagens prontas</button>
         </div>
         {mode === 'sequence' ? (

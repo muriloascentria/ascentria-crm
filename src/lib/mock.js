@@ -31,7 +31,7 @@ const db = {
     { id: 'cs2', name: 'Fernanda', email: 'fernanda@ascentria.com.br', active: true, position: 2 },
     { id: 'cs3', name: 'Juliana', email: 'juliana@ascentria.com.br', active: true, position: 3 },
   ],
-  org_settings: [{
+  org_settings: [{ pix_key: '59424703000190',
     id: 1, company_name: 'Ascentria', slot_title: 'DISPONÍVEL PARA AGENDAMENTO', logo_url: null, primary_color: '#2e381a', accent_color: '#ab6f30', currency: 'BRL', seller_visibility: 'all',
     wa_phone_display: '+55 48 99999-0000', wa_connected: true, wa_last_event_at: daysFromNow(0, 8), labels: { contacts: 'Contatos', companies: 'Empresas', deals: 'Negócios', pipeline: 'Funil', activities: 'Atividades', dashboard: 'Painel' }, updated_at: now(),
   }],

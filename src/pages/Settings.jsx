@@ -526,6 +526,28 @@ function FieldForm({ initial, onClose, onSaved }) {
 // ---------------------------------------------------------------------------------------------
 // Mensagens prontas (enviadas manualmente no painel de conversa)
 // ---------------------------------------------------------------------------------------------
+function PixKey() {
+  const { settings, reload, toast } = useApp()
+  const [pix, setPix] = useState(settings?.pix_key || '')
+  const salvar = async () => {
+    const v = pix.trim()
+    if (v === (settings?.pix_key || '')) return
+    const { error } = await supabase.from('org_settings').update({ pix_key: v || null }).eq('id', 1)
+    if (error) return toast(error.message, 'err')
+    toast(v ? 'Chave Pix salva' : 'Chave Pix removida'); reload()
+  }
+  return (
+    <div className="card stack" style={{ gap: 8 }}>
+      <div style={{ fontWeight: 600 }}>💠 Chave Pix</div>
+      <div className="small muted">No painel de conversa, o botão "Chave Pix" coloca este texto na caixa de mensagem para a vendedora só enviar. Deixe em branco para esconder o botão.</div>
+      <div className="row" style={{ gap: 8 }}>
+        <input className="input grow" value={pix} onChange={(e) => setPix(e.target.value)} placeholder="CNPJ, e-mail, telefone ou chave aleatória" />
+        <button className="btn primary" type="button" onClick={salvar}>Salvar</button>
+      </div>
+    </div>
+  )
+}
+
 function QuickReplies() {
   const { toast } = useApp()
   const [list, setList] = useState([])
@@ -540,6 +562,7 @@ function QuickReplies() {
   }
   return (
     <div className="stack" style={{ gap: 12 }}>
+      <PixKey />
       <div className="between wrap">
         <p className="small muted" style={{ margin: 0 }}>Mensagens salvas para enviar com um clique no painel de conversa (botão ⚡). Com opções, o lead recebe botões (até 3) ou uma lista (até 10). Só podem ser enviadas dentro das 24h após a última mensagem do lead. Use {'{{primeiro_nome}}'} para o nome. Uma linha só com --- separa mensagens que saem em sequência.</p>
         <button className="btn primary" onClick={() => setEditing({ position: list.length })}>+ Mensagem pronta</button>
