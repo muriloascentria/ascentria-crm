@@ -29,7 +29,7 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved, onMar
   const curStage = stages.find((s) => s.id === f.stage_id)
 
   useEffect(() => {
-    supabase.from('contacts').select('id,name,phone,wa_id').order('name').then(({ data }) => setContacts(data || []))
+    supabase.from('contacts').select('id,name,phone,wa_id,marketing_opt_out,opt_out_at,opt_out_motivo,optin').order('name').then(({ data }) => setContacts(data || []))
     if (deal?.id) supabase.from('deal_stage_history').select('*').eq('deal_id', deal.id).order('changed_at', { ascending: false }).then(({ data }) => setHistory(data || []))
   }, [deal?.id])
 
@@ -92,6 +92,16 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved, onMar
               <div className="grow" style={{ minWidth: 0 }}>
                 <div className="deal-head-name">{contato?.name || f.title}</div>
                 {fone && <div className="small muted">{fone}</div>}
+                <div className="row wrap" style={{ gap: 4, marginTop: 2 }}>
+                  {contato?.marketing_opt_out && (
+                    <span className="tag-contrato no" title={`Não recebe mensagens automáticas de marketing${contato.opt_out_motivo ? ` · ${contato.opt_out_motivo}` : ''}${contato.opt_out_at ? ` · desde ${fmtDate(contato.opt_out_at)}` : ''}`}>🚫 não recebe marketing</span>
+                  )}
+                  {contato?.optin && (
+                    <span className="tag-contrato" title={contato.optin.texto ? `Texto que o lead viu: "${contato.optin.texto}"` : ''}>
+                      ✅ autorizou{contato.optin.canal ? ` · ${contato.optin.canal}` : ''}{contato.optin.em ? ` · ${fmtDate(contato.optin.em)}` : ''}
+                    </span>
+                  )}
+                </div>
               </div>
               <label className="small stack" style={{ gap: 2 }}>Coluna
                 <select className="select" value={f.stage_id || ''} onChange={(e) => moverPara(e.target.value)} aria-label="Mover para a coluna" style={{ width: 'auto', minWidth: 170 }}>
