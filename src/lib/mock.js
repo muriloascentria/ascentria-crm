@@ -427,6 +427,13 @@ const functions = {
       }, 2000)
       return { data: { ok: true, id: 'wamid.demo' }, error: null }
     }
+    if (name === 'contrato') {
+      const d = db.deals.find((x) => x.id === body.deal_id)
+      if (!d) return { data: { ok: false, error: 'Negócio não encontrado.' }, error: null }
+      if (body.action === 'assinado') { d.contrato_status = body.desfazer ? 'gerado' : 'assinado'; return { data: { ok: true }, error: null } }
+      Object.assign(d, { contrato: body.dados, contrato_url: 'https://docs.google.com/document/d/demo/edit', contrato_status: 'gerado', contrato_gerado_em: now() })
+      return { data: { ok: true, url: d.contrato_url }, error: null }
+    }
     if (name === 'plat-sessao') {
       // demo: salva no card e simula a linha no Essência Plat; move a coluna conforme o resultado
       const d = db.deals.find((x) => x.id === body.deal_id)

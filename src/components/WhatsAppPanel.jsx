@@ -1,3 +1,4 @@
+import ContratoModal from './ContratoModal'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../lib/store'
@@ -197,6 +198,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
   const sequencia = quick.filter((q) => !SITUATIONAL_STAGES.includes(q.stage)).sort((a, b) => (ORDEM_ETAPA[a.stage] || 9) - (ORDEM_ETAPA[b.stage] || 9) || a.position - b.position)
   const proxima = sequencia.find((q) => !enviadaEm(q))
   const totalEnviadas = sequencia.filter((q) => enviadaEm(q)).length
+  const [contratoAberto, setContratoAberto] = useState(false)
   // chave Pix vai para a caixa de mensagem (no fim do que já estiver escrito); a vendedora só envia
   const inserirPix = () => {
     const chave = String(settings?.pix_key || '').trim()
@@ -299,6 +301,11 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
           {mode === 'interactive' && <button type="button" className="active">Pergunta com opções</button>}
           {mode === 'sequence' && <button type="button" className="active">Sequência · {seq.parts.length} mensagens</button>}
           <span className="grow" />
+          {deal?.id && (deal.meeting_date || deal.contrato_url) && (
+            <button type="button" onClick={() => setContratoAberto(true)} title="Gerar o contrato da Mentoria Essência para este lead">
+              📄 Contrato{deal.contrato_status === 'assinado' ? ' ✓' : deal.contrato_url ? ' •' : ''}
+            </button>
+          )}
           {settings?.pix_key && (
             <button type="button" onClick={inserirPix} disabled={deal && !win}
               title={deal && !win ? 'Texto livre só dentro das 24h após a última mensagem do lead' : 'Coloca a chave Pix na caixa de mensagem'}>💠 Chave Pix</button>
@@ -457,6 +464,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
         </div>
       </div>
       {deal?.id && <MeetingFiles deal={deal} />}
+      {contratoAberto && <ContratoModal deal={deal} onClose={() => setContratoAberto(false)} onSaved={onSent} />}
      </div>
     </div>
   )

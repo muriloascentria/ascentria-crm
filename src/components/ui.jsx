@@ -2,14 +2,15 @@ import { useEffect } from 'react'
 import { useApp } from '../lib/store'
 import { initials } from '../lib/utils'
 
-export function Modal({ title, onClose, children, footer, wide }) {
+export function Modal({ title, onClose, children, footer, wide, stack }) {
+  // stack: janela aberta por cima de outra (ex.: contrato por cima do card) — o Esc fecha só a de cima
   useEffect(() => {
-    const h = (e) => e.key === 'Escape' && onClose?.()
-    window.addEventListener('keydown', h)
-    return () => window.removeEventListener('keydown', h)
-  }, [onClose])
+    const h = (e) => { if (e.key !== 'Escape') return; if (stack) e.stopImmediatePropagation(); onClose?.() }
+    window.addEventListener('keydown', h, !!stack)
+    return () => window.removeEventListener('keydown', h, !!stack)
+  }, [onClose, stack])
   return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
+    <div className={'overlay' + (stack ? ' overlay-stack' : '')} onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
       <div className={'modal' + (wide ? ' wide' : '') + (wide === 'x' ? ' xwide' : '')} role="dialog" aria-modal="true">
         <div className="modal-head">
           <h2>{title}</h2>
