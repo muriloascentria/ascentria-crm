@@ -4,17 +4,20 @@
 //   gerar    { deal_id, dados } → copia o modelo (Google Docs) para o Drive da vendedora, troca os campos
 //                                {{...}} pelos dados do lead (valores também por extenso), tira o destaque
 //                                amarelo dos campos e guarda o link no card.
-//   assinado { deal_id }        → marca o contrato como assinado e leva o link para o registro da sessão
+//                                Com AUTENTIQUE_TOKEN: gera o PDF e envia para assinatura na Autentique
+//                                (Murilo + lead, por e-mail); a Autentique avisa o CRM pela função autentique-webhook.
+//   status   { deal_id }        → consulta na Autentique quem já assinou (se o aviso não tiver chegado)
+//   assinado { deal_id }        → marca o contrato como assinado à mão e leva o link para o registro da sessão
 //                                (e para o "Link do contrato" no Essência Plat, se a sessão já estiver lá).
 //
-// As assinaturas são pedidas pela vendedora no próprio Google Docs (Ferramentas → Assinatura eletrônica):
-// o Google não oferece API para disparar esse pedido.
+// Sem AUTENTIQUE_TOKEN, as assinaturas são pedidas à mão no Google Docs (Ferramentas → Assinatura eletrônica).
 //
 // Conta de serviço do Google (a mesma da agenda), com delegação em todo o domínio e os escopos
 // drive + documents. Secret: GOOGLE_SERVICE_ACCOUNT_JSON
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { cors, json } from '../_shared/wa.ts'
 import { platClient } from '../_shared/plat.ts'
+import { aplicarAndamento, apagarDocumento, autentiqueOn, buscarDocumento, criarDocumento, resumo } from '../_shared/autentique.ts'
 
 const SCOPES = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents'
 const DRIVE = 'https://www.googleapis.com/drive/v3/files'
@@ -126,7 +129,7 @@ Deno.serve(async (req) => {
   const b = await req.json().catch(() => ({}))
   // o negócio é lido com as permissões de quem pede
   const { data: deal } = await userClient.from('deals')
-    .select('id, title, seller_id, contrato_doc_id, contrato_url, contrato_status, sessao_registro, plat_sessao_id, seller:calendar_sellers(name, email)')
+    .select('id, title, seller_id, contrato_doc_id, contrato_url, contrato_status, contrato_autentique_id, sessao_registro, plat_sessao_id, seller:calendar_sellers(name, email)')
     .eq('id', String(b.deal_id ?? '')).maybeSingle()
   if (!deal) return json({ ok: false, error: 'Negócio não encontrado.' })
   const d: any = deal
@@ -144,6 +147,14 @@ Deno.serve(async (req) => {
       const { error } = await userClient.from('deals').update(patch).eq('id', d.id)
       if (error) return json({ ok: false, error: error.message })
       return json({ ok: true, status: patch.contrato_status })
+    }
+
+    if (b.action === 'status') {
+      if (!d.contrato_autentique_id) return json({ ok: false, error: 'Este contrato não foi enviado pela Autentique.' })
+      const doc = await buscarDocumento(d.contrato_autentique_id)
+      if (!doc) return json({ ok: false, error: 'Documento não encontrado na Autentique.' })
+      const r = await aplicarAndamento(admin, d.id, doc)
+      return json({ ok: true, ...r })
     }
 
     if (b.action !== 'gerar') return json({ ok: false, error: 'Ação desconhecida' }, 400)
@@ -235,15 +246,41 @@ Deno.serve(async (req) => {
     const url = doc.webViewLink || `https://docs.google.com/document/d/${doc.id}/edit`
     const agora = new Date().toISOString()
     const dados = { ...x, nome, data: dataIso, vigencia_inicio: ini, vigencia_fim: fim, dono }
-    const { error: uErr } = await userClient.from('deals').update({
+    const signatario = String(st?.contract_signer_email || 'murilo@ascentria.com.br')
+    const patch: Record<string, unknown> = {
       contrato: dados, contrato_doc_id: doc.id, contrato_url: url, contrato_status: 'gerado', contrato_gerado_em: agora, contrato_assinado_em: null,
-    }).eq('id', d.id)
+      contrato_autentique_id: null, contrato_assinaturas: null, contrato_pdf_url: null,
+    }
+
+    // envio automático para assinatura (Autentique): PDF do contrato → Murilo + lead recebem o e-mail na hora
+    let envio: string | null = null, erroEnvio: string | null = null
+    const emailLead = txt(x.email, 200).toLowerCase()
+    if (autentiqueOn() && b.enviar !== false) {
+      try {
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emailLead)) throw new Error('Informe um e-mail válido do lead para a assinatura.')
+        // o contrato anterior que ainda não foi assinado é cancelado na Autentique (o lead não assina a versão velha)
+        if (d.contrato_autentique_id && d.contrato_status !== 'assinado') await apagarDocumento(d.contrato_autentique_id).catch(() => null)
+        const pdfRes = await fetch(`${DRIVE}/${doc.id}/export?mimeType=application/pdf`, { headers: { Authorization: `Bearer ${tk}` } })
+        if (!pdfRes.ok) throw new Error('Não consegui gerar o PDF do contrato (Google ' + pdfRes.status + ').')
+        const pdf = new Uint8Array(await pdfRes.arrayBuffer())
+        const criado = await criarDocumento(pdf, titulo, [
+          { email: signatario, name: 'Murilo Pedroso Alves' },
+          { email: emailLead, name: nome },
+        ], `Olá! Segue o contrato da Mentoria Essência para assinatura eletrônica. Qualquer dúvida, é só responder pelo WhatsApp. — Ascentria`)
+        const r = resumo(criado)
+        Object.assign(patch, { contrato_autentique_id: criado.id, contrato_status: 'enviado', contrato_assinaturas: r.assinaturas })
+        envio = criado.id
+      } catch (e) { erroEnvio = (e as Error).message }
+    }
+
+    const { error: uErr } = await userClient.from('deals').update(patch).eq('id', d.id)
     if (uErr) return json({ ok: false, error: 'O contrato foi criado, mas não consegui salvar no card: ' + uErr.message, url })
     await admin.from('activities').insert({
-      type: 'note', title: 'Contrato gerado', description: `${titulo}\n${url}`,
+      type: 'note', title: envio ? 'Contrato gerado e enviado para assinatura (Autentique)' : 'Contrato gerado',
+      description: `${titulo}\n${url}${envio ? `\nAssinam: ${signatario} e ${emailLead}` : ''}`,
       deal_id: d.id, done: true, done_at: agora, created_by: user.id, assigned_to: user.id,
     })
-    return json({ ok: true, url, doc_id: doc.id, dono, signatario_contratado: st?.contract_signer_email || 'murilo@ascentria.com.br' })
+    return json({ ok: true, url, doc_id: doc.id, dono, signatario_contratado: signatario, enviado: !!envio, erro_envio: erroEnvio, assinaturas: patch.contrato_assinaturas })
   } catch (e) {
     console.error('contrato', (e as Error).message)
     return json({ ok: false, error: (e as Error).message })

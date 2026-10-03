@@ -40,13 +40,14 @@ function Copiar({ label, valor }) {
 
 /**
  * Contrato da Mentoria Essência: a vendedora preenche os dados do lead, o CRM cria o contrato no Google Docs
- * (Drive dela) e abre numa nova aba para pedir as assinaturas pelo Google Assinaturas (Murilo + lead).
+ * (Drive dela), gera o PDF e envia para assinatura pela Autentique (Murilo + lead, por e-mail).
+ * A Autentique avisa o CRM a cada assinatura; quando todos assinam, o card fica "assinado".
  */
 export default function ContratoModal({ deal, contato, onClose, onSaved }) { // contato opcional: { name }
   const { settings, toast } = useApp()
   const signatario = settings?.contract_signer_email || 'murilo@ascentria.com.br'
   const salvo = deal.contrato || null
-  const [estado, setEstado] = useState({ url: deal.contrato_url, status: deal.contrato_status, em: deal.contrato_gerado_em })
+  const [estado, setEstado] = useState({ url: deal.contrato_url, status: deal.contrato_status, em: deal.contrato_gerado_em, assinaturas: deal.contrato_assinaturas || null, pdf: deal.contrato_pdf_url || null, autentique: !!deal.contrato_autentique_id })
   const [busy, setBusy] = useState(false)
   const [erro, setErro] = useState('')
   const [f, setF] = useState(() => {
@@ -77,9 +78,6 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
   const gerar = async (e) => {
     e.preventDefault()
     setErro('')
-    // a aba é aberta já no clique (senão o navegador bloqueia) e recebe o endereço quando o contrato fica pronto
-    const aba = window.open('', '_blank')
-    if (aba) aba.document.write('<p style="font-family:sans-serif;padding:24px">Gerando o contrato no Google Docs…</p>')
     setBusy(true)
     try {
       // parcela em branco: usa a conta (total − entrada ÷ parcelas)
@@ -87,24 +85,36 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
       const r = await chamar({ action: 'gerar', deal_id: deal.id, dados })
       // e-mail do lead fica salvo no contato para as próximas vezes
       if (f.email && deal.contact_id) await supabase.from('contacts').update({ email: f.email.trim() }).eq('id', deal.contact_id)
-      setEstado({ url: r.url, status: 'gerado', em: new Date().toISOString() })
-      if (aba) aba.location.href = r.url
-      toast('Contrato gerado no Google Docs')
+      setEstado({ url: r.url, status: r.enviado ? 'enviado' : 'gerado', em: new Date().toISOString(), assinaturas: r.assinaturas || null, pdf: null, autentique: !!r.enviado })
+      if (r.enviado) toast('Contrato enviado para assinatura (Murilo e lead)')
+      else if (r.erro_envio) { setErro('O contrato foi gerado, mas não foi enviado para assinatura: ' + r.erro_envio); toast('Contrato gerado, mas o envio falhou', 'err') }
+      else toast('Contrato gerado no Google Docs')
       onSaved?.()
     } catch (err) {
-      aba?.close()
       setErro(err.message); toast(err.message, 'err')
     } finally { setBusy(false) }
+  }
+  const atualizar = async () => {
+    setBusy(true)
+    try {
+      const r = await chamar({ action: 'status', deal_id: deal.id })
+      setEstado((s) => ({ ...s, status: r.status, assinaturas: r.assinaturas, pdf: r.pdf || s.pdf }))
+      onSaved?.()
+    } catch (err) { toast(err.message, 'err') } finally { setBusy(false) }
   }
   const marcarAssinado = async (desfazer) => {
     setBusy(true)
     try {
       await chamar({ action: 'assinado', deal_id: deal.id, desfazer })
-      setEstado((s) => ({ ...s, status: desfazer ? 'gerado' : 'assinado' }))
+      setEstado((s) => ({ ...s, status: desfazer ? (s.autentique ? 'enviado' : 'gerado') : 'assinado' }))
       toast(desfazer ? 'Contrato voltou para "aguardando assinatura"' : 'Contrato marcado como assinado')
       onSaved?.()
     } catch (err) { toast(err.message, 'err') } finally { setBusy(false) }
   }
+  const titulo = estado.status === 'assinado' ? '✅ Contrato assinado por todos'
+    : estado.status === 'recusado' ? '⛔ O contrato foi recusado'
+    : estado.status === 'enviado' ? '📨 Enviado para assinatura — aguardando'
+    : '✍️ Contrato gerado — ainda não enviado para assinatura'
 
   return (
     <Modal stack wide title="📄 Contrato — Mentoria Essência" onClose={onClose}
@@ -112,27 +122,39 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
         <span className="grow" />
         <button className="btn" type="button" onClick={onClose}>Fechar</button>
         <button className="btn primary" form="contratoform" disabled={busy || estado.status === 'assinado'}>
-          {busy ? 'Gerando…' : estado.url ? 'Gerar de novo com estes dados' : 'Gerar contrato'}
+          {busy ? 'Enviando…' : estado.url ? 'Corrigir e reenviar' : 'Gerar e enviar para assinatura'}
         </button>
       </>}>
       {estado.url && (
         <div className="card stack" style={{ gap: 8, marginBottom: 14, background: 'var(--surface-2)' }}>
           <div className="between wrap" style={{ gap: 8 }}>
             <div>
-              <b>{estado.status === 'assinado' ? '✅ Contrato assinado' : '✍️ Contrato gerado — falta pedir as assinaturas'}</b>
+              <b>{titulo}</b>
               {estado.em && <div className="small muted">Gerado em {fmtDateTime(estado.em)}</div>}
             </div>
-            <a className="btn sm" href={estado.url} target="_blank" rel="noreferrer">Abrir contrato ↗</a>
+            <div className="row" style={{ gap: 6 }}>
+              {estado.pdf && <a className="btn sm primary" href={estado.pdf} target="_blank" rel="noreferrer">PDF assinado ↗</a>}
+              <a className="btn sm" href={estado.url} target="_blank" rel="noreferrer">Ver contrato ↗</a>
+              {estado.autentique && estado.status !== 'assinado' && <button type="button" className="btn ghost sm" onClick={atualizar} disabled={busy}>↻ Atualizar</button>}
+            </div>
           </div>
-          {estado.status !== 'assinado' && (
+          {estado.autentique && (estado.assinaturas || []).map((a, i) => (
+            <div key={i} className="small">
+              {a.assinado_em ? '✅' : a.recusado_em ? '⛔' : a.visto_em ? '👀' : '⏳'} <b>{a.nome || a.email}</b> <span className="muted">{a.email}</span>
+              {' — '}{a.assinado_em ? `assinou em ${fmtDateTime(a.assinado_em)}` : a.recusado_em ? `recusou em ${fmtDateTime(a.recusado_em)}` : a.visto_em ? 'abriu, ainda não assinou' : 'aguardando'}
+            </div>
+          ))}
+          {estado.status === 'enviado' && <div className="small muted">O e-mail da Autentique já foi para os dois. Este quadro se atualiza sozinho quando cada um assinar.</div>}
+          {!estado.autentique && estado.status !== 'assinado' && (
             <>
-              <div className="small">No contrato aberto: <b>Ferramentas → Assinatura eletrônica → Solicitar assinatura</b>, coloque os dois e-mails abaixo e envie.</div>
+              <div className="small">Para pedir as assinaturas pelo Google: no contrato, <b>Ferramentas → Assinatura eletrônica → Solicitar assinatura</b>, com os dois e-mails abaixo.</div>
               <Copiar label="Signatário 1" valor={signatario} />
               <Copiar label="Signatário 2" valor={f.email} />
               <div><button type="button" className="btn ghost sm" onClick={() => marcarAssinado(false)} disabled={busy}>✓ Marcar como assinado</button></div>
             </>
           )}
-          {estado.status === 'assinado' && <div><button type="button" className="btn ghost sm" onClick={() => marcarAssinado(true)} disabled={busy}>Desfazer "assinado"</button></div>}
+          {estado.status === 'assinado' && !estado.autentique && <div><button type="button" className="btn ghost sm" onClick={() => marcarAssinado(true)} disabled={busy}>Desfazer "assinado"</button></div>}
+          {estado.url && estado.status !== 'assinado' && <div className="small muted">Precisa corrigir algo? Ajuste os campos abaixo e clique em "Corrigir e reenviar": o envio anterior é cancelado e um novo vai para os dois.</div>}
         </div>
       )}
       <form id="contratoform" onSubmit={gerar} className="stack" style={{ gap: 12 }}>
@@ -182,7 +204,7 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
           </div>
         </div>
         {erro && <div className="small late">{erro}</div>}
-        <div className="small muted">Ao gerar, o contrato é criado no Google Drive da vendedora (pasta "Contratos eCRM") e abre numa nova aba. Assinam o Murilo ({signatario}) e o lead.</div>
+        <div className="small muted">Ao enviar, o contrato é criado no Google Drive da vendedora (pasta "Contratos eCRM") e vai por e-mail, pela Autentique, para o Murilo ({signatario}) e para o lead assinarem.</div>
       </form>
     </Modal>
   )
