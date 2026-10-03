@@ -56,7 +56,8 @@ export async function apagarDocumento(id: string) {
 
 /** Resumo para o card: quem já assinou, se alguém recusou e o PDF assinado. */
 export function resumo(doc: any) {
-  const sigs = (doc?.signatures ?? []).filter((s: any) => !s.action || s.action.name === 'SIGN')
+  // só quem precisa assinar (a conta que criou o documento aparece na lista, mas não assina)
+  const sigs = (doc?.signatures ?? []).filter((s: any) => s.action?.name === 'SIGN')
   const assinaturas = sigs.map((s: any) => ({
     nome: s.name || null, email: s.email || null,
     assinado_em: s.signed?.created_at ?? null, recusado_em: s.rejected?.created_at ?? null, visto_em: s.viewed?.created_at ?? null,
