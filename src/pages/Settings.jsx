@@ -103,6 +103,7 @@ function Pipelines() {
   }
   const setDailyLimit = async (m) => { await supabase.from('pipelines').update({ daily_limit: Number(m) }).eq('id', sel); reload() }
   const setArchiveMonths = async (m) => { await supabase.from('pipelines').update({ archive_months: Number(m) }).eq('id', sel); reload() }
+  const setReactivate = async (on) => { await supabase.from('pipelines').update({ reactivate_enabled: on }).eq('id', sel); reload() }
   const setReactivateTo = async (v) => { await supabase.from('pipelines').update({ reactivate_to_pipeline_id: v || null }).eq('id', sel); reload() }
   const removePipeline = async () => {
     const { error } = await supabase.from('pipelines').delete().eq('id', sel)
@@ -158,11 +159,18 @@ function Pipelines() {
           </div>
           <p className="small muted">Etapas do tipo <b>Ganho</b> e <b>Perdido</b> fecham o negócio automaticamente ao receber um card. A probabilidade alimenta a previsão ponderada do painel. O botão <b>⚙</b> define a função da coluna na sequência de WhatsApp (dia, responsivo, perdido temporário, reativar), a mensagem do dia e o avanço automático.</p>
           {draft.some((s) => s.role === 'archived') && (
-            <div className="row small wrap"><span>Leads nas colunas de perdido, após</span><input className="input" type="number" min="1" defaultValue={pipe.archive_months ?? 4} onBlur={(e) => Number(e.target.value) !== pipe.archive_months && setArchiveMonths(e.target.value)} style={{ width: 70 }} /><span>meses, vão para</span>
-              <select className="select" style={{ width: 'auto' }} value={pipe.reactivate_to_pipeline_id || ''} onChange={(e) => setReactivateTo(e.target.value)}>
-                <option value="">o Dia 1 deste funil</option>
-                {pipelines.filter((p) => p.id !== pipe.id && stages.some((s) => s.pipeline_id === p.id && s.role === 'day')).map((p) => <option key={p.id} value={p.id}>o Dia 1 do funil {p.name}</option>)}
-              </select>
+            <div className="row small wrap">
+              <label className="check" title="Reenviar marketing para quem não respondeu costuma gerar bloqueios e denúncias no WhatsApp (risco de a Meta desativar a conta)">
+                <input type="checkbox" checked={!!pipe.reactivate_enabled} onChange={(e) => setReactivate(e.target.checked)} /> Reativar sozinho os leads perdidos
+              </label>
+              {pipe.reactivate_enabled ? (<>
+                <span>após</span><input className="input" type="number" min="1" defaultValue={pipe.archive_months ?? 4} onBlur={(e) => Number(e.target.value) !== pipe.archive_months && setArchiveMonths(e.target.value)} style={{ width: 70 }} /><span>meses, indo para</span>
+                <select className="select" style={{ width: 'auto' }} value={pipe.reactivate_to_pipeline_id || ''} onChange={(e) => setReactivateTo(e.target.value)}>
+                  <option value="">o Dia 1 deste funil</option>
+                  {pipelines.filter((p) => p.id !== pipe.id && stages.some((s) => s.pipeline_id === p.id && s.role === 'day')).map((p) => <option key={p.id} value={p.id}>o Dia 1 do funil {p.name}</option>)}
+                </select>
+                <span className="late">⚠ risco de bloqueio do WhatsApp</span>
+              </>) : <span className="muted">(desligado: quem vai para perdido fica lá)</span>}
               <span style={{ marginLeft: 12 }}>Limite diário de envios (Meta):</span><input className="input" type="number" min="1" defaultValue={pipe.daily_limit ?? 250} onBlur={(e) => Number(e.target.value) !== pipe.daily_limit && setDailyLimit(e.target.value)} style={{ width: 90 }} /></div>
           )}
           <div className="list-edit">
@@ -267,7 +275,7 @@ function WhatsApp() {
         </div>
         <div className="card stack" style={{ gap: 10 }}>
           <h2>Motor da sequência</h2>
-          <p className="small muted">Roda automaticamente a cada 5 minutos. Avança os leads que cumpriram o prazo da coluna, move para Perdido cadência quem terminou sem responder, devolve ao Dia 1 quem completou {pipelinesArchiveMonths()} meses em uma coluna de perdido e envia as mensagens pendentes.</p>
+          <p className="small muted">Roda automaticamente a cada 5 minutos. Avança os leads que cumpriram o prazo da coluna, move para Perdido cadência quem terminou sem responder, devolve ao Dia 1 quem completou o prazo numa coluna de perdido (só nos funis com reativação ligada) e envia as mensagens pendentes.</p>
           <div><button className="btn primary" onClick={run} disabled={busy}>{busy ? 'Rodando…' : 'Rodar agora'}</button></div>
         </div>
         <div className="card stack" style={{ gap: 10 }}>
@@ -393,7 +401,6 @@ function RegisterNumber() {
   )
 }
 
-function pipelinesArchiveMonths() { return 4 }
 
 function NumberForm({ initial, onClose, onSaved }) {
   const { toast, waNumbers } = useApp()
