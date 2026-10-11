@@ -265,6 +265,20 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     await registrarEnvio()
     setText(''); setQuestion({ body: '', options: [] }); setSeq({ parts: [], options: [] }); setMode('text')
   }
+  // Um clique: a mensagem pronta dos dois horários (a primeira com [DIA 1] e [DIA 2]) já preenchida vai para o WhatsApp
+  const msgHorarios = quick.find((q) => q.stage !== 'remarcacao' && /\[DIA 1\]/.test(q.body) && /\[DIA 2\]/.test(q.body))
+    || quick.find((q) => /\[DIA 1\]/.test(q.body) && /\[DIA 2\]/.test(q.body))
+  const enviarHorarios = async () => {
+    const final = splitParts(fill(msgHorarios.body)).join('\n\n')
+    const faltam = pendingFields(final)
+    if (faltam.length) return toast(`Faltou preencher: ${faltam.join(', ')}`, 'err')
+    const link = waLink(contato, final)
+    if (!link) return toast('Este contato não tem telefone cadastrado.', 'err')
+    abrirWhatsApp(link)
+    await supabase.from('quick_reply_sends').insert({ contact_id: contactId, quick_reply_id: msgHorarios.id, deal_id: deal?.id || null })
+    loadSends()
+    toast('WhatsApp aberto com os 2 horários: é só apertar Enter por lá')
+  }
   const confirmarEnvio = async () => {
     try {
       await registrarEnvio()
@@ -529,6 +543,9 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
                 )}
                 {offered.length > 0 && (
                   <div className="stack" style={{ gap: 4 }}>
+                    {manual && offered.length === 2 && msgHorarios && (
+                      <button type="button" className="btn primary sm" style={{ alignSelf: 'flex-start' }} onClick={enviarHorarios}>📲 Enviar os 2 horários pelo WhatsApp</button>
+                    )}
                     <div className="small">Oferecidos{offered[0]?.seller_id ? ` (agenda de ${sellerName(offered[0].seller_id)})` : ''}. Quando o lead escolher, reserve:</div>
                     <div className="row wrap" style={{ gap: 6 }}>
                       {offered.map((s) => (
