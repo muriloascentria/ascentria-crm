@@ -9,22 +9,28 @@ const POR_VEZ = 30
 
 /**
  * Lista "Para contatar hoje": a sequência continua (Dia 1 → Dia 5), mas quem envia é a equipe.
- * Ordem: quem já está na sequência (Dia 5 → Dia 2) e depois os novos de Recebidos, mais recentes primeiro.
+ * Ordem: dos mais quentes para os mais frios — quem chegou (pediu contato) há menos tempo vem primeiro.
  */
+const DIA = 86_400_000
+const temperatura = (iso) => {
+  const d = iso ? Math.floor((Date.now() - Date.parse(iso)) / DIA) : 999
+  return d <= 3 ? { k: 'quente', t: '🔥 Quentes · chegaram nos últimos 3 dias', c: '#c0392b' }
+    : d <= 14 ? { k: 'morno', t: '🌤 Mornos · chegaram há 4 a 14 dias', c: '#b7791f' }
+    : { k: 'frio', t: '❄️ Frios · chegaram há mais de 14 dias', c: '#2b6cb0' }
+}
 export default function ContatarHoje({ deals, onClose, onChanged, onOpen }) {
   const { stages, toast, profile } = useApp()
   const [feitos, setFeitos] = useState({}) // dealId → 'enviado' | 'respondeu'
   const [limite, setLimite] = useState(POR_VEZ)
   const lista = useMemo(() => {
-    const pos = (d) => stages.find((s) => s.id === d.stage_id)
-    return devidos(deals, stages).sort((a, b) => {
-      const sa = pos(a), sb = pos(b)
-      const da = sa?.role === 'day' ? sa.position : -1, db = sb?.role === 'day' ? sb.position : -1
-      if (da !== db) return db - da
-      return Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0)
-    })
+    return devidos(deals, stages).sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))
   }, [deals, stages])
   const pendentes = lista.filter((d) => !feitos[d.id] || feitos[d.id] === 'aguardando')
+  // primeiros contatos (Dia 1) já feitos hoje, para não passar do limite seguro do número
+  const dia1 = stages.filter((s) => s.role === 'day').sort((a, b) => a.position - b.position)[0]
+  const inicioHoje = new Date(); inicioHoje.setHours(0, 0, 0, 0)
+  const novosHoje = deals.filter((d) => d.manual_sent_stage === dia1?.id && d.manual_sent_at && Date.parse(d.manual_sent_at) >= inicioHoje.getTime() && !feitos[d.id]).length
+    + lista.filter((d) => feitos[d.id] === 'enviado' && messageStage(d, stages)?.id === dia1?.id).length
 
   const enviar = async (d) => {
     const st = messageStage(d, stages)
@@ -48,22 +54,26 @@ export default function ContatarHoje({ deals, onClose, onChanged, onOpen }) {
 
   return (
     <Modal title={`📲 Para contatar hoje · ${pendentes.length}`} wide onClose={onClose}
-      footer={<><AbrirEm /><span className="small muted grow" style={{ marginLeft: 12 }}>Feitos agora: {Object.values(feitos).filter((v) => v !== 'aguardando').length}</span><button className="btn" onClick={onClose}>Fechar</button></>}>
+      footer={<><AbrirEm /><span className="small muted grow" style={{ marginLeft: 12 }}>Feitos agora: {Object.values(feitos).filter((v) => v !== 'aguardando').length} · <b style={{ color: novosHoje >= 30 ? 'var(--danger)' : undefined }}>primeiros contatos hoje: {novosHoje}</b> (sugestão: até 20–30)</span><button className="btn" onClick={onClose}>Fechar</button></>}>
       <div className="small muted" style={{ marginBottom: 10 }}>
         <b>Enviar</b> abre o WhatsApp (o app do computador ou o WhatsApp Web, conforme o "Abrir em" lá embaixo) com a mensagem do dia pronta; envie por lá e confirme aqui em <b>Sim, enviei</b>; no dia seguinte o card passa sozinho para o próximo Dia.
         Quando o lead responder, clique em <b>Respondeu</b>. Ficam fora da lista quem pediu para sair e a lista antiga sem autorização.
-        <br />Para proteger o número, comece pelos mais recentes e evite passar de uns 30 primeiros contatos novos por dia.
+        <br />A lista vem dos <b>mais quentes</b> (pediram contato há pouco) para os <b>mais frios</b>. Para proteger o número, evite passar de uns 20–30 primeiros contatos (Dia 1) por dia.
       </div>
       {lista.length === 0 && <div className="muted" style={{ padding: 16, textAlign: 'center' }}>Ninguém para contatar agora. ✓</div>}
       <div className="stack" style={{ gap: 8 }}>
-        {lista.slice(0, limite).map((d) => {
+        {lista.slice(0, limite).map((d, i, arr) => {
+          const temp = temperatura(d.created_at)
+          const novoGrupo = i === 0 || temperatura(arr[i - 1].created_at).k !== temp.k
           const st = messageStage(d, stages)
           const col = stages.find((s) => s.id === d.stage_id)
           const txt = stageText(st, d.contact?.name)
           const feito = feitos[d.id]
           const idade = dias(d.created_at)
           return (
-            <div key={d.id} className="card" style={{ padding: 10, opacity: feito && feito !== 'aguardando' ? 0.55 : 1 }}>
+            <div key={d.id} className="stack" style={{ gap: 6 }}>
+            {novoGrupo && <div className="small" style={{ fontWeight: 700, color: temp.c, marginTop: i ? 8 : 0 }}>{temp.t}</div>}
+            <div className="card" style={{ padding: 10, opacity: feito && feito !== 'aguardando' ? 0.55 : 1, borderLeft: `3px solid ${temp.c}` }}>
               <div className="between" style={{ gap: 8, alignItems: 'flex-start' }}>
                 <div className="grow" style={{ minWidth: 0 }}>
                   <div><b>{d.contact?.name || d.title}</b> <span className="chip" style={{ marginLeft: 4 }}>{col?.role === 'inbox' ? `Recebidos → ${st?.name}` : st?.name}</span>
@@ -83,6 +93,7 @@ export default function ContatarHoje({ deals, onClose, onChanged, onOpen }) {
                   <button type="button" className="btn ghost sm" onClick={() => onOpen?.(d)}>Abrir card</button>
                 </div>
               </div>
+            </div>
             </div>
           )
         })}
