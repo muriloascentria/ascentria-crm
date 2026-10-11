@@ -2,7 +2,7 @@
 // Ao salvar: guarda no card (deals.sessao_registro) e grava/atualiza a linha correspondente no
 // Essência Plat (tabela venda_sessoes = tela "Registro de Sessões 1:1"). O próprio Plat cria sozinho a
 // linha da "Análise Sessões 1:1" quando uma sessão nova entra.
-// Depois, conforme o resultado, o card muda de coluna (Vendido → ganho; Não vendido → Perdido
+// Depois, conforme o resultado, o card muda de coluna (Vendido → ganho; Desqualificado → Desqualificado; Não vendido → Perdido
 // apresentado; No-show → Remarcar).
 //
 // Body: { deal_id, dados: { data, lead, whatsapp, vendedor, produto, upsell, formato, presenca,
@@ -99,6 +99,7 @@ Deno.serve(async (req) => {
   const destino = registro.presenca === 'No-show' ? porNome('Remarcar')
     : registro.resultado === 'Vendido' ? (etapas ?? []).find((s: any) => s.kind === 'won')
     : registro.resultado === 'Não vendido' ? porNome('Perdido apresentado')
+    : registro.resultado === 'Desqualificado' ? porNome('Desqualificado')
     : undefined
   let movido: string | null = null
   if (destino && destino.id !== deal.stage_id) { patch.stage_id = destino.id; movido = destino.name }
