@@ -6,10 +6,12 @@ import { inWindow, sendWhatsApp, getMedia, MEDIA_TYPES, QUICK_STAGES, SITUATIONA
 import { fmtDateTime } from '../lib/utils'
 import { Field } from './ui'
 import { callCalendar, fillSlots, slotLabel } from '../lib/calendar'
+import { isManual, waLink, stageText, messageStage, podeReceber, marcarEnviado, desfazerEnviado, marcarRespondeu } from '../lib/manual'
 
 /** Conversa de WhatsApp de um contato (com envio). deal opcional para vincular e calcular a janela de 24h. */
 export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged, header, stageId }) {
-  const { toast, settings, waNumbers, sellers, stages } = useApp()
+  const { toast, settings, waNumbers, sellers, stages, profile } = useApp()
+  const manual = isManual(settings)
   const via = waNumbers.find((n) => n.id === deal?.wa_number_id) || waNumbers.find((n) => n.is_default) || waNumbers[0]
   const [msgs, setMsgs] = useState([])
   const [text, setText] = useState('')
@@ -149,7 +151,36 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     } catch (e) { toast(e.message, 'err') } finally { setCalBusy('') }
   }
   const [firstName, setFirstName] = useState('')
-  const win = inWindow(deal)
+  const [contato, setContato] = useState(null)
+  // no modo manual não existe janela de 24h: o envio é pelo WhatsApp da equipe
+  const win = manual || inWindow(deal)
+  // Modo manual: mensagem da coluna (Dia 1…5; Recebidos usa a do Dia 1) e se já foi enviada
+  const [enviado, setEnviado] = useState({ stage: deal?.manual_sent_stage || null, at: deal?.manual_sent_at || null })
+  useEffect(() => { setEnviado({ stage: deal?.manual_sent_stage || null, at: deal?.manual_sent_at || null }) }, [deal?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const curStage = stages.find((s) => s.id === curStageId)
+  const msgStage = manual && deal ? messageStage({ ...deal, stage_id: curStageId }, stages) : null
+  const jaEnviada = !!msgStage && enviado.stage === msgStage.id
+  const [ehDoDia, setEhDoDia] = useState(false)
+  const usarMensagemDoDia = () => {
+    if (!msgStage) return
+    setMode('text'); setPickedId(null)
+    setText(stageText(msgStage, contato?.name || firstName)); setEhDoDia(true)
+  }
+  // ao abrir o card na sequência, a caixa já vem com a mensagem do dia (se ainda não foi enviada)
+  useEffect(() => {
+    if (manual && msgStage && !jaEnviada && podeReceber(contato) && !text.trim()) usarMensagemDoDia()
+  }, [msgStage?.id, contato?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const respondeu = async () => {
+    try {
+      const id = await marcarRespondeu({ ...deal, stage_id: curStageId }, stages)
+      setCurStageId(id); curStageRef.current = id
+      onStageChanged?.(id); onSent?.()
+      toast('Card movido para Responsivo')
+    } catch (e) { toast(e.message, 'err') }
+  }
+  const desfazer = async () => {
+    try { await desfazerEnviado(deal.id); setEnviado({ stage: null, at: null }); onSent?.(); toast('Marcação de enviada desfeita') } catch (e) { toast(e.message, 'err') }
+  }
 
   const load = useCallback(async () => {
     const { data } = await supabase.from('wa_messages').select('*').eq('contact_id', contactId).order('created_at')
@@ -158,12 +189,13 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
   useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t) }, [load])
   useEffect(() => {
     supabase.from('quick_replies').select('*').order('position').then(({ data }) => setQuick(data || []))
-    supabase.from('contacts').select('name').eq('id', contactId).single().then(({ data }) => setFirstName((data?.name || '').split(' ')[0]))
+    supabase.from('contacts').select('id,name,phone,wa_id,source,optin,marketing_opt_out').eq('id', contactId).single().then(({ data }) => { setContato(data || null); setFirstName((data?.name || '').split(' ')[0]) })
   }, [contactId])
   const fill = (t = '') => fillSlots(fillMeeting(t.replace(/{{primeiro_nome}}/g, firstName).replace(/{{nome}}/g, firstName), meeting), offered)
   const pick = (q) => {
     setShowQuick(false)
     setPickedId(q.id)
+    setEhDoDia(false)
     const parts = splitParts(q.body)
     if (parts.length > 1) { setSeq({ parts: parts.map(fill), options: [...(q.options || [])] }); setMode('sequence'); return }
     if (q.options?.length) { setQuestion({ body: fill(q.body), options: [...q.options] }); setMode('interactive') }
@@ -222,6 +254,26 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
   useEffect(() => { const c = chatRef.current; if (c && stickRef.current) c.scrollTop = c.scrollHeight }, [msgs.length])
   useEffect(() => { setMode(win ? 'text' : 'template') }, [win])
 
+  // Modo manual: abre o WhatsApp com o texto pronto. Mensagem do dia → marca como enviada (Recebidos → Dia 1).
+  const abrirNoWhatsApp = async (escrito) => {
+    const link = waLink(contato, escrito)
+    if (!link) return toast('Este contato não tem telefone cadastrado.', 'err')
+    window.open(link, '_blank', 'noopener')
+    await registrarEnvio()
+    const doDia = msgStage && !jaEnviada && (ehDoDia || window.confirm(`Marcar a mensagem do ${msgStage.name} como enviada para este lead?`))
+    if (doDia) {
+      try {
+        const id = await marcarEnviado({ ...deal, stage_id: curStageId }, stages, profile?.id)
+        setEnviado({ stage: id, at: new Date().toISOString() })
+        if (id !== curStageId) { setCurStageId(id); curStageRef.current = id; onStageChanged?.(id) }
+        toast(`${msgStage.name}: marcada como enviada. Amanhã o card passa sozinho para o próximo dia.`)
+      } catch (e) { toast(e.message, 'err') }
+    }
+    setEhDoDia(false)
+    setText(''); setQuestion({ body: '', options: [] }); setSeq({ parts: [], options: [] }); setMode('text')
+    onSent?.()
+  }
+
   const registrarEnvio = async () => {
     if (!pickedId) return
     const id = pickedId
@@ -241,6 +293,14 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     const escrito = mode === 'text' ? text : mode === 'interactive' ? question.body : mode === 'sequence' ? seq.parts.join('\n') : ''
     const faltam = pendingFields(escrito)
     if (faltam.length) return toast(`Preencha antes de enviar: ${faltam.join(', ')}`, 'err')
+    if (manual) {
+      const opcoes = (lista) => lista.filter((o) => o.trim()).map((o, i) => `${i + 1}. ${o}`).join('\n')
+      const final = mode === 'sequence'
+        ? [seq.parts.map((t) => t.trim()).filter(Boolean).join('\n\n'), opcoes(seq.options)].filter(Boolean).join('\n\n')
+        : mode === 'interactive' ? [question.body.trim(), opcoes(question.options)].filter(Boolean).join('\n\n') : text
+      if (!final.trim()) return toast('Escreva a mensagem', 'err')
+      return abrirNoWhatsApp(final)
+    }
     setBusy(true)
     let parouEm = ''
     try {
@@ -274,14 +334,46 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     <div className="wa-split">
      <div className="wa-left stack">
       {header}
-      <div className="between">
-        <h3>WhatsApp {via && <span className="small muted" style={{ fontWeight: 400 }}>· via {via.label} ({via.phone_display})</span>}</h3>
-        {deal && (win
-          ? <span className="chip" style={{ '--chip-color': 'var(--success)' }}>janela de 24h aberta</span>
-          : <span className="chip" title="Fora da janela de 24h só é possível enviar templates aprovados pela Meta">fora da janela · só template</span>)}
-      </div>
-      {!settings?.wa_connected && <div className="small muted">WhatsApp ainda não conectado. Configure em Configurações → WhatsApp.</div>}
-      <div className="chat" ref={chatRef} onScroll={onChatScroll}>
+      {manual ? (
+        <div className="between">
+          <h3>WhatsApp <span className="small muted" style={{ fontWeight: 400 }}>· envio manual, pelo WhatsApp da equipe</span></h3>
+          {deal?.id && curStage && curStage.kind === 'open' && curStage.role !== 'responsive' && (
+            <button type="button" className="btn sm" onClick={respondeu} title="O lead respondeu no WhatsApp: o card vai para Responsivo e sai da sequência">✅ Respondeu → Responsivo</button>
+          )}
+        </div>
+      ) : (
+        <div className="between">
+          <h3>WhatsApp {via && <span className="small muted" style={{ fontWeight: 400 }}>· via {via.label} ({via.phone_display})</span>}</h3>
+          {deal && (win
+            ? <span className="chip" style={{ '--chip-color': 'var(--success)' }}>janela de 24h aberta</span>
+            : <span className="chip" title="Fora da janela de 24h só é possível enviar templates aprovados pela Meta">fora da janela · só template</span>)}
+        </div>
+      )}
+      {!manual && !settings?.wa_connected && <div className="small muted">WhatsApp ainda não conectado. Configure em Configurações → WhatsApp.</div>}
+      {manual && msgStage && (
+        <div className="card manual-dia" style={{ padding: 10 }}>
+          {jaEnviada ? (
+            <div className="row wrap small" style={{ gap: 8 }}>
+              <span style={{ color: 'var(--success)', fontWeight: 600 }}>✓ Mensagem do {msgStage.name} enviada{enviado.at ? ` em ${fmtDateTime(enviado.at)}` : ''}</span>
+              <span className="muted">Amanhã o card passa sozinho para o próximo dia.</span>
+              <button type="button" className="btn ghost sm" onClick={desfazer}>desfazer</button>
+            </div>
+          ) : !podeReceber(contato) ? (
+            <div className="small">
+              <b>Não enviar a sequência para este contato.</b>{' '}
+              {contato?.marketing_opt_out ? 'Ele pediu para não receber mensagens.' : contato?.source === 'CRM antigo' && !contato?.optin ? 'É da lista antiga, sem autorização registrada.' : 'Contato sem telefone.'}
+            </div>
+          ) : (
+            <div className="row wrap small" style={{ gap: 8 }}>
+              <span>📲 Hoje: <b>mensagem do {msgStage.name}</b> — já está na caixa abaixo. Clique em <b>Abrir no WhatsApp</b> e envie por lá.</span>
+              {!ehDoDia && <button type="button" className="btn ghost sm" onClick={usarMensagemDoDia}>usar a mensagem do {msgStage.name}</button>}
+              {/áudio/i.test(msgStage.message_text || '') && <span className="tag-contrato" title="Esta mensagem fala de um áudio: grave e envie o áudio junto, pelo WhatsApp">🎙 envie o áudio também</span>}
+            </div>
+          )}
+        </div>
+      )}
+      {manual && msgs.length > 0 && <div className="small muted">Histórico da conversa pelo número antigo (até a desativação pela Meta). As novas conversas ficam no WhatsApp da equipe.</div>}
+      {(!manual || msgs.length > 0) && <div className="chat" ref={chatRef} onScroll={onChatScroll}>
         {msgs.length === 0 && <div className="small muted" style={{ textAlign: 'center', padding: 12 }}>Nenhuma mensagem ainda.</div>}
         {msgs.map((m) => (
           <div key={m.id} className={'bubble ' + m.direction}>
@@ -291,13 +383,13 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
             <div className="meta">{m.channel === 'instagram' && '📷 Instagram · '}{fmtDateTime(m.created_at)}{m.direction === 'out' && ` · ${statusLabel(m.status)}`}{m.error && <span className="late"> · {m.error}</span>}</div>
           </div>
         ))}
-      </div>
+      </div>}
      </div>
      <div className="wa-right stack">
       <form onSubmit={send} className="stack">
         <div className="pills">
-          <button type="button" className={mode === 'text' ? 'active' : ''} onClick={() => setMode('text')} disabled={deal && !win} title={deal && !win ? 'Texto livre só dentro das 24h após a última mensagem do lead' : ''}>Texto</button>
-          <button type="button" className={mode === 'template' ? 'active' : ''} onClick={() => setMode('template')}>Template</button>
+          {!manual && <button type="button" className={mode === 'text' ? 'active' : ''} onClick={() => setMode('text')} disabled={deal && !win} title={deal && !win ? 'Texto livre só dentro das 24h após a última mensagem do lead' : ''}>Texto</button>}
+          {!manual && <button type="button" className={mode === 'template' ? 'active' : ''} onClick={() => setMode('template')}>Template</button>}
           {mode === 'interactive' && <button type="button" className="active">Pergunta com opções</button>}
           {mode === 'sequence' && <button type="button" className="active">Sequência · {seq.parts.length} mensagens</button>}
           <span className="grow" />
@@ -321,7 +413,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
               </div>
             ))}
             {seq.options.length > 0 && <div className="row wrap" style={{ gap: 6 }}>{seq.options.map((o, i) => <span key={i} className="chip">{o}</span>)}</div>}
-            <div className="small muted">As mensagens saem uma depois da outra, nesta ordem. Troque o que estiver entre colchetes, como [DATA], antes de enviar. <button type="button" className="btn ghost sm" onClick={() => { setMode('text'); setSeq({ parts: [], options: [] }); setPickedId(null) }}>cancelar</button></div>
+            <div className="small muted">{manual ? 'No WhatsApp, as partes vão juntas numa mensagem só.' : 'As mensagens saem uma depois da outra, nesta ordem.'} Troque o que estiver entre colchetes, como [DATA], antes de enviar. <button type="button" className="btn ghost sm" onClick={() => { setMode('text'); setSeq({ parts: [], options: [] }); setPickedId(null) }}>cancelar</button></div>
           </div>
         ) : mode === 'interactive' ? (
           <div className="stack" style={{ gap: 6 }}>
@@ -331,7 +423,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
                 <span key={i} className="chip">{o} <button type="button" className="close" style={{ fontSize: 13 }} onClick={() => setQuestion({ ...question, options: question.options.filter((_, j) => j !== i) })} aria-label="Remover opção">×</button></span>
               ))}
             </div>
-            <div className="small muted">{question.options.length <= 3 ? 'O lead recebe as opções como botões.' : 'O lead recebe um botão "Ver opções" com a lista.'} <button type="button" className="btn ghost sm" onClick={() => { setMode('text'); setQuestion({ body: '', options: [] }); setPickedId(null) }}>cancelar</button></div>
+            <div className="small muted">{manual ? 'As opções vão numeradas no texto.' : question.options.length <= 3 ? 'O lead recebe as opções como botões.' : 'O lead recebe um botão "Ver opções" com a lista.'} <button type="button" className="btn ghost sm" onClick={() => { setMode('text'); setQuestion({ body: '', options: [] }); setPickedId(null) }}>cancelar</button></div>
           </div>
         ) : mode === 'text' ? (
           <textarea className="textarea" style={{ minHeight: 60 }} placeholder="Escreva a mensagem…" value={text} onChange={(e) => setText(e.target.value)} required />
@@ -341,7 +433,14 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
             <Field label="Variáveis ({{1}}, {{2}}…) separadas por vírgula"><input className="input" value={tpl.params} onChange={(e) => setTpl({ ...tpl, params: e.target.value })} placeholder="Fernanda" /></Field>
           </div>
         )}
-        <div className="row" style={{ justifyContent: 'flex-end' }}><button className="btn primary sm" disabled={busy}>{busy ? (progress ? `Enviando ${progress}…` : 'Enviando…') : mode === 'sequence' ? `Enviar ${seq.parts.length} mensagens` : 'Enviar'}</button></div>
+        {manual ? (
+          <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+            <span className="small muted grow">Abre o WhatsApp com o texto pronto: confira e toque em enviar por lá.</span>
+            <button className="btn primary sm">📲 Abrir no WhatsApp</button>
+          </div>
+        ) : (
+          <div className="row" style={{ justifyContent: 'flex-end' }}><button className="btn primary sm" disabled={busy}>{busy ? (progress ? `Enviando ${progress}…` : 'Enviando…') : mode === 'sequence' ? `Enviar ${seq.parts.length} mensagens` : 'Enviar'}</button></div>
+        )}
         {showQuick && (
           <div className="card" style={{ padding: 6, maxHeight: 340, overflowY: 'auto' }}>
             {quick.length > 0 && <div className="small muted" style={{ padding: '2px 4px 6px' }}>{totalEnviadas} de {sequencia.length} enviadas para este contato{proxima ? '' : ' · sequência completa ✓'}</div>}
@@ -452,7 +551,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
           </div>
         )}
         {deal?.id && meeting.date && meeting.time && quick.some((q) => q.auto_before) && (
-          <div className="small" style={{ marginTop: 6 }}>⏰ Lembretes automáticos: {['4h', '1h', '15m'].filter((k) => quick.some((q) => q.auto_before === k)).map((k) => {
+          <div className="small" style={{ marginTop: 6 }}>⏰ {manual ? 'Lembretes (no horário viram tarefa com o texto pronto)' : 'Lembretes automáticos'}: {['4h', '1h', '15m'].filter((k) => quick.some((q) => q.auto_before === k)).map((k) => {
             const v = (deal?.reminders || {})[k]
             return <span key={k} style={{ marginRight: 10 }}>{AUTO_LABEL[k]} {v === 'tarefa' ? '⚠️ tarefa' : v === 'pulado' ? '— pulado' : v ? '✓' : '· agendado'}</span>
           })}</div>

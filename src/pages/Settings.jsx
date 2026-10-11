@@ -244,9 +244,21 @@ function WhatsApp() {
   const toggle = async (n) => { await supabase.from('wa_numbers').update({ active: !n.active }).eq('id', n.id); reload() }
   const remove = async (n) => { const { error } = await supabase.from('wa_numbers').delete().eq('id', n.id); if (error) toast(error.message, 'err'); reload() }
   const pending = waNumbers.some((n) => n.phone_number_id === 'CONFIGURE-NO-PAINEL')
+  const salvarModo = async (modo) => {
+    if (modo === settings.wa_mode) return
+    if (modo === 'api' && !window.confirm('Voltar para o envio automático pela API da Meta? Só faça isso com uma conta de WhatsApp Business ativa e regularizada.')) return
+    const { error } = await supabase.from('org_settings').update({ wa_mode: modo }).eq('id', 1)
+    if (error) return toast(error.message, 'err')
+    toast(modo === 'manual' ? 'Modo manual ligado' : 'Envio pela API ligado'); reload()
+  }
   return (
     <div className="grid2" style={{ alignItems: 'start' }}>
       <div className="stack" style={{ gap: 16 }}>
+        <div className="card stack" style={{ gap: 8 }}>
+          <h2>Como as mensagens saem</h2>
+          <label className="check"><input type="radio" name="wamode" checked={settings.wa_mode === 'manual'} onChange={() => salvarModo('manual')} /> <span><b>Manual</b> — a equipe envia pelo WhatsApp dela. O CRM mostra a mensagem do dia pronta, abre a conversa e organiza a sequência.</span></label>
+          <label className="check"><input type="radio" name="wamode" checked={settings.wa_mode !== 'manual'} onChange={() => salvarModo('api')} /> <span><b>Automático (API da Meta)</b> — o CRM envia e recebe sozinho. Exige uma conta do WhatsApp Business ativa.</span></label>
+        </div>
         <div className="card stack" style={{ gap: 10 }}>
           <div className="between"><h2>Números de WhatsApp</h2><button className="btn primary sm" onClick={() => setEditing({})}>+ Número</button></div>
           <p className="small muted">Cada número cadastrado na API da Meta pode atender leads. O número <b>padrão</b> envia a sequência automática; nas conversas manuais você escolhe o número em cada negócio.</p>

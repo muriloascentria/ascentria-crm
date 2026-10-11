@@ -6,6 +6,8 @@ import { Avatar, Empty } from '../components/ui'
 import DealModal from '../components/DealModal'
 import { daysIn, runCadenceNow, simulateInstagramDM, moveInboxToDay1, sentLast24h } from '../lib/wa'
 import { DEMO } from '../lib/supabase'
+import ContatarHoje from '../components/ContatarHoje'
+import { isManual, devidos } from '../lib/manual'
 
 /**
  * Rodinha do mouse rola o quadro na horizontal, com animação suave.
@@ -60,6 +62,8 @@ export default function Pipeline() {
   const [dragId, setDragId] = useState(null)
   const [over, setOver] = useState(null)
   const [sent24, setSent24] = useState(null)
+  const [hojeAberto, setHojeAberto] = useState(false)
+  const manual = isManual(settings)
   // lembretes do encontro que não saíram sozinhos (viraram tarefa) e ainda não foram feitos
   const [pendLembretes, setPendLembretes] = useState([])
   // contratos assinados nos últimos 3 dias (de qualquer funil), para o aviso verde no topo
@@ -77,7 +81,7 @@ export default function Pipeline() {
   const load = useCallback(async () => {
     if (!pipelineId) return
     const { data, error } = await supabase.from('deals')
-      .select('*, contact:contacts(name)')
+      .select('*, contact:contacts(name, phone, wa_id, source, optin, marketing_opt_out)')
       .eq('pipeline_id', pipelineId).order('position').order('created_at', { ascending: false })
     if (error) toast(error.message, 'err')
     setDeals(data || [])
@@ -91,9 +95,9 @@ export default function Pipeline() {
   }, [pipelineId, toast])
   useEffect(() => { load() }, [load])
   useEffect(() => {
-    const iv = setInterval(() => { if (document.visibilityState === 'visible' && !dragId && !modal) load() }, 30_000)
+    const iv = setInterval(() => { if (document.visibilityState === 'visible' && !dragId && !modal && !hojeAberto) load() }, 30_000)
     return () => clearInterval(iv)
-  }, [load, dragId, modal])
+  }, [load, dragId, modal, hojeAberto])
   const openDeal = (d) => {
     setModal({ deal: d })
     if (isUnread(d)) {
@@ -144,6 +148,7 @@ export default function Pipeline() {
   const meuEmail = String(profile.email || '').toLowerCase()
   const contratosNovos = assinados.filter((d) => !vistos.includes(d.id) &&
     (isManager || d.owner_id === profile.id || String(d.seller?.email || '').toLowerCase() === meuEmail))
+  const paraHoje = manual ? devidos(deals.filter((d) => !onlyMine || d.owner_id === profile.id), pipeStages) : []
   const totalOpen = filtered.filter((d) => d.status === 'open').reduce((s, d) => s + Number(d.value), 0)
 
   return (
@@ -163,12 +168,15 @@ export default function Pipeline() {
           <label className="check small"><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} /> Só meus</label>
           {DEMO && pipeStages.some((s) => s.role) && <button className="btn" title="Simula uma mensagem no direct do Instagram contendo um celular" onClick={async () => { const r = await simulateInstagramDM(); toast(`DM recebida: ${r.name} entrou em Recebidos`); load() }}>📷 Simular DM do Instagram</button>}
           {DEMO && pipeStages.some((s) => s.role) && <button className="btn" title="Simula a passagem de 1 dia e roda o motor da cadência" onClick={async () => { const r = await runCadenceNow(); toast(`+1 dia: ${r.cadence.advanced} avançou, ${r.cadence.archived} perdido cadência, ${r.cadence.reactivated} reativado`); load() }}>⏩ Simular +1 dia</button>}
+          {manual && hasCadence && <button className="btn" onClick={() => setHojeAberto(true)} title="Quem precisa receber a mensagem da sequência hoje, pelo seu WhatsApp">📲 Para contatar hoje <b>{paraHoje.length}</b></button>}
           <button className="btn primary" onClick={() => setModal({ deal: null, defaults: { pipeline_id: pipelineId } })}>+ Negócio</button>
         </div>
       </div>
       {dealsComLembrete.length > 0 && (
         <div className="alert-lembrete" role="alert">
-          <b>⚠ {dealsComLembrete.length === 1 ? 'Um lembrete de encontro não saiu sozinho' : `${dealsComLembrete.length} lembretes de encontro não saíram sozinhos`}</b> (janela de 24h do WhatsApp fechada). Abra o card e envie à mão, o texto pronto está em Atividades:
+          {manual
+            ? <><b>⏰ {dealsComLembrete.length === 1 ? 'Um lembrete de encontro para enviar' : `${dealsComLembrete.length} lembretes de encontro para enviar`}</b> pelo seu WhatsApp. Abra o card: o texto pronto está em Atividades.</>
+            : <><b>⚠ {dealsComLembrete.length === 1 ? 'Um lembrete de encontro não saiu sozinho' : `${dealsComLembrete.length} lembretes de encontro não saíram sozinhos`}</b> (janela de 24h do WhatsApp fechada). Abra o card e envie à mão, o texto pronto está em Atividades:</>}
           <span className="row wrap" style={{ gap: 6, marginTop: 6 }}>
             {dealsComLembrete.map((d) => (
               <button key={d.id} type="button" className="btn sm" onClick={() => openDeal(d)}>
@@ -210,9 +218,9 @@ export default function Pipeline() {
                 <div className="col-head" style={{ '--stage-color': s.color }}>
                   <div className="name"><span>{s.name}{unreadN > 0 && <span className="unread-pill" title="respostas não lidas">{unreadN} {unreadN === 1 ? 'nova' : 'novas'}</span>}</span><span className="muted">{items.length}</span></div>
                   <div className="small muted">{fmtMoney(sum, settings.currency)} · {s.probability}%{s.role === 'day' && s.advance_after_days ? ` · ${s.advance_after_days}d` : ''}</div>
-                  {s.role && <div className="role-chip">{{ inbox: 'entrada automática · mover manualmente', day: s.auto_send ? 'envio automático' : 'mensagem manual', responsive: 'respondeu · volta à sequência após 24h parado', archived: pipe?.reactivate_enabled ? `volta ao Dia 1 em ${pipe.archive_months ?? 4} meses` : 'arquivado · sem reativação', reactivate: 'chamar de novo' }[s.role]}</div>}
+                  {s.role && <div className="role-chip">{{ inbox: 'entrada automática · mover manualmente', day: s.auto_send ? 'envio automático' : 'mensagem manual', responsive: manual ? 'respondeu · fica aqui até você mover' : 'respondeu · volta à sequência após 24h parado', archived: pipe?.reactivate_enabled ? `volta ao Dia 1 em ${pipe.archive_months ?? 4} meses` : 'arquivado · sem reativação', reactivate: 'chamar de novo' }[s.role]}</div>}
                   {s.role === 'inbox' && items.length > 0 && <button className="btn sm" style={{ marginTop: 4, justifyContent: 'center' }} onClick={bulkMove}>Mover em lote para o Dia 1 →</button>}
-                  {s.role === 'day' && s.id === pipeStages.find((x) => x.role === 'day')?.id && sent24 !== null && (
+                  {!manual && s.role === 'day' && s.id === pipeStages.find((x) => x.role === 'day')?.id && sent24 !== null && (
                     <div className="small" style={{ marginTop: 2, color: sent24 >= (pipe?.daily_limit ?? 250) ? 'var(--danger)' : 'var(--muted)' }} title="Conversas iniciadas pela empresa (templates) nas últimas 24h × limite da Meta">últimas 24h: <b>{sent24}</b> / {pipe?.daily_limit ?? 250} envios</div>
                   )}
                 </div>
@@ -244,6 +252,8 @@ export default function Pipeline() {
           })}
         </div>
       )}
+
+      {hojeAberto && <ContatarHoje deals={deals} onClose={() => { setHojeAberto(false); load() }} onChanged={() => {}} onOpen={(d) => { setHojeAberto(false); openDeal(d) }} />}
 
       {modal && <DealModal deal={modal.deal} defaults={modal.defaults} onClose={async () => { const id = modal.deal?.id; setModal(null); if (id) { await supabase.from('deals').update({ seen_at: new Date().toISOString() }).eq('id', id); window.dispatchEvent(new Event('crm:unread')) } load() }} onSaved={load}
         onMarkUnread={async () => {
