@@ -123,7 +123,7 @@ export default function SessaoRegistro({ deal, contato, onSaved, onStageChanged 
         <div className="small muted" style={{ alignSelf: 'end', paddingBottom: 8 }}>A gravação e a transcrição entram sozinhas quando o Google anexa à reunião (e vão para o Plat se a sessão já estiver registrada).</div>
       </div>
       <div className="small muted">
-        Ao salvar, o card muda de coluna sozinho: <b>Vendido</b> → Fechou mentoria · <b>Não vendido</b> → Perdido apresentado · <b>Desqualificado</b> → Desqualificado · <b>No-show</b> → Remarcar.
+        Ao salvar, o card muda de coluna sozinho: <b>Vendido</b> → Fechou mentoria · <b>Não vendido</b> → Perdido apresentado · <b>Desqualificado</b> → Desqualificado · <b>No-show</b> → Não compareceu.
       </div>
       {erro && <div className="small late">{erro}</div>}
       <div><button className="btn primary" disabled={busy}>{busy ? 'Salvando…' : info.em ? 'Atualizar registro' : 'Salvar registro'}</button></div>

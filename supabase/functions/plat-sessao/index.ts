@@ -3,7 +3,7 @@
 // Essência Plat (tabela venda_sessoes = tela "Registro de Sessões 1:1"). O próprio Plat cria sozinho a
 // linha da "Análise Sessões 1:1" quando uma sessão nova entra.
 // Depois, conforme o resultado, o card muda de coluna (Vendido → ganho; Desqualificado → Desqualificado; Não vendido → Perdido
-// apresentado; No-show → Remarcar).
+// apresentado; No-show → Não compareceu).
 //
 // Body: { deal_id, dados: { data, lead, whatsapp, vendedor, produto, upsell, formato, presenca,
 //         resultado, valor, objecao1, objecao2, observacoes, contrato, video, transcricao } }
@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
   // 3) coluna conforme o resultado
   const { data: etapas } = await admin.from('stages').select('id, name, kind').eq('pipeline_id', deal.pipeline_id)
   const porNome = (n: string) => (etapas ?? []).find((s: any) => s.name.toLowerCase() === n.toLowerCase())
-  const destino = registro.presenca === 'No-show' ? porNome('Remarcar')
+  const destino = registro.presenca === 'No-show' ? porNome('Não compareceu')
     : registro.resultado === 'Vendido' ? (etapas ?? []).find((s: any) => s.kind === 'won')
     : registro.resultado === 'Não vendido' ? porNome('Perdido apresentado')
     : registro.resultado === 'Desqualificado' ? porNome('Desqualificado')
