@@ -13,6 +13,11 @@
 //                             (gravação, transcrição, anotações do Gemini) e guarda os links no card
 //   transfer { deal_id, from_seller_id, to_seller_id, dry_run? } → passa o encontro para outra vendedora no
 //                             mesmo horário (acha também encontros marcados direto na agenda, pelo nome do lead)
+//   gravacao { deal_id }     → liga de novo a gravação/transcrição automática do Meet do encontro
+//
+// Gravação automática: ao reservar (ou trocar de vendedora), a reunião do Meet já fica configurada para
+// gravar, transcrever e fazer anotações sozinha quando começar (Google Meet REST API, escopo
+// meetings.space.settings na delegação em todo o domínio). Se o Google recusar, a reserva vale do mesmo jeito.
 //
 // Secret: GOOGLE_SERVICE_ACCOUNT_JSON (o arquivo .json da conta de serviço, inteiro)
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -21,6 +26,7 @@ import { levarArquivosParaSessao } from '../_shared/plat.ts'
 
 const TZ = 'America/Sao_Paulo'
 const SCOPE = 'https://www.googleapis.com/auth/calendar.events'
+const MEET_SCOPE = 'https://www.googleapis.com/auth/meetings.space.settings'
 const API = 'https://www.googleapis.com/calendar/v3/calendars/primary/events'
 
 type SA = { client_email: string; private_key: string; token_uri?: string }
@@ -32,10 +38,10 @@ function b64url(data: ArrayBuffer | Uint8Array | string): string {
   return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
-async function googleToken(sa: SA, subject: string): Promise<string> {
+async function googleToken(sa: SA, subject: string, scope = SCOPE): Promise<string> {
   const now = Math.floor(Date.now() / 1000)
   const aud = sa.token_uri || 'https://oauth2.googleapis.com/token'
-  const unsigned = `${b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))}.${b64url(JSON.stringify({ iss: sa.client_email, sub: subject, scope: SCOPE, aud, iat: now, exp: now + 3600 }))}`
+  const unsigned = `${b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))}.${b64url(JSON.stringify({ iss: sa.client_email, sub: subject, scope, aud, iat: now, exp: now + 3600 }))}`
   const pem = sa.private_key.replace(/-----[^-]+-----/g, '').replace(/\s+/g, '')
   const der = Uint8Array.from(atob(pem), (c) => c.charCodeAt(0))
   const key = await crypto.subtle.importKey('pkcs8', der, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign'])
@@ -60,6 +66,36 @@ async function gcal(token: string, path: string, init: RequestInit = {}) {
   const data: any = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(res.status === 404 ? 'Evento não encontrado na agenda.' : 'Google Agenda: ' + (data?.error?.message || res.status))
   return data
+}
+
+/** Liga a gravação, a transcrição e as anotações automáticas da sala do Meet (quem age é a dona da reunião). */
+async function gravarAutomatico(sa: SA, subject: string, link: string | null): Promise<{ ok: boolean; error?: string; anotacoes?: boolean }> {
+  const code = String(link || '').match(/meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})/i)?.[1]
+  if (!code) return { ok: false, error: 'reunião sem link do Meet' }
+  try {
+    const tk = await googleToken(sa, subject, MEET_SCOPE)
+    const h = { Authorization: `Bearer ${tk}`, 'Content-Type': 'application/json' }
+    const meet = async (ver: string, path: string, init: RequestInit = {}) => {
+      const r = await fetch(`https://meet.googleapis.com/${ver}/${path}`, { ...init, headers: h })
+      const d: any = await r.json().catch(() => ({}))
+      return { ok: r.ok, d, err: d?.error?.message || String(r.status) }
+    }
+    let ver = 'v2'
+    let sp = await meet(ver, `spaces/${code}`)
+    if (!sp.ok) return { ok: false, error: 'Meet: ' + sp.err }
+    const patch = (mask: string, cfg: unknown) => meet(ver, `${sp.d.name}?updateMask=${encodeURIComponent(mask)}`, { method: 'PATCH', body: JSON.stringify({ config: { artifactConfig: cfg } }) })
+    const base = { recordingConfig: { autoRecordingGeneration: 'ON' }, transcriptionConfig: { autoTranscriptionGeneration: 'ON' } }
+    const mask = 'config.artifactConfig.recordingConfig.autoRecordingGeneration,config.artifactConfig.transcriptionConfig.autoTranscriptionGeneration'
+    let r = await patch(mask, base)
+    if (!r.ok && /unknown name|invalid json|cannot find field|not found/i.test(r.err)) { ver = 'v2beta'; sp = await meet(ver, `spaces/${code}`); if (sp.ok) r = await patch(mask, base) }
+    if (!r.ok) return { ok: false, error: 'Meet: ' + r.err }
+    // anotações do Gemini: só se a conta tiver o Gemini; se não tiver, a gravação continua ligada
+    const n = await patch('config.artifactConfig.smartNotesConfig.autoSmartNotesGeneration', { smartNotesConfig: { autoSmartNotesGeneration: 'ON' } })
+    return { ok: true, anotacoes: n.ok }
+  } catch (e) {
+    const m = (e as Error).message
+    return { ok: false, error: /não foi autorizada/.test(m) ? 'falta autorizar o escopo do Meet (meetings.space.settings) na delegação do Google Workspace' : m }
+  }
 }
 
 const norm = (s = '') => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase().replace(/\s+/g, ' ')
@@ -172,7 +208,9 @@ Deno.serve(async (req) => {
       const link = patched.hangoutLink || patched.conferenceData?.entryPoints?.find((p: any) => p.entryPointType === 'video')?.uri || null
       const when = spParts(patched.start.dateTime)
       await admin.from('deals').update({ seller_id: s.id, calendar_event_id: patched.id, meeting_date: when.date, meeting_time: when.time, meeting_link: link }).eq('id', deal.id)
-      return json({ ok: true, date: when.date, time: when.time, link, seller: s.name })
+      const gravacao = await gravarAutomatico(sa, s.email, link)
+      if (!gravacao.ok) console.warn('calendar gravacao', gravacao.error)
+      return json({ ok: true, date: when.date, time: when.time, link, seller: s.name, gravacao })
     }
 
     if (b.action === 'release') {
@@ -271,7 +309,18 @@ Deno.serve(async (req) => {
 
       const link = created.hangoutLink || created.conferenceData?.entryPoints?.find((p: any) => p.entryPointType === 'video')?.uri || null
       await admin.from('deals').update({ seller_id: to.id, calendar_event_id: created.id, meeting_date: when.date, meeting_time: when.time, meeting_link: link }).eq('id', deal.id)
-      return json({ ok: true, from: from.name, to: to.name, date: when.date, time: when.time, link, reused_free_slot: !!same })
+      const gravacao = await gravarAutomatico(sa, to.email, link)
+      if (!gravacao.ok) console.warn('calendar gravacao', gravacao.error)
+      return json({ ok: true, from: from.name, to: to.name, date: when.date, time: when.time, link, reused_free_slot: !!same, gravacao })
+    }
+
+    if (b.action === 'gravacao') {
+      const deal = await dealFor(b.deal_id)
+      const { data: d2 } = await admin.from('deals').select('meeting_link, seller_id').eq('id', deal.id).single()
+      if (!d2?.seller_id || !d2?.meeting_link) return json({ ok: false, error: 'O encontro não tem vendedora ou link do Meet.' })
+      const s = await seller(d2.seller_id)
+      const gravacao = await gravarAutomatico(sa, s.email, d2.meeting_link)
+      return json({ ok: gravacao.ok, error: gravacao.error, gravacao })
     }
 
     return json({ ok: false, error: 'Ação desconhecida' }, 400)

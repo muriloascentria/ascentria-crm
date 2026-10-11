@@ -90,7 +90,16 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
       const r = await callCalendar('book', { deal_id: deal.id, seller_id: s.seller_id, event_id: s.event_id })
       setBooked({ eventId: s.event_id, sellerId: s.seller_id })
       await saveMeeting({ date: r.date, time: r.time, link: r.link || '' })
-      toast(`Reservado na agenda de ${r.seller}${r.link ? ' · Google Meet criado' : ''}`)
+      toast(`Reservado na agenda de ${r.seller}${r.link ? ' · Google Meet criado' : ''}${r.gravacao?.ok ? ' · gravação automática ligada 🎥' : ''}`)
+      if (r.link && r.gravacao && !r.gravacao.ok) toast(`A gravação automática não foi ligada: ${r.gravacao.error}`, 'err')
+    } catch (e) { toast(e.message, 'err') } finally { setCalBusy('') }
+  }
+  const ligarGravacao = async () => {
+    setCalBusy('grav')
+    try {
+      const r = await callCalendar('gravacao', { deal_id: deal.id })
+      if (r?.gravacao?.ok) toast(`Gravação e transcrição automáticas ligadas 🎥${r.gravacao.anotacoes ? ' (com anotações do Gemini)' : ''}`)
+      else toast(`Não deu para ligar a gravação: ${r?.gravacao?.error || r?.error || 'erro'}`, 'err')
     } catch (e) { toast(e.message, 'err') } finally { setCalBusy('') }
   }
   const desfazerReserva = async () => {
@@ -124,7 +133,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
       setSellerId(moveTo)
       setMoveOpen(false)
       await saveMeeting({ date: r.date, time: r.time, link: r.link || '' })
-      toast(`Encontro passado para a agenda de ${r.to}${r.link ? ' · novo link do Meet criado' : ''}`)
+      toast(`Encontro passado para a agenda de ${r.to}${r.link ? ' · novo link do Meet criado' : ''}${r.gravacao?.ok ? ' · gravação automática ligada 🎥' : ''}`)
     } catch (e) { toast(e.message, 'err') } finally { setCalBusy('') }
   }
   const [curStageId, setCurStageId] = useState(deal?.stage_id)
@@ -523,6 +532,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
               <div className="row wrap small" style={{ gap: 8 }}>
                 <span style={{ color: 'var(--success)', fontWeight: 600 }}>✓ Reservado na agenda de {sellerName(booked.sellerId) || 'vendedora'}{meeting.link ? ' · com Google Meet' : ''}</span>
                 <button type="button" className="btn ghost sm" onClick={desfazerReserva} disabled={calBusy === 'release'}>{calBusy === 'release' ? 'Desfazendo…' : 'Desfazer reserva'}</button>
+                {meeting.link && <button type="button" className="btn ghost sm" onClick={ligarGravacao} disabled={calBusy === 'grav'} title="Deixa a reunião do Meet configurada para gravar e transcrever sozinha quando começar">{calBusy === 'grav' ? 'Ligando…' : '🎥 Ligar gravação automática'}</button>}
               </div>
             ) : (
               <>
