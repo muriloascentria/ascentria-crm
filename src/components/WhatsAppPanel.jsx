@@ -1,4 +1,5 @@
 import ContratoModal from './ContratoModal'
+import AbrirEm from './AbrirEm'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../lib/store'
@@ -457,8 +458,9 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
           </div>
         )}
         {manual ? (
-          <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
-            <span className="small muted grow">Abre o WhatsApp com o texto pronto: confira e toque em enviar por lá.</span>
+          <div className="row wrap" style={{ justifyContent: 'flex-end', gap: 8 }}>
+            <span className="small muted grow" style={{ minWidth: 220 }}>Abre o WhatsApp com o texto pronto: confira e toque em enviar por lá.</span>
+            <AbrirEm />
             <button className="btn primary sm">📲 Abrir no WhatsApp</button>
           </div>
         ) : (

@@ -16,16 +16,27 @@ export function phoneDigits(contact) {
 
 const noCelular = () => typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
 
-/** Link que abre a conversa com o texto pronto: no computador, direto no WhatsApp Web; no celular, no app. */
+/** Onde abrir no computador: 'app' (WhatsApp instalado no computador) ou 'web' (WhatsApp Web). Fica salvo neste navegador. */
+const PREF = 'waAbrirEm'
+export const getAbrirEm = () => { try { return localStorage.getItem(PREF) || 'web' } catch { return 'web' } }
+export const setAbrirEm = (v) => { try { localStorage.setItem(PREF, v) } catch { /* sem armazenamento: vale só agora */ } }
+export const ehCelular = noCelular
+
+/** Link que abre a conversa com o texto pronto: no celular, o app; no computador, o app instalado ou o WhatsApp Web. */
 export const waLink = (contact, text) => {
   const d = phoneDigits(contact)
   if (!d) return ''
   const t = encodeURIComponent(text || '')
-  return noCelular() ? `https://wa.me/${d}?text=${t}` : `https://web.whatsapp.com/send?phone=${d}&text=${t}`
+  if (noCelular()) return `https://wa.me/${d}?text=${t}`
+  return getAbrirEm() === 'app' ? `whatsapp://send?phone=${d}&text=${t}` : `https://web.whatsapp.com/send?phone=${d}&text=${t}`
 }
 
-/** Abre o link. No computador usa sempre a MESMA aba do WhatsApp Web (não abre uma aba nova a cada lead). */
-export const abrirWhatsApp = (link) => window.open(link, noCelular() ? '_blank' : 'crm-whatsapp')
+/** Abre o link. App do computador: abre na janela do WhatsApp que já está aberta (sem aba nova).
+ *  WhatsApp Web: usa sempre a MESMA aba (a que o CRM abriu), sem abrir uma aba nova a cada lead. */
+export const abrirWhatsApp = (link) => {
+  if (link.startsWith('whatsapp:')) { window.location.href = link; return }
+  window.open(link, noCelular() ? '_blank' : 'crm-whatsapp')
+}
 
 export const firstName = (name = '') => String(name).trim().split(/\s+/)[0] || ''
 
