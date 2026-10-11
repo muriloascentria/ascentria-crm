@@ -14,11 +14,18 @@ export function phoneDigits(contact) {
   return d
 }
 
-/** Link que abre a conversa no WhatsApp (celular ou WhatsApp Web) com o texto pronto. */
+const noCelular = () => typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+
+/** Link que abre a conversa com o texto pronto: no computador, direto no WhatsApp Web; no celular, no app. */
 export const waLink = (contact, text) => {
   const d = phoneDigits(contact)
-  return d ? `https://wa.me/${d}?text=${encodeURIComponent(text || '')}` : ''
+  if (!d) return ''
+  const t = encodeURIComponent(text || '')
+  return noCelular() ? `https://wa.me/${d}?text=${t}` : `https://web.whatsapp.com/send?phone=${d}&text=${t}`
 }
+
+/** Abre o link. No computador usa sempre a MESMA aba do WhatsApp Web (não abre uma aba nova a cada lead). */
+export const abrirWhatsApp = (link) => window.open(link, noCelular() ? '_blank' : 'crm-whatsapp')
 
 export const firstName = (name = '') => String(name).trim().split(/\s+/)[0] || ''
 

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useApp } from '../lib/store'
 import { Modal } from './ui'
 import { fmtDate } from '../lib/utils'
-import { waLink, stageText, messageStage, devidos, marcarEnviado, marcarRespondeu } from '../lib/manual'
+import { waLink, abrirWhatsApp, stageText, messageStage, devidos, marcarEnviado, marcarRespondeu } from '../lib/manual'
 
 const POR_VEZ = 30
 
@@ -23,19 +23,23 @@ export default function ContatarHoje({ deals, onClose, onChanged, onOpen }) {
       return Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0)
     })
   }, [deals, stages])
-  const pendentes = lista.filter((d) => !feitos[d.id])
+  const pendentes = lista.filter((d) => !feitos[d.id] || feitos[d.id] === 'aguardando')
 
   const enviar = async (d) => {
     const st = messageStage(d, stages)
     const link = waLink(d.contact, stageText(st, d.contact?.name))
     if (!link) return toast('Contato sem telefone', 'err')
-    window.open(link, '_blank', 'noopener')
+    abrirWhatsApp(link)
+    setFeitos((f) => ({ ...f, [d.id]: 'aguardando' }))
+  }
+  const confirmar = async (d) => {
     try {
       await marcarEnviado(d, stages, profile?.id)
       setFeitos((f) => ({ ...f, [d.id]: 'enviado' }))
       onChanged?.()
     } catch (e) { toast(e.message, 'err') }
   }
+  const naoEnviou = (d) => setFeitos((f) => { const n = { ...f }; delete n[d.id]; return n })
   const respondeu = async (d) => {
     try { await marcarRespondeu(d, stages); setFeitos((f) => ({ ...f, [d.id]: 'respondeu' })); onChanged?.() } catch (e) { toast(e.message, 'err') }
   }
@@ -43,9 +47,9 @@ export default function ContatarHoje({ deals, onClose, onChanged, onOpen }) {
 
   return (
     <Modal title={`📲 Para contatar hoje · ${pendentes.length}`} wide onClose={onClose}
-      footer={<><span className="small muted grow">Feitos agora: {Object.keys(feitos).length}</span><button className="btn" onClick={onClose}>Fechar</button></>}>
+      footer={<><span className="small muted grow">Feitos agora: {Object.values(feitos).filter((v) => v !== 'aguardando').length}</span><button className="btn" onClick={onClose}>Fechar</button></>}>
       <div className="small muted" style={{ marginBottom: 10 }}>
-        <b>Enviar</b> abre o WhatsApp com a mensagem do dia pronta e marca como enviada; no dia seguinte o card passa sozinho para o próximo Dia.
+        <b>Enviar</b> abre o WhatsApp Web com a mensagem do dia pronta; envie por lá e confirme aqui em <b>Sim, enviei</b>; no dia seguinte o card passa sozinho para o próximo Dia.
         Quando o lead responder, clique em <b>Respondeu</b>. Ficam fora da lista quem pediu para sair e a lista antiga sem autorização.
         <br />Para proteger o número, comece pelos mais recentes e evite passar de uns 30 primeiros contatos novos por dia.
       </div>
@@ -58,7 +62,7 @@ export default function ContatarHoje({ deals, onClose, onChanged, onOpen }) {
           const feito = feitos[d.id]
           const idade = dias(d.created_at)
           return (
-            <div key={d.id} className="card" style={{ padding: 10, opacity: feito ? 0.55 : 1 }}>
+            <div key={d.id} className="card" style={{ padding: 10, opacity: feito && feito !== 'aguardando' ? 0.55 : 1 }}>
               <div className="between" style={{ gap: 8, alignItems: 'flex-start' }}>
                 <div className="grow" style={{ minWidth: 0 }}>
                   <div><b>{d.contact?.name || d.title}</b> <span className="chip" style={{ marginLeft: 4 }}>{col?.role === 'inbox' ? `Recebidos → ${st?.name}` : st?.name}</span>
@@ -67,7 +71,11 @@ export default function ContatarHoje({ deals, onClose, onChanged, onOpen }) {
                   <div className="small muted" style={{ marginTop: 4, whiteSpace: 'pre-wrap' }}>{txt.length > 180 ? txt.slice(0, 180) + '…' : txt}</div>
                 </div>
                 <div className="stack" style={{ gap: 4, flexShrink: 0 }}>
-                  {feito ? <span className="small" style={{ color: 'var(--success)', fontWeight: 600 }}>{feito === 'enviado' ? '✓ enviada' : '✓ respondeu'}</span> : <>
+                  {feito === 'aguardando' ? <>
+                    <span className="small" style={{ fontWeight: 600 }}>Enviou no WhatsApp?</span>
+                    <button type="button" className="btn primary sm" onClick={() => confirmar(d)}>✓ Sim, enviei</button>
+                    <button type="button" className="btn sm" onClick={() => naoEnviou(d)}>Ainda não</button>
+                  </> : feito ? <span className="small" style={{ color: 'var(--success)', fontWeight: 600 }}>{feito === 'enviado' ? '✓ enviada' : '✓ respondeu'}</span> : <>
                     <button type="button" className="btn primary sm" onClick={() => enviar(d)}>📲 Enviar</button>
                     <button type="button" className="btn sm" onClick={() => respondeu(d)} title="O lead respondeu: vai para Responsivo">✅ Respondeu</button>
                   </>}

@@ -6,7 +6,7 @@ import { inWindow, sendWhatsApp, getMedia, MEDIA_TYPES, QUICK_STAGES, SITUATIONA
 import { fmtDateTime } from '../lib/utils'
 import { Field } from './ui'
 import { callCalendar, fillSlots, slotLabel } from '../lib/calendar'
-import { isManual, waLink, stageText, messageStage, podeReceber, marcarEnviado, desfazerEnviado, marcarRespondeu } from '../lib/manual'
+import { isManual, waLink, abrirWhatsApp, stageText, messageStage, podeReceber, marcarEnviado, desfazerEnviado, marcarRespondeu } from '../lib/manual'
 
 /** Conversa de WhatsApp de um contato (com envio). deal opcional para vincular e calcular a janela de 24h. */
 export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged, header, stageId }) {
@@ -254,24 +254,28 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
   useEffect(() => { const c = chatRef.current; if (c && stickRef.current) c.scrollTop = c.scrollHeight }, [msgs.length])
   useEffect(() => { setMode(win ? 'text' : 'template') }, [win])
 
-  // Modo manual: abre o WhatsApp com o texto pronto. Mensagem do dia → marca como enviada (Recebidos → Dia 1).
+  // Modo manual: abre o WhatsApp com o texto pronto. Só marca a mensagem do dia como enviada depois que
+  // a pessoa confirma ("Sim, enviei"): abrir o WhatsApp não garante que a mensagem saiu.
+  const [confirmar, setConfirmar] = useState(false)
   const abrirNoWhatsApp = async (escrito) => {
     const link = waLink(contato, escrito)
     if (!link) return toast('Este contato não tem telefone cadastrado.', 'err')
-    window.open(link, '_blank', 'noopener')
+    abrirWhatsApp(link)
+    if (msgStage && !jaEnviada) { setConfirmar(true); return }
     await registrarEnvio()
-    const doDia = msgStage && !jaEnviada && (ehDoDia || window.confirm(`Marcar a mensagem do ${msgStage.name} como enviada para este lead?`))
-    if (doDia) {
-      try {
-        const id = await marcarEnviado({ ...deal, stage_id: curStageId }, stages, profile?.id)
-        setEnviado({ stage: id, at: new Date().toISOString() })
-        if (id !== curStageId) { setCurStageId(id); curStageRef.current = id; onStageChanged?.(id) }
-        toast(`${msgStage.name}: marcada como enviada. Amanhã o card passa sozinho para o próximo dia.`)
-      } catch (e) { toast(e.message, 'err') }
-    }
-    setEhDoDia(false)
     setText(''); setQuestion({ body: '', options: [] }); setSeq({ parts: [], options: [] }); setMode('text')
-    onSent?.()
+  }
+  const confirmarEnvio = async () => {
+    try {
+      await registrarEnvio()
+      const id = await marcarEnviado({ ...deal, stage_id: curStageId }, stages, profile?.id)
+      setEnviado({ stage: id, at: new Date().toISOString() })
+      if (id !== curStageId) { setCurStageId(id); curStageRef.current = id; onStageChanged?.(id) }
+      toast(`${msgStage.name}: feito. Amanhã o card passa sozinho para o próximo dia.`)
+      setConfirmar(false); setEhDoDia(false)
+      setText(''); setQuestion({ body: '', options: [] }); setSeq({ parts: [], options: [] }); setMode('text')
+      onSent?.()
+    } catch (e) { toast(e.message, 'err') }
   }
 
   const registrarEnvio = async () => {
@@ -352,7 +356,13 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
       {!manual && !settings?.wa_connected && <div className="small muted">WhatsApp ainda não conectado. Configure em Configurações → WhatsApp.</div>}
       {manual && msgStage && (
         <div className="card manual-dia" style={{ padding: 10 }}>
-          {jaEnviada ? (
+          {confirmar && !jaEnviada ? (
+            <div className="row wrap small" style={{ gap: 8 }}>
+              <span><b>Enviou a mensagem do {msgStage.name} lá no WhatsApp?</b></span>
+              <button type="button" className="btn primary sm" onClick={confirmarEnvio}>✓ Sim, enviei</button>
+              <button type="button" className="btn sm" onClick={() => setConfirmar(false)}>Ainda não</button>
+            </div>
+          ) : jaEnviada ? (
             <div className="row wrap small" style={{ gap: 8 }}>
               <span style={{ color: 'var(--success)', fontWeight: 600 }}>✓ Mensagem do {msgStage.name} enviada{enviado.at ? ` em ${fmtDateTime(enviado.at)}` : ''}</span>
               <span className="muted">Amanhã o card passa sozinho para o próximo dia.</span>
