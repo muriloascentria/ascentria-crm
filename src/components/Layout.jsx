@@ -7,6 +7,7 @@ import logoEcrm from '../assets/brand/ecrm-branco.svg'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import ProfileModal from './ProfileModal'
+import LembretesUrgentes from './LembretesUrgentes'
 
 function FunnelIcon() {
   return (
@@ -71,7 +72,7 @@ export default function Layout() {
           <a onClick={signOut}>Sair</a>
         </div>
         {DEMO && <div className="demo-banner">Modo demonstração — dados fictícios; alterações valem só nesta sessão. Recarregue para voltar ao início.</div>}
-        <main className="main"><Outlet /></main>
+        <main className="main"><LembretesUrgentes /><Outlet /></main>
       </div>
       <Toasts />
       {editingProfile && <ProfileModal onClose={() => setEditingProfile(false)} />}

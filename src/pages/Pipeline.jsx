@@ -143,7 +143,6 @@ export default function Pipeline() {
   // some sozinho quando a tarefa é concluída ou 1h depois do horário do encontro
   const encontroAindaVale = (d) => !d.meeting_date || !d.meeting_time || new Date(`${d.meeting_date}T${String(d.meeting_time).slice(0, 5)}:00-03:00`).getTime() > Date.now() - 3_600_000
   const lembretePend = (d) => encontroAindaVale(d) && pendLembretes.some((a) => a.deal_id === d.id)
-  const dealsComLembrete = deals.filter(lembretePend)
   // aviso de contrato assinado: para a vendedora do encontro, para quem é dona do card e para a gestão
   const meuEmail = String(profile.email || '').toLowerCase()
   const contratosNovos = assinados.filter((d) => !vistos.includes(d.id) &&
@@ -172,20 +171,6 @@ export default function Pipeline() {
           <button className="btn primary" onClick={() => setModal({ deal: null, defaults: { pipeline_id: pipelineId } })}>+ Negócio</button>
         </div>
       </div>
-      {dealsComLembrete.length > 0 && (
-        <div className="alert-lembrete" role="alert">
-          {manual
-            ? <><b>⏰ {dealsComLembrete.length === 1 ? 'Um lembrete de encontro para enviar' : `${dealsComLembrete.length} lembretes de encontro para enviar`}</b> pelo seu WhatsApp. Abra o card: o texto pronto está em Atividades.</>
-            : <><b>⚠ {dealsComLembrete.length === 1 ? 'Um lembrete de encontro não saiu sozinho' : `${dealsComLembrete.length} lembretes de encontro não saíram sozinhos`}</b> (janela de 24h do WhatsApp fechada). Abra o card e envie à mão, o texto pronto está em Atividades:</>}
-          <span className="row wrap" style={{ gap: 6, marginTop: 6 }}>
-            {dealsComLembrete.map((d) => (
-              <button key={d.id} type="button" className="btn sm" onClick={() => openDeal(d)}>
-                {d.contact?.name || d.title}{d.meeting_time ? ` · ${d.meeting_date ? fmtDate(d.meeting_date).slice(0, 5) + ' ' : ''}${String(d.meeting_time).slice(0, 5)}` : ''}
-              </button>
-            ))}
-          </span>
-        </div>
-      )}
 
       {contratosNovos.length > 0 && (
         <div className="alert-contrato" role="status">
