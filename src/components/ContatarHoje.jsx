@@ -65,7 +65,6 @@ export default function ContatarHoje({ deals, onClose, onChanged, onOpen }) {
                     {idade !== null && <span className="small muted" style={{ marginLeft: 6 }}>chegou {idade === 0 ? 'hoje' : idade === 1 ? 'ontem' : `há ${idade} dias`}{d.created_at ? ` (${fmtDate(d.created_at)})` : ''}</span>}
                   </div>
                   <div className="small muted" style={{ marginTop: 4, whiteSpace: 'pre-wrap' }}>{txt.length > 180 ? txt.slice(0, 180) + '…' : txt}</div>
-                  {/áudio/i.test(st?.message_text || '') && <span className="tag-contrato">🎙 envie o áudio também</span>}
                 </div>
                 <div className="stack" style={{ gap: 4, flexShrink: 0 }}>
                   {feito ? <span className="small" style={{ color: 'var(--success)', fontWeight: 600 }}>{feito === 'enviado' ? '✓ enviada' : '✓ respondeu'}</span> : <>

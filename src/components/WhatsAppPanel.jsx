@@ -367,7 +367,6 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
             <div className="row wrap small" style={{ gap: 8 }}>
               <span>📲 Hoje: <b>mensagem do {msgStage.name}</b> — já está na caixa abaixo. Clique em <b>Abrir no WhatsApp</b> e envie por lá.</span>
               {!ehDoDia && <button type="button" className="btn ghost sm" onClick={usarMensagemDoDia}>usar a mensagem do {msgStage.name}</button>}
-              {/áudio/i.test(msgStage.message_text || '') && <span className="tag-contrato" title="Esta mensagem fala de um áudio: grave e envie o áudio junto, pelo WhatsApp">🎙 envie o áudio também</span>}
             </div>
           )}
         </div>
