@@ -50,7 +50,7 @@ export default function ContatarHoje({ deals, onClose, onChanged, onOpen }) {
     <Modal title={`📲 Para contatar hoje · ${pendentes.length}`} wide onClose={onClose}
       footer={<><AbrirEm /><span className="small muted grow" style={{ marginLeft: 12 }}>Feitos agora: {Object.values(feitos).filter((v) => v !== 'aguardando').length}</span><button className="btn" onClick={onClose}>Fechar</button></>}>
       <div className="small muted" style={{ marginBottom: 10 }}>
-        <b>Enviar</b> abre o WhatsApp Web com a mensagem do dia pronta; envie por lá e confirme aqui em <b>Sim, enviei</b>; no dia seguinte o card passa sozinho para o próximo Dia.
+        <b>Enviar</b> abre o WhatsApp (o app do computador ou o WhatsApp Web, conforme o "Abrir em" lá embaixo) com a mensagem do dia pronta; envie por lá e confirme aqui em <b>Sim, enviei</b>; no dia seguinte o card passa sozinho para o próximo Dia.
         Quando o lead responder, clique em <b>Respondeu</b>. Ficam fora da lista quem pediu para sair e a lista antiga sem autorização.
         <br />Para proteger o número, comece pelos mais recentes e evite passar de uns 30 primeiros contatos novos por dia.
       </div>
