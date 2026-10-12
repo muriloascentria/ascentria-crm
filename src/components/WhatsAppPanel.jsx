@@ -1,5 +1,6 @@
 import ContratoModal from './ContratoModal'
 import AbrirEm from './AbrirEm'
+import { useMobile } from '../lib/useMobile'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../lib/store'
@@ -28,6 +29,9 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
   const [progress, setProgress] = useState('')
   // envio manual de mensagem em partes: cada parte vai como uma mensagem separada no WhatsApp (índices já abertos)
   const [partesAbertas, setPartesAbertas] = useState([])
+  // no celular, a conversa antiga fica escondida (a caixa de mensagem vem logo depois do aviso do dia)
+  const mobile = useMobile()
+  const [verHistorico, setVerHistorico] = useState(false)
   // Quais mensagens prontas já foram para este contato (✓) e qual foi escolhida agora.
   const [sends, setSends] = useState([])
   const [pickedId, setPickedId] = useState(null)
@@ -436,8 +440,9 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
           )}
         </div>
       )}
-      {manual && msgs.length > 0 && <div className="small muted">Histórico da conversa pelo número antigo (até a desativação pela Meta). As novas conversas ficam no WhatsApp da equipe.</div>}
-      {(!manual || msgs.length > 0) && <div className="chat" ref={chatRef} onScroll={onChatScroll}>
+      {manual && msgs.length > 0 && mobile && !verHistorico && <button type="button" className="btn ghost sm" style={{ alignSelf: 'flex-start' }} onClick={() => setVerHistorico(true)}>💬 Ver conversa pelo número antigo ({msgs.length})</button>}
+      {manual && msgs.length > 0 && (!mobile || verHistorico) && <div className="small muted">Histórico da conversa pelo número antigo (até a desativação pela Meta). As novas conversas ficam no WhatsApp da equipe.</div>}
+      {(!manual || (msgs.length > 0 && (!mobile || verHistorico))) && <div className="chat" ref={chatRef} onScroll={onChatScroll}>
         {msgs.length === 0 && <div className="small muted" style={{ textAlign: 'center', padding: 12 }}>Nenhuma mensagem ainda.</div>}
         {msgs.map((m) => (
           <div key={m.id} className={'bubble ' + m.direction}>

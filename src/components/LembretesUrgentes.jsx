@@ -84,7 +84,7 @@ export default function LembretesUrgentes() {
           </div>
         ))}
       </div>
-      {profile && <div className="small" style={{ marginTop: 6, opacity: 0.9 }}>Clique em <b>Enviar lembrete</b>, aperte Enter no WhatsApp e depois em <b>Enviei</b>. O aviso só some quando todos forem enviados.</div>}
+      {profile && <div className="small alert-urgente-dica" style={{ marginTop: 6, opacity: 0.9 }}>Clique em <b>Enviar lembrete</b>, aperte Enter no WhatsApp e depois em <b>Enviei</b>. O aviso só some quando todos forem enviados.</div>}
     </div>
   )
 }

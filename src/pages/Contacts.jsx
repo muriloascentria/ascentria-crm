@@ -31,14 +31,14 @@ export default function Contacts() {
     <>
       <div className="page-head">
         <h1>{label('contacts')} <span className="muted" style={{ fontWeight: 400 }}>({list.length})</span></h1>
-        <div className="row">
-          <input className="input" placeholder="Buscar por nome, e-mail, telefone, tag…" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 280 }} />
+        <div className="row" style={{ flex: "1 1 260px", justifyContent: "flex-end" }}>
+          <input className="input" placeholder="Buscar nome, telefone, tag…" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 280, maxWidth: '100%', flex: '1 1 180px' }} />
           <button className="btn primary" onClick={() => setEditing({})}>+ Contato</button>
         </div>
       </div>
       {!loading && filtered.length === 0 ? <Empty title="Nenhum contato" text="Cadastre seu primeiro lead ou cliente." action={<button className="btn primary" onClick={() => setEditing({})}>+ Contato</button>} /> : (
         <div className="card pad0">
-          <table className="tbl">
+          <table className="tbl tbl-contatos">
             <thead><tr><th>Nome</th><th>Contato</th><th>Origem</th><th>Tags</th><th>Responsável</th><th>Criado</th></tr></thead>
             <tbody>
               {filtered.map((c) => (

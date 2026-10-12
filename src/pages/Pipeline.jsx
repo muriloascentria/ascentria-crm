@@ -8,6 +8,7 @@ import { daysIn, runCadenceNow, simulateInstagramDM, moveInboxToDay1, sentLast24
 import { DEMO } from '../lib/supabase'
 import ContatarHoje from '../components/ContatarHoje'
 import { isManual, devidos } from '../lib/manual'
+import { useMobile } from '../lib/useMobile'
 
 /**
  * Rodinha do mouse rola o quadro na horizontal, com animação suave.
@@ -147,28 +148,33 @@ export default function Pipeline() {
   const meuEmail = String(profile.email || '').toLowerCase()
   const contratosNovos = assinados.filter((d) => !vistos.includes(d.id) &&
     (isManager || d.owner_id === profile.id || String(d.seller?.email || '').toLowerCase() === meuEmail))
+  // celular: uma coluna por vez, escolhida nos botões de cima (lembra a última escolhida)
+  const mobile = useMobile()
+  const [colMob, setColMob] = useState(() => { try { return localStorage.getItem('funilColuna') || '' } catch { return '' } })
+  const escolherCol = (id) => { setColMob(id); try { localStorage.setItem('funilColuna', id) } catch { /* sem armazenamento */ } }
+  const colAtiva = pipeStages.find((s) => s.id === colMob) || pipeStages.find((s) => filtered.some((d) => d.stage_id === s.id)) || pipeStages[0]
   const paraHoje = manual ? devidos(deals.filter((d) => !onlyMine || d.owner_id === profile.id), pipeStages) : []
   const totalOpen = filtered.filter((d) => d.status === 'open').reduce((s, d) => s + Number(d.value), 0)
 
   return (
     <>
       <div className="page-head">
-        <div className="row wrap">
-          <h1>{label('pipeline')}</h1>
+        <div className="row wrap" style={mobile ? { width: '100%' } : undefined}>
+          {!mobile && <h1>{label('pipeline')}</h1>}
           {pipelines.length > 1 && (
-            <select className="select" style={{ width: 'auto' }} value={pipelineId || ''} onChange={(e) => setPipelineId(e.target.value)}>
+            <select className="select" style={{ width: mobile ? '100%' : 'auto' }} value={pipelineId || ''} onChange={(e) => setPipelineId(e.target.value)}>
               {pipelines.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           )}
-          <span className="chip">Em aberto: <b>{fmtMoney(totalOpen, settings.currency)}</b></span>
+          {!mobile && <span className="chip">Em aberto: <b>{fmtMoney(totalOpen, settings.currency)}</b></span>}
         </div>
-        <div className="row wrap">
-          <input className="input" placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 200 }} />
+        <div className="row wrap" style={mobile ? { width: '100%' } : undefined}>
+          <input className="input" placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} style={mobile ? { flex: '1 1 150px', width: 'auto' } : { width: 200 }} />
           <label className="check small"><input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} /> Só meus</label>
           {DEMO && pipeStages.some((s) => s.role) && <button className="btn" title="Simula uma mensagem no direct do Instagram contendo um celular" onClick={async () => { const r = await simulateInstagramDM(); toast(`DM recebida: ${r.name} entrou em Recebidos`); load() }}>📷 Simular DM do Instagram</button>}
           {DEMO && pipeStages.some((s) => s.role) && <button className="btn" title="Simula a passagem de 1 dia e roda o motor da cadência" onClick={async () => { const r = await runCadenceNow(); toast(`+1 dia: ${r.cadence.advanced} avançou, ${r.cadence.archived} perdido cadência, ${r.cadence.reactivated} reativado`); load() }}>⏩ Simular +1 dia</button>}
-          {manual && hasCadence && <button className="btn" onClick={() => setHojeAberto(true)} title="Quem precisa receber a mensagem da sequência hoje, pelo seu WhatsApp">📲 Para contatar hoje <b>{paraHoje.length}</b></button>}
-          <button className="btn primary" onClick={() => setModal({ deal: null, defaults: { pipeline_id: pipelineId } })}>+ Negócio</button>
+          {manual && hasCadence && <button className={'btn' + (mobile ? ' primary' : '')} style={mobile ? { flex: 1, justifyContent: 'center' } : undefined} onClick={() => setHojeAberto(true)} title="Quem precisa receber a mensagem da sequência hoje, pelo seu WhatsApp">📲 Para contatar hoje <b>{paraHoje.length}</b></button>}
+          <button className={'btn' + (mobile ? '' : ' primary')} onClick={() => setModal({ deal: null, defaults: { pipeline_id: pipelineId } })} title="Novo negócio">{mobile ? '+' : '+ Negócio'}</button>
         </div>
       </div>
 
@@ -188,9 +194,22 @@ export default function Pipeline() {
         </div>
       )}
 
-      {pipeStages.length === 0 ? <Empty title="Nenhuma etapa" text="Configure as etapas deste funil em Configurações → Funis." /> : (
-        <div className="kanban" ref={boardRef}>
+      {mobile && pipeStages.length > 0 && (
+        <div className="col-chips" role="tablist" aria-label="Colunas do funil">
           {pipeStages.map((s) => {
+            const n = filtered.filter((d) => d.stage_id === s.id).length
+            const novas = filtered.filter((d) => d.stage_id === s.id && isUnread(d)).length
+            return (
+              <button key={s.id} type="button" role="tab" aria-selected={colAtiva?.id === s.id} className={'col-chip' + (colAtiva?.id === s.id ? ' on' : '')} style={{ '--stage-color': s.color }} onClick={() => escolherCol(s.id)}>
+                {s.name}<span className="n">{n}</span>{novas > 0 && <span className="unread-pill">{novas}</span>}
+              </button>
+            )
+          })}
+        </div>
+      )}
+      {pipeStages.length === 0 ? <Empty title="Nenhuma etapa" text="Configure as etapas deste funil em Configurações → Funis." /> : (
+        <div className={'kanban' + (mobile ? ' one' : '')} ref={boardRef}>
+          {(mobile ? pipeStages.filter((s) => s.id === colAtiva?.id) : pipeStages).map((s) => {
             // Ordem: respostas não lidas primeiro; depois quem respondeu por último no topo; quem nunca respondeu fica abaixo.
             const items = filtered.filter((d) => d.stage_id === s.id).sort((a, b) => (Number(isUnread(b)) - Number(isUnread(a))) || ((b.last_inbound_at ? Date.parse(b.last_inbound_at) : 0) - (a.last_inbound_at ? Date.parse(a.last_inbound_at) : 0)))
             const unreadN = items.filter(isUnread).length

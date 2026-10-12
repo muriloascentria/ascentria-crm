@@ -3,6 +3,7 @@ import { useApp } from '../lib/store'
 import { Modal } from './ui'
 import AbrirEm from './AbrirEm'
 import { fmtDate } from '../lib/utils'
+import { useMobile } from '../lib/useMobile'
 import { waLink, abrirWhatsApp, stageText, messageStage, devidos, marcarEnviado, marcarRespondeu } from '../lib/manual'
 
 const POR_VEZ = 30
@@ -19,6 +20,7 @@ const temperatura = (iso) => {
     : { k: 'frio', t: '❄️ Frios · chegaram há mais de 14 dias', c: '#2b6cb0' }
 }
 export default function ContatarHoje({ deals, onClose, onChanged, onOpen }) {
+  const mobile = useMobile()
   const { stages, toast, profile } = useApp()
   const [feitos, setFeitos] = useState({}) // dealId → 'enviado' | 'respondeu'
   const [limite, setLimite] = useState(POR_VEZ)
@@ -54,12 +56,13 @@ export default function ContatarHoje({ deals, onClose, onChanged, onOpen }) {
 
   return (
     <Modal title={`📲 Para contatar hoje · ${pendentes.length}`} wide onClose={onClose}
-      footer={<><AbrirEm /><span className="small muted grow" style={{ marginLeft: 12 }}>Feitos agora: {Object.values(feitos).filter((v) => v !== 'aguardando').length} · <b style={{ color: novosHoje >= 30 ? 'var(--danger)' : undefined }}>primeiros contatos hoje: {novosHoje}</b> (sugestão: até 20–30)</span><button className="btn" onClick={onClose}>Fechar</button></>}>
-      <div className="small muted" style={{ marginBottom: 10 }}>
+      footer={<><AbrirEm /><span className="small muted grow" style={{ marginLeft: mobile ? 0 : 12 }}>Feitos agora: {Object.values(feitos).filter((v) => v !== 'aguardando').length} · <b style={{ color: novosHoje >= 30 ? 'var(--danger)' : undefined }}>primeiros contatos hoje: {novosHoje}</b> (sugestão: até 20–30)</span><button className="btn" onClick={onClose}>Fechar</button></>}>
+      <details className="small muted" style={{ marginBottom: 10 }} open={!mobile}>
+        <summary style={{ cursor: 'pointer' }}>Como funciona</summary>
         <b>Enviar</b> abre o WhatsApp (o app do computador ou o WhatsApp Web, conforme o "Abrir em" lá embaixo) com a mensagem do dia pronta; envie por lá e confirme aqui em <b>Sim, enviei</b>; no dia seguinte o card passa sozinho para o próximo Dia.
         Quando o lead responder, clique em <b>Respondeu</b>. Ficam fora da lista quem pediu para sair e a lista antiga sem autorização.
         <br />A lista vem dos <b>mais quentes</b> (pediram contato há pouco) para os <b>mais frios</b>. Para proteger o número, evite passar de uns 20–30 primeiros contatos (Dia 1) por dia.
-      </div>
+      </details>
       {lista.length === 0 && <div className="muted" style={{ padding: 16, textAlign: 'center' }}>Ninguém para contatar agora. ✓</div>}
       <div className="stack" style={{ gap: 8 }}>
         {lista.slice(0, limite).map((d, i, arr) => {
@@ -74,14 +77,14 @@ export default function ContatarHoje({ deals, onClose, onChanged, onOpen }) {
             <div key={d.id} className="stack" style={{ gap: 6 }}>
             {novoGrupo && <div className="small" style={{ fontWeight: 700, color: temp.c, marginTop: i ? 8 : 0 }}>{temp.t}</div>}
             <div className="card" style={{ padding: 10, opacity: feito && feito !== 'aguardando' ? 0.55 : 1, borderLeft: `3px solid ${temp.c}` }}>
-              <div className="between" style={{ gap: 8, alignItems: 'flex-start' }}>
+              <div className="between hoje-item" style={{ gap: 8, alignItems: 'flex-start' }}>
                 <div className="grow" style={{ minWidth: 0 }}>
                   <div><b>{d.contact?.name || d.title}</b> <span className="chip" style={{ marginLeft: 4 }}>{col?.role === 'inbox' ? `Recebidos → ${st?.name}` : st?.name}</span>
                     {idade !== null && <span className="small muted" style={{ marginLeft: 6 }}>chegou {idade === 0 ? 'hoje' : idade === 1 ? 'ontem' : `há ${idade} dias`}{d.created_at ? ` (${fmtDate(d.created_at)})` : ''}</span>}
                   </div>
                   <div className="small muted" style={{ marginTop: 4, whiteSpace: 'pre-wrap' }}>{txt.length > 180 ? txt.slice(0, 180) + '…' : txt}</div>
                 </div>
-                <div className="stack" style={{ gap: 4, flexShrink: 0 }}>
+                <div className="stack hoje-acoes" style={{ gap: 4, flexShrink: 0 }}>
                   {feito === 'aguardando' ? <>
                     <span className="small" style={{ fontWeight: 600 }}>Enviou no WhatsApp?</span>
                     <button type="button" className="btn primary sm" onClick={() => confirmar(d)}>✓ Sim, enviei</button>

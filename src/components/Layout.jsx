@@ -66,11 +66,23 @@ export default function Layout() {
         </div>
       </aside>
       <div className="grow" style={{ minWidth: 0 }}>
+        {/* celular: cabeçalho fino em cima e as abas embaixo, ao alcance do polegar */}
         <div className="topbar-mobile">
-          {items.map((i) => <NavLink key={i.to} to={i.to} end={i.to === '/'}>{i.text}{i.to === '/funil' && unread > 0 && <span className="nav-badge" style={{ marginLeft: 6 }}>{unread}</span>}</NavLink>)}
-          <a onClick={() => setEditingProfile(true)} style={{ marginLeft: 'auto' }}>Perfil</a>
-          <a onClick={signOut}>Sair</a>
+          {(settings?.company_name || 'Ascentria').toLowerCase() === 'ascentria' && !settings?.logo_url
+            ? <img src={logoEcrm} alt="eCRM" style={{ height: 22 }} />
+            : <b>{settings?.company_name || 'eCRM'}</b>}
+          <span className="grow" />
+          <button type="button" className="tm-btn" onClick={() => setEditingProfile(true)} aria-label="Meu perfil"><Avatar sm name={profile?.full_name || profile?.email} src={profile?.avatar_url} /></button>
+          <button type="button" className="tm-btn" onClick={signOut}>Sair</button>
         </div>
+        <nav className="tabbar" aria-label="Menu">
+          {items.map((i) => (
+            <NavLink key={i.to} to={i.to} end={i.to === '/'}>
+              <span className="tb-ico">{i.ico}{i.to === '/funil' && unread > 0 && <span className="tb-badge">{unread}</span>}</span>
+              <span className="tb-txt">{i.to === '/configuracoes' ? 'Config.' : i.text}</span>
+            </NavLink>
+          ))}
+        </nav>
         {DEMO && <div className="demo-banner">Modo demonstração — dados fictícios; alterações valem só nesta sessão. Recarregue para voltar ao início.</div>}
         <main className="main"><LembretesUrgentes /><Outlet /></main>
       </div>
