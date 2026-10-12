@@ -202,7 +202,9 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           summary: `${s.name} | Consultoria | ${nome}`,
           description: `Lead: ${nome}\nWhatsApp: ${fone}\nAgendado pelo eCRM (https://ecrm.digital)`,
-          conferenceData: ev.conferenceData ?? { createRequest: { requestId: crypto.randomUUID(), conferenceSolutionKey: { type: 'hangoutsMeet' } } },
+          // sala do Meet própria para cada lead: só reaproveita a do evento quando é o mesmo encontro deste negócio
+          // (blocos repetidos criados com Meet compartilham a mesma sala entre todas as semanas)
+          conferenceData: ev.id === deal.calendar_event_id && ev.conferenceData?.entryPoints?.length ? ev.conferenceData : { createRequest: { requestId: crypto.randomUUID(), conferenceSolutionKey: { type: 'hangoutsMeet' } } },
         }),
       })
       const link = patched.hangoutLink || patched.conferenceData?.entryPoints?.find((p: any) => p.entryPointType === 'video')?.uri || null
