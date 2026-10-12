@@ -303,7 +303,7 @@ Deno.serve(async (req) => {
       const guests = (ev.attendees ?? []).filter((a: any) => !a.self && !a.organizer && norm(a.email) !== norm(from.email)).map((a: any) => ({ email: a.email }))
       const extra = guests.length ? { attendees: guests } : {}
       const created = same
-        ? await gcal(tkTo, `/${encodeURIComponent(same.id)}?conferenceDataVersion=1&sendUpdates=none`, { method: 'PATCH', body: JSON.stringify({ ...body, ...extra, conferenceData: same.conferenceData ?? conf }) })
+        ? await gcal(tkTo, `/${encodeURIComponent(same.id)}?conferenceDataVersion=1&sendUpdates=none`, { method: 'PATCH', body: JSON.stringify({ ...body, ...extra, conferenceData: conf }) })
         : await gcal(tkTo, `?conferenceDataVersion=1&sendUpdates=none`, { method: 'POST', body: JSON.stringify({ ...body, ...extra, start: ev.start, end: ev.end, conferenceData: conf }) })
 
       // a agenda antiga: o horário volta a ficar disponível
