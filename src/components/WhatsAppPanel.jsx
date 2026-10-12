@@ -26,6 +26,8 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
   const [seq, setSeq] = useState({ parts: [], options: [] })
   const [stage, setStage] = useState('')
   const [progress, setProgress] = useState('')
+  // envio manual de mensagem em partes: cada parte vai como uma mensagem separada no WhatsApp (índices já abertos)
+  const [partesAbertas, setPartesAbertas] = useState([])
   // Quais mensagens prontas já foram para este contato (✓) e qual foi escolhida agora.
   const [sends, setSends] = useState([])
   const [pickedId, setPickedId] = useState(null)
@@ -207,7 +209,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     setPickedId(q.id)
     setEhDoDia(false)
     const parts = splitParts(q.body)
-    if (parts.length > 1) { setSeq({ parts: parts.map(fill), options: [...(q.options || [])] }); setMode('sequence'); return }
+    if (parts.length > 1) { setSeq({ parts: parts.map(fill), options: [...(q.options || [])] }); setPartesAbertas([]); setMode('sequence'); return }
     if (q.options?.length) { setQuestion({ body: fill(q.body), options: [...q.options] }); setMode('interactive') }
     else { setText(fill(q.body)); setMode('text') }
   }
@@ -316,17 +318,38 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     else await supabase.from('quick_reply_sends').insert({ contact_id: contactId, quick_reply_id: q.id, deal_id: deal?.id || null })
     loadSends()
   }
+  // opções viram lista no texto; se forem só números (ex.: nota de 1 a 10), a pergunta já diz isso e não repete
+  const opcoesTexto = (lista) => { const l = lista.map((o) => o.trim()).filter(Boolean); return l.every((o) => /^\d+$/.test(o)) ? '' : l.map((o) => `▸ ${o}`).join('\n') }
+  // Envio manual em partes: abre o WhatsApp só com a parte i (a última leva as opções, se houver).
+  // Quando todas as partes foram abertas, a mensagem pronta fica marcada como enviada.
+  const abrirParte = async (i) => {
+    const faltam = pendingFields(seq.parts[i])
+    if (faltam.length) return toast(`Preencha antes de enviar: ${faltam.join(', ')}`, 'err')
+    const ultima = seq.parts.map((t) => t.trim()).reduce((u, t, j) => (t ? j : u), -1)
+    const corpo = i === ultima ? [seq.parts[i].trim(), opcoesTexto(seq.options)].filter(Boolean).join('\n\n') : seq.parts[i].trim()
+    const link = waLink(contato, corpo)
+    if (!link) return toast('Este contato não tem telefone cadastrado.', 'err')
+    abrirWhatsApp(link)
+    const abertas = partesAbertas.includes(i) ? partesAbertas : [...partesAbertas, i]
+    setPartesAbertas(abertas)
+    const total = seq.parts.filter((t) => t.trim()).length
+    if (abertas.length >= total) {
+      await registrarEnvio()
+      toast('Última parte aberta. Depois de enviar no WhatsApp, a mensagem pronta fica marcada ✓')
+    }
+  }
   const send = async (e) => {
     e.preventDefault()
+    // mensagem em partes no modo manual: abre a próxima parte que ainda não foi aberta (cada uma vira um envio separado)
+    if (manual && mode === 'sequence') {
+      const proxima = seq.parts.findIndex((t, i) => t.trim() && !partesAbertas.includes(i))
+      return proxima >= 0 ? abrirParte(proxima) : toast('Todas as partes já foram abertas no WhatsApp')
+    }
     const escrito = mode === 'text' ? text : mode === 'interactive' ? question.body : mode === 'sequence' ? seq.parts.join('\n') : ''
     const faltam = pendingFields(escrito)
     if (faltam.length) return toast(`Preencha antes de enviar: ${faltam.join(', ')}`, 'err')
     if (manual) {
-      // opções viram lista no texto; se forem só números (ex.: nota de 1 a 10), a pergunta já diz isso e não repete
-      const opcoes = (lista) => { const l = lista.map((o) => o.trim()).filter(Boolean); return l.every((o) => /^\d+$/.test(o)) ? '' : l.map((o) => `▸ ${o}`).join('\n') }
-      const final = mode === 'sequence'
-        ? [seq.parts.map((t) => t.trim()).filter(Boolean).join('\n\n'), opcoes(seq.options)].filter(Boolean).join('\n\n')
-        : mode === 'interactive' ? [question.body.trim(), opcoes(question.options)].filter(Boolean).join('\n\n') : text
+      const final = mode === 'interactive' ? [question.body.trim(), opcoesTexto(question.options)].filter(Boolean).join('\n\n') : text
       if (!final.trim()) return toast('Escreva a mensagem', 'err')
       return abrirNoWhatsApp(final)
     }
@@ -442,12 +465,17 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
           <div className="stack" style={{ gap: 6 }}>
             {seq.parts.map((t, i) => (
               <div key={i} className="stack" style={{ gap: 2 }}>
-                <span className="small muted">Mensagem {i + 1}{i === seq.parts.length - 1 && seq.options.length > 0 ? ` · com ${seq.options.length <= 3 ? 'botões' : 'lista de opções'}` : ''}</span>
+                <div className="between">
+                  <span className="small muted">Mensagem {i + 1}{i === seq.parts.length - 1 && seq.options.length > 0 ? (manual ? ' · com as opções' : ` · com ${seq.options.length <= 3 ? 'botões' : 'lista de opções'}`) : ''}</span>
+                  {manual && t.trim() && (partesAbertas.includes(i)
+                    ? <button type="button" className="btn ghost sm" style={{ color: 'var(--success)' }} onClick={() => abrirParte(i)} title="Abrir de novo no WhatsApp">✓ aberta · abrir de novo</button>
+                    : <button type="button" className="btn sm" onClick={() => abrirParte(i)}>📲 Enviar esta</button>)}
+                </div>
                 <textarea className="textarea" style={{ minHeight: 48 }} value={t} onChange={(e) => setSeq({ ...seq, parts: seq.parts.map((x, j) => (j === i ? e.target.value : x)) })} />
               </div>
             ))}
             {seq.options.length > 0 && <div className="row wrap" style={{ gap: 6 }}>{seq.options.map((o, i) => <span key={i} className="chip">{o}</span>)}</div>}
-            <div className="small muted">{manual ? 'No WhatsApp, as partes vão juntas numa mensagem só.' : 'As mensagens saem uma depois da outra, nesta ordem.'} Troque o que estiver entre colchetes, como [DATA], antes de enviar. <button type="button" className="btn ghost sm" onClick={() => { setMode('text'); setSeq({ parts: [], options: [] }); setPickedId(null) }}>cancelar</button></div>
+            <div className="small muted">{manual ? 'Cada parte vai como uma mensagem separada: abra a parte, aperte Enter no WhatsApp e volte para a próxima.' : 'As mensagens saem uma depois da outra, nesta ordem.'} Troque o que estiver entre colchetes, como [DATA], antes de enviar. <button type="button" className="btn ghost sm" onClick={() => { setMode('text'); setSeq({ parts: [], options: [] }); setPickedId(null) }}>cancelar</button></div>
           </div>
         ) : mode === 'interactive' ? (
           <div className="stack" style={{ gap: 6 }}>
@@ -471,7 +499,12 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
           <div className="row wrap" style={{ justifyContent: 'flex-end', gap: 8 }}>
             <span className="small muted grow" style={{ minWidth: 220 }}>Abre o WhatsApp com o texto pronto: confira e toque em enviar por lá.</span>
             <AbrirEm />
-            <button className="btn primary sm">📲 Abrir no WhatsApp</button>
+            <button className="btn primary sm">{(() => {
+              if (mode !== 'sequence') return '📲 Abrir no WhatsApp'
+              const idx = seq.parts.map((t, i) => (t.trim() ? i : -1)).filter((i) => i >= 0)
+              const pos = idx.findIndex((i) => !partesAbertas.includes(i))
+              return pos < 0 ? '✓ Todas as partes abertas' : `📲 Abrir parte ${pos + 1} de ${idx.length}`
+            })()}</button>
           </div>
         ) : (
           <div className="row" style={{ justifyContent: 'flex-end' }}><button className="btn primary sm" disabled={busy}>{busy ? (progress ? `Enviando ${progress}…` : 'Enviando…') : mode === 'sequence' ? `Enviar ${seq.parts.length} mensagens` : 'Enviar'}</button></div>
