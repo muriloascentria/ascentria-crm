@@ -14,6 +14,8 @@
 //   transfer { deal_id, from_seller_id, to_seller_id, dry_run? } → passa o encontro para outra vendedora no
 //                             mesmo horário (acha também encontros marcados direto na agenda, pelo nome do lead)
 //   gravacao { deal_id }     → liga de novo a gravação/transcrição automática do Meet do encontro
+//   resumo   { deal_id }     → lê as "Anotações do Gemini" da reunião (Resumo e Próximas etapas) para mandar ao lead
+//                             (escopo documents.readonly na delegação; API do Google Docs ativada no projeto)
 //
 // Gravação automática: ao reservar (ou trocar de vendedora), a reunião do Meet já fica configurada para
 // gravar, transcrever e fazer anotações sozinha quando começar (Google Meet REST API, escopo
@@ -27,6 +29,7 @@ import { levarArquivosParaSessao } from '../_shared/plat.ts'
 const TZ = 'America/Sao_Paulo'
 const SCOPE = 'https://www.googleapis.com/auth/calendar.events'
 const MEET_SCOPE = 'https://www.googleapis.com/auth/meetings.space.settings'
+const DOCS_SCOPE = 'https://www.googleapis.com/auth/documents.readonly'
 const API = 'https://www.googleapis.com/calendar/v3/calendars/primary/events'
 
 type SA = { client_email: string; private_key: string; token_uri?: string }
@@ -314,6 +317,49 @@ Deno.serve(async (req) => {
       const gravacao = await gravarAutomatico(sa, to.email, link)
       if (!gravacao.ok) console.warn('calendar gravacao', gravacao.error)
       return json({ ok: true, from: from.name, to: to.name, date: when.date, time: when.time, link, reused_free_slot: !!same, gravacao })
+    }
+
+    if (b.action === 'resumo') {
+      // Resumo da reunião para mandar ao lead: lê o documento "Anotações do Gemini" anexado ao evento
+      // (na conta da consultora, escopo documents.readonly) e devolve as seções Resumo e Próximas etapas.
+      const deal = await dealFor(b.deal_id)
+      const { data: d2 } = await admin.from('deals').select('seller_id, meeting_files').eq('id', deal.id).single()
+      const doc = (Array.isArray(d2?.meeting_files) ? d2.meeting_files : []).find((f: any) => f?.kind === 'anotacoes' && f?.url)
+      const docId = String(doc?.url ?? '').match(/\/document\/d\/([\w-]+)/)?.[1]
+      if (!docId) return json({ ok: false, error: 'O resumo do Gemini ainda não apareceu no evento da reunião. Clique em "Buscar na agenda" daqui a alguns minutos.' })
+      if (!d2?.seller_id) return json({ ok: false, error: 'O encontro não tem consultora.' })
+      const s = await seller(d2.seller_id)
+      let tk: string
+      try { tk = await googleToken(sa, s.email, DOCS_SCOPE) } catch (e) {
+        const m = (e as Error).message
+        return json({ ok: false, error: /não foi autorizada/.test(m) ? 'Falta autorizar a leitura dos documentos (escopo documents.readonly) na delegação do Google Workspace.' : m })
+      }
+      const res = await fetch(`https://docs.googleapis.com/v1/documents/${docId}`, { headers: { Authorization: `Bearer ${tk}` } })
+      const data: any = await res.json().catch(() => ({}))
+      if (!res.ok) return json({ ok: false, error: 'Google Docs: ' + (data?.error?.message || res.status) })
+      // texto do documento, parágrafo por parágrafo: negrito vira *texto* (WhatsApp), quebra de linha interna vira \n,
+      // listas viram "• " e os links de minutagem do Gemini, como (00:05:37), saem
+      const linhas: string[] = []
+      for (const el of data?.body?.content ?? []) {
+        const p = el.paragraph
+        if (!p) continue
+        const t = (p.elements ?? []).map((x: any) => {
+          const c = String(x.textRun?.content ?? '').replace(/\u000b/g, '\n')
+          const nu = c.trim()
+          if (!nu) return c
+          return x.textRun?.textStyle?.bold && !/^#|^\d{2}:\d{2}/.test(nu) ? c.replace(nu, `*${nu}*`) : c
+        }).join('').replace(/\s*\(\d{2}:\d{2}:\d{2}\)/g, '').replace(/[ \t]+\n/g, '\n').trim()
+        if (t) linhas.push((p.bullet ? '• ' : '') + t)
+      }
+      const sem = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\*/g, '').trim().toLowerCase()
+      const idx = (re: RegExp, from = 0) => linhas.findIndex((l, i) => i >= from && re.test(sem(l)) && l.length < 60)
+      const iResumo = idx(/^resumo$|^summary$/)
+      const iDetalhes = idx(/^detalhes$|^details$/, iResumo + 1)
+      const iEtapas = idx(/^proximas etapas|^next steps|^proximos passos/)
+      const fimEtapas = (() => { const j = linhas.findIndex((l, i) => i > iEtapas && /revise as anotacoes|voce deve revisar|gemini pode cometer|transcricao$|^transcript/.test(sem(l))); return j < 0 ? linhas.length : j })()
+      const resumo = iResumo >= 0 ? linhas.slice(iResumo + 1, iDetalhes > iResumo ? iDetalhes : (iEtapas > iResumo ? iEtapas : linhas.length)).join('\n\n') : ''
+      const etapas = iEtapas >= 0 ? linhas.slice(iEtapas + 1, fimEtapas).join('\n') : ''
+      return json({ ok: true, resumo: resumo.slice(0, 3000), etapas: etapas.slice(0, 1500), doc_url: doc.url, texto: resumo || etapas ? '' : linhas.join('\n').slice(0, 3000) })
     }
 
     if (b.action === 'gravacao') {

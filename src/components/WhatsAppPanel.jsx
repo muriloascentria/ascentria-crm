@@ -641,7 +641,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
             : 'Preencha depois que o lead escolher o horário: o dia e a hora entram sozinhos em todas as mensagens prontas.'}
         </div>
       </div>
-      {deal?.id && <MeetingFiles deal={deal} />}
+      {deal?.id && <MeetingFiles deal={deal} contato={contato} firstName={firstName} />}
       {contratoAberto && <ContratoModal deal={deal} onClose={() => setContratoAberto(false)} onSaved={onSent} />}
      </div>
     </div>
@@ -690,7 +690,10 @@ function MediaContent({ m }) {
 const FILE_LABEL = { gravacao: '🎥 Gravação', transcricao: '📝 Transcrição', anotacoes: '✨ Anotações do Gemini', arquivo: '📎 Arquivo' }
 
 /** Depois da reunião: links da gravação, transcrição e anotações que o Google Meet anexa ao evento da agenda. */
-function MeetingFiles({ deal }) {
+function MeetingFiles({ deal, contato, firstName }) {
+  const { toast } = useApp()
+  const [resumo, setResumo] = useState(null) // texto da mensagem com o resumo, em edição
+  const [lendo, setLendo] = useState(false)
   const [files, setFiles] = useState(Array.isArray(deal.meeting_files) ? deal.meeting_files : [])
   const [checkedAt, setCheckedAt] = useState(deal.meeting_files_checked_at || null)
   const [busy, setBusy] = useState(false)
@@ -713,6 +716,29 @@ function MeetingFiles({ deal }) {
     const faltaNoPlat = files.length > 0 && !deal.plat_sessao_id
     if (passou && (semArquivos || faltaNoPlat)) buscar()
   }, [deal.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const prepararResumo = async () => {
+    setLendo(true); setErr('')
+    try {
+      const r = await callCalendar('resumo', { deal_id: deal.id })
+      const nome = firstName || (contato?.name || '').split(' ')[0] || ''
+      const corpo = r.resumo || r.texto || ''
+      setResumo([
+        `Olá${nome ? `, ${nome}` : ''}! Obrigada pela nossa conversa de hoje. 😊`,
+        'Aqui está o resumo do que conversamos:',
+        corpo,
+        r.etapas ? `*Próximos passos:*\n${r.etapas}` : '',
+        'Qualquer dúvida, é só me chamar por aqui!',
+      ].filter(Boolean).join('\n\n'))
+    } catch (e) { setErr(e.message) } finally { setLendo(false) }
+  }
+  const enviarResumo = () => {
+    const link = waLink(contato, resumo || '')
+    if (!link) return toast('Este contato não tem telefone cadastrado.', 'err')
+    abrirWhatsApp(link)
+    supabase.from('activities').insert({ type: 'whatsapp', title: 'Resumo da reunião enviado ao lead (WhatsApp)', description: resumo, deal_id: deal.id, contact_id: deal.contact_id || null, done: true, done_at: new Date().toISOString() }).then(() => {})
+    setResumo(null)
+    toast('WhatsApp aberto com o resumo. Confira e aperte Enter por lá.')
+  }
   if (!passou) return null
   return (
     <div className="card" style={{ padding: 10, background: 'var(--surface-2, #f6f5f1)' }}>
@@ -728,6 +754,22 @@ function MeetingFiles({ deal }) {
         <div className="small muted" style={{ marginTop: 4 }}>
           {busy ? 'Procurando a gravação e a transcrição no evento da agenda…'
             : 'Ainda não há gravação nem transcrição no evento da agenda. O Google costuma anexar alguns minutos (às vezes horas) depois da reunião, se ela foi gravada ou transcrita no Meet.'}
+        </div>
+      )}
+      {files.some((f) => f.kind === 'anotacoes') && resumo === null && (
+        <div className="row" style={{ marginTop: 8 }}>
+          <button type="button" className="btn primary sm" onClick={prepararResumo} disabled={lendo}>{lendo ? 'Lendo o resumo do Gemini…' : '📲 Enviar resumo ao lead'}</button>
+        </div>
+      )}
+      {resumo !== null && (
+        <div className="stack" style={{ gap: 6, marginTop: 8 }}>
+          <div className="small"><b>Resumo para o lead</b> · confira e ajuste o texto antes de enviar (o Gemini escreve em 3ª pessoa e pode errar nomes).</div>
+          <textarea className="textarea" style={{ minHeight: 220 }} value={resumo} onChange={(e) => setResumo(e.target.value)} />
+          <div className="row wrap" style={{ gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" className="btn ghost sm" onClick={() => setResumo(null)}>cancelar</button>
+            <AbrirEm />
+            <button type="button" className="btn primary sm" onClick={enviarResumo}>📲 Abrir no WhatsApp</button>
+          </div>
         </div>
       )}
       {err && <div className="small late" style={{ marginTop: 4 }}>{err}</div>}
