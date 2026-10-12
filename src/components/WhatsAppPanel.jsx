@@ -322,7 +322,8 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     const faltam = pendingFields(escrito)
     if (faltam.length) return toast(`Preencha antes de enviar: ${faltam.join(', ')}`, 'err')
     if (manual) {
-      const opcoes = (lista) => lista.filter((o) => o.trim()).map((o, i) => `${i + 1}. ${o}`).join('\n')
+      // opções viram lista no texto; se forem só números (ex.: nota de 1 a 10), a pergunta já diz isso e não repete
+      const opcoes = (lista) => { const l = lista.map((o) => o.trim()).filter(Boolean); return l.every((o) => /^\d+$/.test(o)) ? '' : l.map((o) => `▸ ${o}`).join('\n') }
       const final = mode === 'sequence'
         ? [seq.parts.map((t) => t.trim()).filter(Boolean).join('\n\n'), opcoes(seq.options)].filter(Boolean).join('\n\n')
         : mode === 'interactive' ? [question.body.trim(), opcoes(question.options)].filter(Boolean).join('\n\n') : text
