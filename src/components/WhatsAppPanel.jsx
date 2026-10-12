@@ -319,7 +319,14 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     loadSends()
   }
   // opções viram lista no texto; se forem só números (ex.: nota de 1 a 10), a pergunta já diz isso e não repete
-  const opcoesTexto = (lista) => { const l = lista.map((o) => o.trim()).filter(Boolean); return l.every((o) => /^\d+$/.test(o)) ? '' : l.map((o) => `▸ ${o}`).join('\n') }
+  // opções numeradas (1️⃣ 2️⃣ …): o lead responde só com o número. Se as opções já são números (nota de 1 a 10), só explica.
+  const NUM = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟']
+  const opcoesTexto = (lista) => {
+    const l = lista.map((o) => o.trim()).filter(Boolean)
+    if (!l.length) return ''
+    if (l.every((o) => /^\d+$/.test(o))) return `_Responda com um número de ${Math.min(...l.map(Number))} a ${Math.max(...l.map(Number))}._`
+    return `${l.map((o, i) => `${NUM[i] || `${i + 1})`} ${o}`).join('\n')}\n\n_Responda com o número._`
+  }
   // Envio manual em partes: abre o WhatsApp só com a parte i (a última leva as opções, se houver).
   // Quando todas as partes foram abertas, a mensagem pronta fica marcada como enviada.
   const abrirParte = async (i) => {
