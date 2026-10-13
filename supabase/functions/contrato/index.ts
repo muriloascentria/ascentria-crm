@@ -114,6 +114,64 @@ const dataExtenso = (iso: string) => { const [y, m, d] = iso.split('-').map(Numb
 const mesAno = (ym: string) => { const [y, m] = ym.split('-').map(Number); const n = MESES[m - 1] ?? ''; return `${n.charAt(0).toUpperCase()}${n.slice(1)} de ${y}` }
 const txt = (v: unknown, max = 500) => String(v ?? '').trim().slice(0, max)
 
+// ---------- cláusulas incluídas em todo contrato gerado ----------
+export const GARANTIA = [
+  { rotulo: '12.5. Garantia de entrega.', texto: ' Sem prejuízo do disposto nas cláusulas 12.1 a 12.4, o CONTRATADO garante a entrega de tudo o que foi apresentado ao CONTRATANTE na Consultoria Gratuita que deu origem a esta contratação, que deverá ser obrigatoriamente entregue dentro dos 12 (doze) meses de vigência da Mentoria.' },
+  { rotulo: '12.6.', texto: ' Caso alguma dessas entregas não seja cumprida dentro do prazo de vigência, o CONTRATANTE terá direito ao reembolso integral dos valores pagos, mediante solicitação por escrito pelos canais oficiais do CONTRATADO.' },
+]
+
+/**
+ * Acrescenta ao contrato (depois de trocar os campos):
+ *  - a garantia de entrega, logo depois do parágrafo 12.4;
+ *  - a cláusula especial (se preenchida) como seção "20. DA CLÁUSULA ESPECIAL", antes de "E, por estarem de acordo".
+ * Se o modelo mudar e o parágrafo de referência não for achado, a garantia entra antes das assinaturas.
+ */
+async function inserirClausulas(tk: string, docId: string, especial: string) {
+  const d = await g(tk, `${DOCS}/${docId}?fields=body(content(startIndex,endIndex,paragraph(elements(textRun(content)))))`)
+  const pars = (d.body?.content ?? []).filter((el: any) => el.paragraph).map((el: any) => ({
+    s: el.startIndex as number, e: el.endIndex as number,
+    t: (el.paragraph.elements ?? []).map((x: any) => x.textRun?.content ?? '').join('').trim(),
+  }))
+  const fecho = pars.find((p: any) => /^E,\s*por estarem de acordo/i.test(p.t))
+  const p124 = pars.find((p: any) => /^12\.4\./.test(p.t))
+  const reqs: any[] = []
+  // de trás para frente: inserir mais adiante no documento não muda as posições anteriores
+  const ancoraFecho = fecho ? fecho.s : null
+  const antesFecho: { titulo?: string; rotulo: string; texto: string }[] = []
+  if (especial) antesFecho.push({ titulo: '20. DA CLÁUSULA ESPECIAL', rotulo: '20.1.', texto: ` Além das condições acima, as Partes acordam expressamente o seguinte: ${especial.replace(/\s*\n\s*/g, ' ')}` })
+  if (!p124 && ancoraFecho != null) GARANTIA.forEach((c) => antesFecho.unshift({ rotulo: c.rotulo, texto: c.texto }))
+  if (ancoraFecho != null && antesFecho.length) {
+    let pos = ancoraFecho
+    for (const c of antesFecho) {
+      if (c.titulo) {
+        reqs.push({ insertText: { location: { index: pos }, text: c.titulo + '\n' } })
+        reqs.push({ updateParagraphStyle: { range: { startIndex: pos, endIndex: pos + c.titulo.length + 1 }, paragraphStyle: { namedStyleType: 'HEADING_1' }, fields: 'namedStyleType' } })
+        reqs.push({ updateTextStyle: { range: { startIndex: pos, endIndex: pos + c.titulo.length }, textStyle: { bold: true }, fields: 'bold' } })
+        pos += c.titulo.length + 1
+      }
+      const bloco = c.rotulo + c.texto + '\n\n'
+      reqs.push({ insertText: { location: { index: pos }, text: bloco } })
+      reqs.push({ updateParagraphStyle: { range: { startIndex: pos, endIndex: pos + bloco.length }, paragraphStyle: { namedStyleType: 'NORMAL_TEXT' }, fields: 'namedStyleType' } })
+      reqs.push({ updateTextStyle: { range: { startIndex: pos, endIndex: pos + bloco.length }, textStyle: { bold: false }, fields: 'bold' } })
+      reqs.push({ updateTextStyle: { range: { startIndex: pos, endIndex: pos + c.rotulo.length }, textStyle: { bold: true }, fields: 'bold' } })
+      pos += bloco.length
+    }
+  }
+  if (p124) {
+    // novo parágrafo logo depois do 12.4 (antes da quebra de linha que fecha o parágrafo)
+    let pos = p124.e - 1
+    for (const c of GARANTIA) {
+      const bloco = '\n\n' + c.rotulo + c.texto
+      reqs.push({ insertText: { location: { index: pos }, text: bloco } })
+      reqs.push({ updateTextStyle: { range: { startIndex: pos + 2, endIndex: pos + bloco.length }, textStyle: { bold: false }, fields: 'bold' } })
+      reqs.push({ updateTextStyle: { range: { startIndex: pos + 2, endIndex: pos + 2 + c.rotulo.length }, textStyle: { bold: true }, fields: 'bold' } })
+      pos += bloco.length
+    }
+  }
+  // as inserções do fecho (mais adiante) vão primeiro, para não deslocar a posição do 12.4
+  if (reqs.length) await g(tk, `${DOCS}/${docId}:batchUpdate`, { method: 'POST', body: JSON.stringify({ requests: reqs }) })
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
@@ -225,6 +283,8 @@ Deno.serve(async (req) => {
       method: 'POST',
       body: JSON.stringify({ requests: Object.entries(campos).map(([k, v]) => ({ replaceAllText: { containsText: { text: `{{${k}}}`, matchCase: true }, replaceText: v } })) }),
     })
+    // garantia de entrega (12.5 e 12.6) e cláusula especial (20, opcional, antes das assinaturas)
+    await inserirClausulas(tk, doc.id, txt(x.clausula_especial, 3000))
     const conteudo = await g(tk, `${DOCS}/${doc.id}?fields=body(content(startIndex,endIndex,paragraph(elements(startIndex,endIndex,textRun(textStyle(backgroundColor))))))`)
     const ranges: { s: number; e: number }[] = []
     for (const el of conteudo.body?.content ?? []) for (const pe of el.paragraph?.elements ?? []) {

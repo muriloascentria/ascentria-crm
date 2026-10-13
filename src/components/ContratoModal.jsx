@@ -54,7 +54,7 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
     const hoje = hojeISO()
     return {
       nome: contato?.name || deal.title || '', email: '', cpf: '', endereco: '', bairro: '', cidade_uf: '',
-      valor_total: 'R$ 11.997,00', forma_pagamento: 'Pix + cartão de crédito', entrada: '', num_parcelas: '', valor_parcela: '', vencimentos: '',
+      valor_total: 'R$ 11.997,00', forma_pagamento: 'Pix + cartão de crédito', entrada: '', num_parcelas: '', valor_parcela: '', vencimentos: '', clausula_especial: '',
       data: hoje, vigencia_inicio: hoje.slice(0, 7), vigencia_fim: maisUmAno(hoje.slice(0, 7)),
       ...(salvo || {}),
     }
@@ -203,6 +203,11 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
             <Field label="fim"><input className="input" type="month" value={f.vigencia_fim} onChange={(e) => set('vigencia_fim', e.target.value)} required /></Field>
           </div>
         </div>
+        <h3 style={{ margin: '8px 0 0' }}>Cláusula especial <span className="small muted" style={{ fontWeight: 400 }}>(opcional)</span></h3>
+        <Field hint="Só se houver alguma combinação especial com o lead. O texto entra no final do contrato, antes das assinaturas, como acordo firmado entre as partes. Deixe em branco se não houver.">
+          <textarea className="textarea" style={{ minHeight: 80 }} maxLength={3000} value={f.clausula_especial || ''} onChange={(e) => set('clausula_especial', e.target.value)}
+            placeholder="Ex.: O CONTRATADO concederá ao CONTRATANTE 2 (dois) encontros individuais adicionais de 1 hora durante a vigência." />
+        </Field>
         {erro && <div className="small late">{erro}</div>}
         <div className="small muted">Ao enviar, o contrato é criado no Google Drive da vendedora (pasta "Contratos eCRM") e vai por e-mail, pela Autentique, para o Murilo ({signatario}) e para o lead assinarem.</div>
       </form>
