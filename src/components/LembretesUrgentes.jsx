@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useApp } from '../lib/store'
 import { waLink, abrirWhatsApp } from '../lib/manual'
+import { splitParts } from '../lib/wa'
 import AbrirEm from './AbrirEm'
 
 /**
@@ -12,7 +13,7 @@ import AbrirEm from './AbrirEm'
 export default function LembretesUrgentes() {
   const { toast, profile } = useApp()
   const [itens, setItens] = useState([])
-  const [abertos, setAbertos] = useState({}) // activityId → true depois de abrir o WhatsApp
+  const [abertos, setAbertos] = useState({}) // activityId → quantas partes já foram abertas no WhatsApp
 
   const load = useCallback(async () => {
     const { data } = await supabase.from('activities')
@@ -52,12 +53,22 @@ export default function LembretesUrgentes() {
   const texto = (a) => String(a.description || '').split(/\n\s*\n/).slice(1).join('\n\n').trim() || String(a.description || '')
   const qual = (a) => (a.title.replace(/^Enviar lembrete à mão — /, '').split(':')[0] || 'Lembrete').trim()
   const hora = (d) => (d?.meeting_time ? String(d.meeting_time).slice(0, 5).replace(':', 'h') : '')
+  // lembrete em partes (separadas por ---): cada parte vai como uma mensagem; o botão abre a próxima
+  const partes = (a) => splitParts(texto(a)).map((t) => t.trim()).filter(Boolean)
   const enviar = (a) => {
-    const link = waLink(a.contato, texto(a))
+    const ps = partes(a)
+    const i = Math.min(abertos[a.id] || 0, ps.length - 1)
+    const link = waLink(a.contato, ps[i] || texto(a))
     if (!link) return toast('Contato sem telefone', 'err')
     abrirWhatsApp(link)
-    setAbertos((x) => ({ ...x, [a.id]: true }))
+    setAbertos((x) => ({ ...x, [a.id]: i + 1 }))
   }
+  const rotulo = (a) => {
+    const n = partes(a).length, feitas = abertos[a.id] || 0
+    if (n <= 1) return feitas ? '📲 Abrir de novo' : '📲 Enviar lembrete'
+    return feitas >= n ? '📲 Abrir a última de novo' : `📲 Enviar parte ${feitas + 1} de ${n}`
+  }
+  const terminou = (a) => (abertos[a.id] || 0) >= partes(a).length
   const enviei = async (a) => {
     const { error } = await supabase.from('activities').update({ done: true, done_at: new Date().toISOString() }).eq('id', a.id)
     if (error) return toast(error.message, 'err')
@@ -79,12 +90,12 @@ export default function LembretesUrgentes() {
               {a.deal?.meeting_time && <> · reunião às <b>{hora(a.deal)}</b></>}
               <span style={{ opacity: 0.85 }}> · {qual(a)}</span>
             </div>
-            <button type="button" className="btn sm alert-urgente-btn" onClick={() => enviar(a)}>📲 Enviar lembrete</button>
-            <button type="button" className={'btn sm' + (abertos[a.id] ? ' alert-urgente-btn' : '')} onClick={() => enviei(a)}>✓ Enviei</button>
+            <button type="button" className={'btn sm' + (terminou(a) ? '' : ' alert-urgente-btn')} onClick={() => enviar(a)}>{rotulo(a)}</button>
+            <button type="button" className={'btn sm' + (terminou(a) ? ' alert-urgente-btn' : '')} onClick={() => enviei(a)}>✓ Enviei</button>
           </div>
         ))}
       </div>
-      {profile && <div className="small alert-urgente-dica" style={{ marginTop: 6, opacity: 0.9 }}>Clique em <b>Enviar lembrete</b>, aperte Enter no WhatsApp e depois em <b>Enviei</b>. O aviso só some quando todos forem enviados.</div>}
+      {profile && <div className="small alert-urgente-dica" style={{ marginTop: 6, opacity: 0.9 }}>Clique em <b>Enviar</b>, aperte Enter no WhatsApp (se o lembrete tiver partes, volte e envie a próxima) e no fim clique em <b>Enviei</b>. O aviso só some quando todos forem enviados.</div>}
     </div>
   )
 }
