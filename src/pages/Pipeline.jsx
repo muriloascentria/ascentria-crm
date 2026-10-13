@@ -82,7 +82,7 @@ export default function Pipeline() {
   const load = useCallback(async () => {
     if (!pipelineId) return
     const { data, error } = await supabase.from('deals')
-      .select('*, contact:contacts(name, phone, wa_id, source, optin, marketing_opt_out)')
+      .select('*, contact:contacts(name, phone, wa_id, source, optin, marketing_opt_out), seller:calendar_sellers(name)')
       .eq('pipeline_id', pipelineId).order('position').order('created_at', { ascending: false })
     if (error) toast(error.message, 'err')
     setDeals(data || [])
@@ -143,6 +143,18 @@ export default function Pipeline() {
   const userName = (id) => users.find((u) => u.id === id)?.full_name || ''
   // some sozinho quando a tarefa é concluída ou 1h depois do horário do encontro
   const encontroAindaVale = (d) => !d.meeting_date || !d.meeting_time || new Date(`${d.meeting_date}T${String(d.meeting_time).slice(0, 5)}:00-03:00`).getTime() > Date.now() - 3_600_000
+  // reunião acontecendo agora (do horário marcado até 2h depois) ou começando nos próximos 30 min
+  const DURACAO = 2 * 3_600_000
+  const reuniao = (d) => {
+    if (d.status !== 'open' || !d.meeting_date || !d.meeting_time) return null
+    const ini = new Date(`${d.meeting_date}T${String(d.meeting_time).slice(0, 5)}:00-03:00`).getTime()
+    const agora = Date.now()
+    const hm = (t) => new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }).replace(':', 'h')
+    if (agora >= ini && agora < ini + DURACAO) return { agora: true, ini: hm(ini), fim: hm(ini + DURACAO) }
+    if (agora >= ini - 30 * 60_000 && agora < ini) return { agora: false, ini: hm(ini), falta: Math.ceil((ini - agora) / 60_000) }
+    return null
+  }
+  const emReuniao = deals.filter((d) => reuniao(d)?.agora)
   const lembretePend = (d) => encontroAindaVale(d) && pendLembretes.some((a) => a.deal_id === d.id)
   // aviso de contrato assinado: para a vendedora do encontro, para quem é dona do card e para a gestão
   const meuEmail = String(profile.email || '').toLowerCase()
@@ -194,6 +206,16 @@ export default function Pipeline() {
         </div>
       )}
 
+      {emReuniao.length > 0 && (
+        <div className="alert-reuniao" role="status">
+          <b>🎥 Em reunião agora:</b>
+          {emReuniao.map((d) => (
+            <button key={d.id} type="button" className="btn sm" onClick={() => openDeal(d)}>
+              {d.contact?.name || d.title}{d.seller?.name ? ` · com ${d.seller.name}` : ''} · até {reuniao(d).fim}
+            </button>
+          ))}
+        </div>
+      )}
       {mobile && pipeStages.length > 0 && (
         <div className="col-chips" role="tablist" aria-label="Colunas do funil">
           {pipeStages.map((s) => {
@@ -201,7 +223,7 @@ export default function Pipeline() {
             const novas = filtered.filter((d) => d.stage_id === s.id && isUnread(d)).length
             return (
               <button key={s.id} type="button" role="tab" aria-selected={colAtiva?.id === s.id} className={'col-chip' + (colAtiva?.id === s.id ? ' on' : '')} style={{ '--stage-color': s.color }} onClick={() => escolherCol(s.id)}>
-                {s.name}<span className="n">{n}</span>{novas > 0 && <span className="unread-pill">{novas}</span>}
+                {filtered.some((d) => d.stage_id === s.id && reuniao(d)?.agora) && '🎥 '}{s.name}<span className="n">{n}</span>{novas > 0 && <span className="unread-pill">{novas}</span>}
               </button>
             )
           })}
@@ -232,10 +254,13 @@ export default function Pipeline() {
                   {items.map((d) => {
                     const overdue = d.status === 'open' && d.expected_close && new Date(d.expected_close) < new Date(new Date().toDateString())
                     return (
-                      <div key={d.id} className={'deal' + (dragId === d.id ? ' dragging' : '') + (overdue ? ' overdue' : '') + (isUnread(d) ? ' unread' : '')} draggable
+                      <div key={d.id} className={'deal' + (dragId === d.id ? ' dragging' : '') + (overdue ? ' overdue' : '') + (isUnread(d) ? ' unread' : '') + (reuniao(d)?.agora ? ' em-reuniao' : '')} draggable
                         onDragStart={() => setDragId(d.id)} onDragEnd={() => { setDragId(null); setOver(null) }}
                         onClick={() => openDeal(d)}>
                         {isUnread(d) && <span className="unread-dot" title="Nova mensagem do lead" aria-label="Nova mensagem" />}
+                        {reuniao(d) && (reuniao(d).agora
+                          ? <div className="tag-reuniao" title="Reunião acontecendo agora (destaque por 2 horas a partir do horário marcado)">🎥 EM REUNIÃO até {reuniao(d).fim}{d.seller?.name ? ` · ${d.seller.name}` : ''}</div>
+                          : <div className="tag-reuniao breve">🕒 Reunião em {reuniao(d).falta} min ({reuniao(d).ini}){d.seller?.name ? ` · ${d.seller.name}` : ''}</div>)}
                         <div className="title">{d.title}</div>
                         {d.contrato_status === 'assinado' && <div className="tag-contrato ok" title="Contrato assinado pelo Murilo e pelo lead">✅ Contrato assinado</div>}
                         {d.contrato_status === 'enviado' && <div className="tag-contrato" title="Contrato enviado para assinatura (Autentique)">📨 Contrato enviado</div>}
