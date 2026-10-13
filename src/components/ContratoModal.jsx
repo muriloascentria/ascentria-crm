@@ -134,6 +134,7 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
             </div>
             <div className="row" style={{ gap: 6 }}>
               {estado.pdf && <a className="btn sm primary" href={estado.pdf} target="_blank" rel="noreferrer">PDF assinado ↗</a>}
+              {deal.contrato_arquivo_url && <a className="btn sm" href={deal.contrato_arquivo_url} target="_blank" rel="noreferrer" title="Cópia na pasta Contratos_Assinados › Mentoria_Essência">📁 Na pasta de assinados ↗</a>}
               <a className="btn sm" href={estado.url} target="_blank" rel="noreferrer">Ver contrato ↗</a>
               {estado.autentique && estado.status !== 'assinado' && <button type="button" className="btn ghost sm" onClick={atualizar} disabled={busy}>↻ Atualizar</button>}
             </div>

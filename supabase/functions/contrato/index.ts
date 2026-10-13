@@ -18,6 +18,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { cors, json } from '../_shared/wa.ts'
 import { platClient } from '../_shared/plat.ts'
 import { aplicarAndamento, apagarDocumento, autentiqueOn, buscarDocumento, criarDocumento, resumo } from '../_shared/autentique.ts'
+import { arquivarContrato } from '../_shared/arquivar.ts'
 
 const SCOPES = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents'
 const DRIVE = 'https://www.googleapis.com/drive/v3/files'
@@ -205,7 +206,9 @@ Deno.serve(async (req) => {
       }
       const { error } = await userClient.from('deals').update(patch).eq('id', d.id)
       if (error) return json({ ok: false, error: error.message })
-      return json({ ok: true, status: patch.contrato_status })
+      // marcado como assinado à mão: o contrato (PDF do Google Docs) vai para a pasta dos contratos assinados
+      const arquivo = b.desfazer ? null : await arquivarContrato(admin, d.id)
+      return json({ ok: true, status: patch.contrato_status, arquivo })
     }
 
     if (b.action === 'status') {

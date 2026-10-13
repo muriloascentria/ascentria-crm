@@ -1,6 +1,7 @@
 // Autentique (assinatura eletrônica) — API GraphQL v2.
 // Secret: AUTENTIQUE_TOKEN
 import { platClient } from './plat.ts'
+import { arquivarContrato } from './arquivar.ts'
 
 const API = 'https://api.autentique.com.br/v2/graphql'
 
@@ -85,5 +86,7 @@ export async function aplicarAndamento(admin: any, dealId: string, doc: any) {
     }
   }
   await admin.from('deals').update(patch).eq('id', dealId)
+  // assinado por todos e com o PDF assinado pronto: cópia na pasta Contratos_Assinados › Mentoria_Essência (uma vez)
+  if (r.status === 'assinado' && r.pdf) await arquivarContrato(admin, dealId, r.pdf)
   return r
 }
