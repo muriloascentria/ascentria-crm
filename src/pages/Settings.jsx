@@ -558,11 +558,9 @@ function PixKey() {
   return (
     <div className="card stack" style={{ gap: 8 }}>
       <div style={{ fontWeight: 600 }}>💠 Chave Pix</div>
-      <div className="small muted">No painel de conversa, o botão "Chave Pix" coloca este texto na caixa de mensagem para a vendedora só enviar. Deixe em branco para esconder o botão.</div>
-      <div className="row" style={{ gap: 8 }}>
-        <input className="input grow" value={pix} onChange={(e) => setPix(e.target.value)} placeholder="CNPJ, e-mail, telefone ou chave aleatória" />
-        <button className="btn primary" type="button" onClick={salvar}>Salvar</button>
-      </div>
+      <div className="small muted">No painel de conversa, o botão "Chave Pix" coloca este texto (do jeito que estiver aqui, com as linhas) na caixa de mensagem para a consultora só enviar. Deixe em branco para esconder o botão.</div>
+      <textarea className="textarea" style={{ minHeight: 90 }} value={pix} onChange={(e) => setPix(e.target.value)} placeholder={'*CHAVE PIX*\nCNPJ: 00.000.000/0000-00\nNome da empresa'} />
+      <div className="row" style={{ justifyContent: 'flex-end' }}><button className="btn primary" type="button" onClick={salvar}>Salvar</button></div>
     </div>
   )
 }

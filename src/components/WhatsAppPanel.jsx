@@ -252,7 +252,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     const chave = String(settings?.pix_key || '').trim()
     if (!chave) return
     setMode('text')
-    setText((t) => (t.trim() ? `${t.replace(/\s+$/, '')}\n${chave}` : chave))
+    setText((t) => (t.trim() ? `${t.replace(/\s+$/, '')}\n\n${chave}` : chave))
   }
   const abrirMensagens = () => {
     // Ao abrir, a lista já vai para a etapa da próxima mensagem.
