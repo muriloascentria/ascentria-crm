@@ -60,7 +60,7 @@ export default function ContatarHoje({ deals, onClose, onChanged, onOpen }) {
       <details className="small muted" style={{ marginBottom: 10 }} open={!mobile}>
         <summary style={{ cursor: 'pointer' }}>Como funciona</summary>
         <b>Enviar</b> abre o WhatsApp (o app do computador ou o WhatsApp Web, conforme o "Abrir em" lá embaixo) com a mensagem do dia pronta; envie por lá e confirme aqui em <b>Sim, enviei</b>; no dia seguinte o card passa sozinho para o próximo Dia.
-        Quando o lead responder, clique em <b>Respondeu</b>. Ficam fora da lista quem pediu para sair e a lista antiga sem autorização.
+        Quando o lead responder, clique em <b>Respondeu</b>. Se ao abrir a conversa você vir que ele já respondeu, não envie a mensagem do dia: clique em <b>Não: tinha respondido</b>. Ficam fora da lista quem pediu para sair e a lista antiga sem autorização.
         <br />A lista vem dos <b>mais quentes</b> (pediram contato há pouco) para os <b>mais frios</b>. Para proteger o número, evite passar de uns 20–30 primeiros contatos (Dia 1) por dia.
       </details>
       {lista.length === 0 && <div className="muted" style={{ padding: 16, textAlign: 'center' }}>Ninguém para contatar agora. ✓</div>}
@@ -88,6 +88,7 @@ export default function ContatarHoje({ deals, onClose, onChanged, onOpen }) {
                   {feito === 'aguardando' ? <>
                     <span className="small" style={{ fontWeight: 600 }}>Enviou no WhatsApp?</span>
                     <button type="button" className="btn primary sm" onClick={() => confirmar(d)}>✓ Sim, enviei</button>
+                    <button type="button" className="btn sm" onClick={() => respondeu(d)} title="Ao abrir a conversa você viu que o lead tinha respondido: vai para Responsivo">💬 Não: tinha respondido</button>
                     <button type="button" className="btn sm" onClick={() => naoEnviou(d)}>Ainda não</button>
                   </> : feito ? <span className="small" style={{ color: 'var(--success)', fontWeight: 600 }}>{feito === 'enviado' ? '✓ enviada' : '✓ respondeu'}</span> : <>
                     <button type="button" className="btn primary sm" onClick={() => enviar(d)}>📲 Enviar</button>

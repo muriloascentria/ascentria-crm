@@ -419,6 +419,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
             <div className="row wrap small" style={{ gap: 8 }}>
               <span><b>Enviou a mensagem do {msgStage.name} lá no WhatsApp?</b></span>
               <button type="button" className="btn primary sm" onClick={confirmarEnvio}>✓ Sim, enviei</button>
+              <button type="button" className="btn sm" onClick={() => { setConfirmar(false); respondeu() }} title="Ao abrir a conversa você viu que o lead tinha respondido: o card vai para Responsivo e sai da sequência">💬 Não: ele(a) tinha respondido</button>
               <button type="button" className="btn sm" onClick={() => setConfirmar(false)}>Ainda não</button>
             </div>
           ) : jaEnviada ? (
@@ -434,7 +435,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
             </div>
           ) : (
             <div className="row wrap small" style={{ gap: 8 }}>
-              <span>📲 Hoje: <b>mensagem do {msgStage.name}</b> — já está na caixa abaixo. Clique em <b>Abrir no WhatsApp</b> e envie por lá.</span>
+              <span>📲 Hoje: <b>mensagem do {msgStage.name}</b> — já está na caixa abaixo. Clique em <b>Abrir no WhatsApp</b> e envie por lá. <span className="muted">Se na conversa o lead já tiver respondido, não envie: clique em <b>✅ Respondeu</b>.</span></span>
               {!ehDoDia && <button type="button" className="btn ghost sm" onClick={usarMensagemDoDia}>usar a mensagem do {msgStage.name}</button>}
             </div>
           )}
