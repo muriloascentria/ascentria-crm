@@ -116,8 +116,9 @@ const txt = (v: unknown, max = 500) => String(v ?? '').trim().slice(0, max)
 
 // ---------- cláusulas incluídas em todo contrato gerado ----------
 export const GARANTIA = [
-  { rotulo: '12.5. Garantia de entrega.', texto: ' Sem prejuízo do disposto nas cláusulas 12.1 a 12.4, o CONTRATADO garante a entrega de tudo o que foi apresentado ao CONTRATANTE na Consultoria Gratuita que deu origem a esta contratação, que deverá ser obrigatoriamente entregue dentro dos 12 (doze) meses de vigência da Mentoria.' },
-  { rotulo: '12.6.', texto: ' Caso alguma dessas entregas não seja cumprida dentro do prazo de vigência, o CONTRATANTE terá direito ao reembolso integral dos valores pagos, mediante solicitação por escrito pelos canais oficiais do CONTRATADO.' },
+  { rotulo: '12.5. Garantia de entrega.', texto: ' O CONTRATADO garante que todas as entregas apresentadas ao CONTRATANTE na Consultoria Gratuita que deu origem a esta contratação, tais como o sistema tecnológico, os encontros, os conteúdos, os materiais e o suporte, serão efetivamente cumpridas e disponibilizadas dentro dos 12 (doze) meses de vigência da Mentoria.' },
+  { rotulo: '12.6.', texto: ' A garantia de entrega refere-se ao cumprimento das entregas da Mentoria e não a resultados financeiros. Metas, exemplos e projeções de faturamento mencionados na Consultoria Gratuita têm caráter ilustrativo, nos termos das cláusulas 12.1 a 12.4.' },
+  { rotulo: '12.7.', texto: ' Caso alguma das entregas apresentadas não seja cumprida dentro do prazo de vigência, o CONTRATANTE terá direito ao reembolso integral dos valores pagos, mediante solicitação por escrito pelos canais oficiais do CONTRATADO.' },
 ]
 
 /**
@@ -283,7 +284,7 @@ Deno.serve(async (req) => {
       method: 'POST',
       body: JSON.stringify({ requests: Object.entries(campos).map(([k, v]) => ({ replaceAllText: { containsText: { text: `{{${k}}}`, matchCase: true }, replaceText: v } })) }),
     })
-    // garantia de entrega (12.5 e 12.6) e cláusula especial (20, opcional, antes das assinaturas)
+    // garantia de entrega (12.5 a 12.7) e cláusula especial (20, opcional, antes das assinaturas)
     await inserirClausulas(tk, doc.id, txt(x.clausula_especial, 3000))
     const conteudo = await g(tk, `${DOCS}/${doc.id}?fields=body(content(startIndex,endIndex,paragraph(elements(startIndex,endIndex,textRun(textStyle(backgroundColor))))))`)
     const ranges: { s: number; e: number }[] = []
