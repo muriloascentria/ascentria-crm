@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase'
 import ProfileModal from './ProfileModal'
 import LembretesUrgentes from './LembretesUrgentes'
 import AvisosFundo from './AvisosFundo'
+import NovaVersao from './NovaVersao'
 
 function FunnelIcon() {
   return (
@@ -85,7 +86,7 @@ export default function Layout() {
           ))}
         </nav>
         {DEMO && <div className="demo-banner">Modo demonstração — dados fictícios; alterações valem só nesta sessão. Recarregue para voltar ao início.</div>}
-        <main className="main"><AvisosFundo /><LembretesUrgentes /><Outlet /></main>
+        <main className="main"><NovaVersao /><AvisosFundo /><LembretesUrgentes /><Outlet /></main>
       </div>
       <Toasts />
       {editingProfile && <ProfileModal onClose={() => setEditingProfile(false)} />}
