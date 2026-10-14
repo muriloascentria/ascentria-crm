@@ -36,7 +36,7 @@ export default function ContatarHoje({ deals, onClose, onChanged, onOpen }) {
 
   const enviar = async (d) => {
     const st = messageStage(d, stages)
-    const link = waLink(d.contact, stageText(st, d.contact?.name))
+    const link = waLink(d.contact, stageText(st, d.contact?.name, d))
     if (!link) return toast('Contato sem telefone', 'err')
     abrirWhatsApp(link)
     setFeitos((f) => ({ ...f, [d.id]: 'aguardando' }))
@@ -70,7 +70,7 @@ export default function ContatarHoje({ deals, onClose, onChanged, onOpen }) {
           const novoGrupo = i === 0 || temperatura(arr[i - 1].created_at).k !== temp.k
           const st = messageStage(d, stages)
           const col = stages.find((s) => s.id === d.stage_id)
-          const txt = stageText(st, d.contact?.name)
+          const txt = stageText(st, d.contact?.name, d)
           const feito = feitos[d.id]
           const idade = dias(d.created_at)
           return (

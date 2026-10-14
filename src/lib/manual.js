@@ -40,9 +40,10 @@ export const abrirWhatsApp = (link) => {
 
 export const firstName = (name = '') => String(name).trim().split(/\s+/)[0] || ''
 
-/** Texto da mensagem da coluna (Dia 1…Dia 5) com o primeiro nome do lead. */
-export const stageText = (stage, name) =>
-  String(stage?.message_text || '').replace(/{{\s*(primeiro_nome|nome)\s*}}/g, firstName(name))
+/** Texto da mensagem da coluna (Dia 1…Dia 5) com o primeiro nome do lead.
+ *  Um card pode ter mensagem própria para um dia (deal.custom.mensagens["Dia 1"]), para casos especiais. */
+export const stageText = (stage, name, deal) =>
+  String(deal?.custom?.mensagens?.[stage?.name] || stage?.message_text || '').replace(/{{\s*(primeiro_nome|nome)\s*}}/g, firstName(name))
 
 /** Coluna cuja mensagem vale para o card: Recebidos usa a do Dia 1. */
 export function messageStage(deal, stages) {

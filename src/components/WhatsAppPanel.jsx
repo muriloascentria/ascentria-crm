@@ -180,7 +180,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
   const usarMensagemDoDia = () => {
     if (!msgStage) return
     setMode('text'); setPickedId(null)
-    setText(stageText(msgStage, contato?.name || firstName)); setEhDoDia(true)
+    setText(stageText(msgStage, contato?.name || firstName, deal)); setEhDoDia(true)
   }
   // ao abrir o card na sequência, a caixa já vem com a mensagem do dia (se ainda não foi enviada)
   useEffect(() => {
