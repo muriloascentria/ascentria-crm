@@ -1,0 +1,4 @@
+-- Registro permanente de quem já subiu do direct (Youze): cada @ / telefone entra no CRM uma única vez.
+-- Aplicada pelo MCP em 21/10/2026 (tabela youze_importados, funções sem_acento e youze_lead_check).
+-- A tarefa agendada "Leads da Youze para o eCRM" chama: select * from youze_lead_check(telefone, username, nome)
+-- → 'ja_importado' | 'existe' (pula) | 'possivel_aluno' (sobe com ⚠️) | 'novo'.
