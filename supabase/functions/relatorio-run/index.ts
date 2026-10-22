@@ -1,9 +1,11 @@
 // Relatório da consultoria gratuita, automático.
 // Roda pelo pg_cron (a cada 10 min). Para cada encontro que já terminou (de 45 min a 3 dias atrás):
 //  1) procura no evento da agenda da consultora os anexos do Google Meet (gravação, transcrição, Anotações do Gemini);
-//  2) lê o documento "Anotações do Gemini" (feito a partir da transcrição) e monta a mensagem para o lead
-//     (Resumo + Próximos passos), gravada em deals.relatorio_texto;
-//  3) avisa a equipe: tarefa "📝 Relatório da consultoria pronto…" no card (o CRM toca o aviso e mostra no funil).
+//  2) lê o documento "Anotações do Gemini" (resumo, detalhes e próximas etapas, feitos a partir da transcrição) e,
+//     se houver, a transcrição; guarda o texto em deals.relatorio_fonte.
+//  3) A tarefa agendada "Relatórios da consultoria" (Claude, de hora em hora) lê relatorio_fonte, escreve o relatório
+//     para o lead (dores, desejos e caminhos: Processo de Enfermagem + Nursing Plan), grava relatorio_texto /
+//     relatorio_pronto_em e cria a tarefa "📝 Relatório da consultoria pronto…" (o CRM avisa no funil e com som).
 // Autorização: header "Authorization: Bearer <segredo cron_secret do Vault>".
 // Secret: GOOGLE_SERVICE_ACCOUNT_JSON (delegação com calendar.events e documents.readonly)
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -134,7 +136,8 @@ async function lerAnotacoes(sa: SA, email: string, docId: string) {
     if (sem(m[1]).split(/\s+/).includes(consultora) || /^(adriana|carmem|diego|viviane|murilo|mari)\b/.test(sem(m[1]))) return ''
     return '• ' + m[2]
   }).filter(Boolean).join('\n') : ''
-  return { resumo: resumo.slice(0, 3000), etapas: etapas.slice(0, 1500) }
+  const fonte = linhas.slice(0, fimGeral > 0 ? fimGeral : linhas.length).join('\n')
+  return { resumo: resumo.slice(0, 3000), etapas: etapas.slice(0, 1500), fonte }
 }
 
 Deno.serve(async (req) => {
@@ -153,7 +156,7 @@ Deno.serve(async (req) => {
   const desde = new Date(agora - 3 * 86_400_000).toISOString().slice(0, 10)
   const { data: deals } = await admin.from('deals')
     .select('id, title, contact_id, owner_id, meeting_date, meeting_time, calendar_event_id, meeting_files, relatorio_checado_em, plat_sessao_id, seller:calendar_sellers(name, email), contact:contacts(name)')
-    .gte('meeting_date', desde).is('relatorio_pronto_em', null).not('meeting_time', 'is', null).not('seller_id', 'is', null)
+    .gte('meeting_date', desde).is('relatorio_pronto_em', null).is('relatorio_fonte', null).not('meeting_time', 'is', null).not('seller_id', 'is', null)
     .order('meeting_date', { ascending: false }).limit(40)
 
   const feitos: any[] = []
@@ -178,23 +181,15 @@ Deno.serve(async (req) => {
       const docId = String(doc?.url ?? '').match(/\/document\/d\/([\w-]+)/)?.[1]
       if (!docId) { marca.relatorio_erro = 'as Anotações do Gemini ainda não apareceram no evento'; await admin.from('deals').update(marca).eq('id', d.id); feitos.push({ id: d.id, ok: false, erro: marca.relatorio_erro }); continue }
       const r = await lerAnotacoes(sa, d.seller.email, docId)
-      if (!r.resumo && !r.etapas) { marca.relatorio_erro = 'o documento do Gemini não tem Resumo nem Próximas etapas'; await admin.from('deals').update(marca).eq('id', d.id); feitos.push({ id: d.id, ok: false, erro: marca.relatorio_erro }); continue }
-      const nome = String(d.contact?.name || d.title || '').trim().split(/\s+/)[0] || ''
-      const texto = [
-        `Olá${nome ? `, ${nome}` : ''}! Obrigada pela nossa conversa na consultoria gratuita. 😊`,
-        'Aqui está o resumo do que conversamos:',
-        r.resumo,
-        r.etapas ? `*Próximos passos:*\n${r.etapas}` : '',
-        'Qualquer dúvida, é só me chamar por aqui!',
-      ].filter(Boolean).join('\n\n')
-      Object.assign(marca, { relatorio_texto: texto, relatorio_pronto_em: new Date().toISOString(), relatorio_erro: null, relatorio_doc_url: doc.url })
+      if (!r.fonte.trim()) { marca.relatorio_erro = 'o documento do Gemini veio vazio'; await admin.from('deals').update(marca).eq('id', d.id); feitos.push({ id: d.id, ok: false, erro: marca.relatorio_erro }); continue }
+      // transcrição completa (quando o Meet anexou o documento de transcrição): ajuda a achar dores e desejos nas palavras do lead
+      let transcricao = ''
+      const tr = files.find((f) => f?.kind === 'transcricao' && f?.url)
+      const trId = String(tr?.url ?? '').match(/\/document\/d\/([\w-]+)/)?.[1]
+      if (trId) transcricao = (await linhasPeloDrive(sa, d.seller.email, trId).catch(() => [] as string[])).join('\n')
+      const fonte = `=== ANOTAÇÕES DO GEMINI ===\n${r.fonte}` + (transcricao ? `\n\n=== TRANSCRIÇÃO ===\n${transcricao}` : '')
+      Object.assign(marca, { relatorio_fonte: fonte.slice(0, 60000), relatorio_fonte_em: new Date().toISOString(), relatorio_erro: null, relatorio_doc_url: doc.url })
       await admin.from('deals').update(marca).eq('id', d.id)
-      const { data: jaTem } = await admin.from('activities').select('id').eq('deal_id', d.id).eq('done', false).like('title', '📝 Relatório da consultoria pronto%').limit(1)
-      if (!jaTem?.length) await admin.from('activities').insert({
-        type: 'task', title: `📝 Relatório da consultoria pronto — enviar a ${d.contact?.name || d.title}`,
-        description: 'O relatório (resumo das Anotações do Gemini) já está pronto no card, em "Reunião gravada". Confira o texto e clique em "Abrir no WhatsApp".',
-        deal_id: d.id, contact_id: d.contact_id, assigned_to: d.owner_id, due_at: new Date().toISOString(), done: false,
-      })
       feitos.push({ id: d.id, ok: true, lead: d.contact?.name || d.title })
     } catch (e) {
       marca.relatorio_erro = (e as Error).message

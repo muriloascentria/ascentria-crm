@@ -775,7 +775,7 @@ function MeetingFiles({ deal, contato, firstName }) {
         <div className="relatorio-pronto" style={{ marginTop: 8 }}>
           {enviadoEm
             ? <div className="small">✓ Relatório enviado ao lead em {new Date(enviadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}.</div>
-            : <div className="small"><b>📝 O relatório da consultoria já está pronto.</b> Feito sozinho a partir das Anotações do Gemini: confira e envie ao lead.</div>}
+            : <div className="small"><b>📝 O relatório da consultoria já está pronto.</b> Dores, desejos e caminhos (Processo de Enfermagem e Nursing Plan), escrito a partir da transcrição/anotações do Gemini: confira e envie ao lead.</div>}
           <div className="row" style={{ marginTop: 6 }}>
             <button type="button" className={'btn sm' + (enviadoEm ? ' ghost' : ' primary')} onClick={() => setResumo(deal.relatorio_texto)}>{enviadoEm ? 'Ver / enviar de novo' : '📲 Ver e enviar ao lead'}</button>
           </div>
@@ -788,7 +788,7 @@ function MeetingFiles({ deal, contato, firstName }) {
       )}
       {resumo !== null && (
         <div className="stack" style={{ gap: 6, marginTop: 8 }}>
-          <div className="small"><b>Relatório para o lead</b> · confira e ajuste o texto antes de enviar (o Gemini escreve em 3ª pessoa, pode errar nomes e às vezes cita assuntos que não devem ir para o lead, como a recusa da proposta).</div>
+          <div className="small"><b>Relatório para o lead</b> · confira e ajuste o texto antes de enviar (nomes, números e exemplos vêm da reunião: confira se está tudo certo).</div>
           <textarea className="textarea" style={{ minHeight: 220 }} value={resumo} onChange={(e) => setResumo(e.target.value)} />
           <div className="row wrap" style={{ gap: 8, justifyContent: 'flex-end' }}>
             <button type="button" className="btn ghost sm" onClick={() => setResumo(null)}>cancelar</button>
