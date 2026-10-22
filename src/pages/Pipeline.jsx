@@ -95,6 +95,12 @@ export default function Pipeline() {
     setAssinados(ass || [])
   }, [pipelineId, toast])
   useEffect(() => { load() }, [load])
+  // relatório enviado de dentro do card: sai na hora do aviso verde e da etiqueta
+  useEffect(() => {
+    const f = (e) => setDeals((ds) => ds.map((d) => (d.id === e.detail?.dealId ? { ...d, relatorio_enviado_em: new Date().toISOString() } : d)))
+    window.addEventListener('crm:relatorio-enviado', f)
+    return () => window.removeEventListener('crm:relatorio-enviado', f)
+  }, [])
   useEffect(() => {
     const iv = setInterval(() => { if (document.visibilityState === 'visible' && !dragId && !modal && !hojeAberto) load() }, 30_000)
     return () => clearInterval(iv)
@@ -155,6 +161,9 @@ export default function Pipeline() {
     return null
   }
   const emReuniao = deals.filter((d) => reuniao(d)?.agora)
+  // relatório da consultoria já pronto (feito sozinho a partir das Anotações do Gemini) e ainda não enviado ao lead
+  const relatorioPend = (d) => !!d.relatorio_pronto_em && !d.relatorio_enviado_em
+  const relatoriosProntos = deals.filter(relatorioPend)
   const lembretePend = (d) => encontroAindaVale(d) && pendLembretes.some((a) => a.deal_id === d.id)
   // aviso de contrato assinado: para a vendedora do encontro, para quem é dona do card e para a gestão
   const meuEmail = String(profile.email || '').toLowerCase()
@@ -216,6 +225,16 @@ export default function Pipeline() {
           ))}
         </div>
       )}
+      {relatoriosProntos.length > 0 && (
+        <div className="alert-relatorio" role="status">
+          <b>📝 Relatório da consultoria pronto para enviar:</b>
+          {relatoriosProntos.map((d) => (
+            <button key={d.id} type="button" className="btn sm" onClick={() => openDeal(d)}>
+              {d.contact?.name || d.title}{d.seller?.name ? ` · ${d.seller.name}` : ''}
+            </button>
+          ))}
+        </div>
+      )}
       {mobile && pipeStages.length > 0 && (
         <div className="col-chips" role="tablist" aria-label="Colunas do funil">
           {pipeStages.map((s) => {
@@ -265,6 +284,7 @@ export default function Pipeline() {
                         {d.contrato_status === 'assinado' && <div className="tag-contrato ok" title="Contrato assinado pelo Murilo e pelo lead">✅ Contrato assinado</div>}
                         {d.contrato_status === 'enviado' && <div className="tag-contrato" title="Contrato enviado para assinatura (Autentique)">📨 Contrato enviado</div>}
                         {d.contrato_status === 'recusado' && <div className="tag-contrato no" title="O contrato foi recusado na Autentique">⛔ Contrato recusado</div>}
+                        {relatorioPend(d) && <div className="tag-relatorio" title="O relatório da consultoria já está pronto: abra o card e envie ao lead">📝 Relatório pronto para enviar</div>}
                         {lembretePend(d) && <div className="tag-lembrete" title="O lembrete do encontro não saiu sozinho: envie à mão (texto pronto em Atividades, dentro do card)">⚠ lembrete não enviado</div>}
                         <div className="small muted">{d.contact?.name || '—'}</div>
                         <div className="between" style={{ marginTop: 6 }}>

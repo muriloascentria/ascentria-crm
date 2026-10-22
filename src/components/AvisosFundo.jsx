@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
  * Avisos com som e notificação do sistema, mesmo com o CRM numa aba de fundo:
  *  - lembrete de reunião para enviar à mão (tarefa "Enviar lembrete à mão…");
  *  - reunião começando agora;
+ *  - relatório da consultoria pronto para enviar ao lead;
  *  - lead novo chegando em Recebidos.
  * Cada aviso toca uma vez só (lembrado no navegador). O som precisa de um clique para ser liberado
  * (regra dos navegadores): por isso a faixa "Ativar avisos com som" aparece até a pessoa clicar.
@@ -77,7 +78,15 @@ export default function AvisosFundo() {
       const k = `reuniao:${d.id}:${d.meeting_date}`
       if (!vistos.has(k)) { vistos.add(k); novos.push({ tipo: 'reuniao', k, titulo: '🎥 Reunião começando', corpo: `${d.contact?.name || d.title}${d.seller?.name ? ` com ${d.seller.name}` : ''} — ${String(d.meeting_time).slice(0, 5)}` }) }
     }
-    // 3) leads novos (últimas 3 horas) em uma coluna de entrada
+    // 3) relatório da consultoria pronto para enviar ao lead (feito sozinho a partir das Anotações do Gemini)
+    const { data: rels } = await supabase.from('deals').select('id, title, relatorio_pronto_em, relatorio_enviado_em, contact:contacts(name)')
+      .gte('relatorio_pronto_em', new Date(agora - 2 * 86_400_000).toISOString())
+    for (const d of rels || []) {
+      if (d.relatorio_enviado_em) continue
+      const k = 'relatorio:' + d.id
+      if (!vistos.has(k)) { vistos.add(k); novos.push({ tipo: 'reuniao', k, titulo: '📝 Relatório pronto para enviar', corpo: `Consultoria de ${d.contact?.name || d.title}: o relatório já está pronto no card.` }) }
+    }
+    // 4) leads novos (últimas 3 horas) em uma coluna de entrada
     const { data: entradas } = await supabase.from('stages').select('id').eq('role', 'inbox')
     const ids = (entradas || []).map((x) => x.id)
     const { data: leads } = ids.length ? await supabase.from('deals').select('id, title, created_at, stage_id')
@@ -116,7 +125,7 @@ export default function AvisosFundo() {
   if (ligado && perm !== 'default') return null
   return (
     <div className="aviso-som" role="status">
-      <span>🔔 Receba avisos com som (lembretes, reunião começando e lead novo), mesmo com o CRM em outra aba.</span>
+      <span>🔔 Receba avisos com som (lembretes, reunião começando, relatório pronto e lead novo), mesmo com o CRM em outra aba.</span>
       <button type="button" className="btn sm primary" onClick={ativar}>Ativar avisos com som</button>
     </div>
   )

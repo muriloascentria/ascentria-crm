@@ -704,6 +704,8 @@ function MeetingFiles({ deal, contato, firstName }) {
   const [checkedAt, setCheckedAt] = useState(deal.meeting_files_checked_at || null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [enviadoEm, setEnviadoEm] = useState(deal.relatorio_enviado_em || null)
+  const relatorioPronto = !!deal.relatorio_texto
   const inicio = deal.meeting_date && deal.meeting_time ? new Date(`${deal.meeting_date}T${String(deal.meeting_time).slice(0, 5)}:00-03:00`).getTime() : null
   const passou = inicio && Date.now() > inicio + 20 * 60_000
   const buscar = useCallback(async () => {
@@ -741,7 +743,14 @@ function MeetingFiles({ deal, contato, firstName }) {
     const link = waLink(contato, resumo || '')
     if (!link) return toast('Este contato não tem telefone cadastrado.', 'err')
     abrirWhatsApp(link)
-    supabase.from('activities').insert({ type: 'whatsapp', title: 'Resumo da reunião enviado ao lead (WhatsApp)', description: resumo, deal_id: deal.id, contact_id: deal.contact_id || null, done: true, done_at: new Date().toISOString() }).then(() => {})
+    const agora = new Date().toISOString()
+    supabase.from('activities').insert({ type: 'whatsapp', title: 'Resumo da reunião enviado ao lead (WhatsApp)', description: resumo, deal_id: deal.id, contact_id: deal.contact_id || null, done: true, done_at: agora }).then(() => {})
+    // relatório automático: sai do aviso do funil e a tarefa "📝 Relatório… pronto" fica concluída
+    supabase.from('deals').update({ relatorio_enviado_em: agora }).eq('id', deal.id).then(() => {})
+    supabase.from('activities').update({ done: true, done_at: agora }).eq('deal_id', deal.id).eq('done', false).like('title', '📝 Relatório da consultoria pronto%').then(() => {})
+    deal.relatorio_enviado_em = agora
+    setEnviadoEm(agora)
+    window.dispatchEvent(new CustomEvent('crm:relatorio-enviado', { detail: { dealId: deal.id } }))
     setResumo(null)
     toast('WhatsApp aberto com o resumo. Confira e aperte Enter por lá.')
   }
@@ -762,14 +771,24 @@ function MeetingFiles({ deal, contato, firstName }) {
             : 'Ainda não há gravação nem transcrição no evento da agenda. O Google costuma anexar alguns minutos (às vezes horas) depois da reunião, se ela foi gravada ou transcrita no Meet.'}
         </div>
       )}
-      {files.some((f) => f.kind === 'anotacoes') && resumo === null && (
+      {relatorioPronto && resumo === null && (
+        <div className="relatorio-pronto" style={{ marginTop: 8 }}>
+          {enviadoEm
+            ? <div className="small">✓ Relatório enviado ao lead em {new Date(enviadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}.</div>
+            : <div className="small"><b>📝 O relatório da consultoria já está pronto.</b> Feito sozinho a partir das Anotações do Gemini: confira e envie ao lead.</div>}
+          <div className="row" style={{ marginTop: 6 }}>
+            <button type="button" className={'btn sm' + (enviadoEm ? ' ghost' : ' primary')} onClick={() => setResumo(deal.relatorio_texto)}>{enviadoEm ? 'Ver / enviar de novo' : '📲 Ver e enviar ao lead'}</button>
+          </div>
+        </div>
+      )}
+      {!relatorioPronto && files.some((f) => f.kind === 'anotacoes') && resumo === null && (
         <div className="row" style={{ marginTop: 8 }}>
           <button type="button" className="btn primary sm" onClick={prepararResumo} disabled={lendo}>{lendo ? 'Lendo o resumo do Gemini…' : '📲 Enviar resumo ao lead'}</button>
         </div>
       )}
       {resumo !== null && (
         <div className="stack" style={{ gap: 6, marginTop: 8 }}>
-          <div className="small"><b>Resumo para o lead</b> · confira e ajuste o texto antes de enviar (o Gemini escreve em 3ª pessoa e pode errar nomes).</div>
+          <div className="small"><b>Relatório para o lead</b> · confira e ajuste o texto antes de enviar (o Gemini escreve em 3ª pessoa, pode errar nomes e às vezes cita assuntos que não devem ir para o lead, como a recusa da proposta).</div>
           <textarea className="textarea" style={{ minHeight: 220 }} value={resumo} onChange={(e) => setResumo(e.target.value)} />
           <div className="row wrap" style={{ gap: 8, justifyContent: 'flex-end' }}>
             <button type="button" className="btn ghost sm" onClick={() => setResumo(null)}>cancelar</button>
