@@ -319,3 +319,27 @@ input[type=color] { width: 40px; height: 32px; padding: 2px; border: 1px solid v
 /* faixa para ligar os avisos com som */
 .aviso-som { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #fff8e6; border: 1px solid #f0d58a; color: #6b4e00; border-radius: 10px; padding: 8px 12px; margin: 0 0 12px; font-size: 13px; }
 .aviso-som span { flex: 1 1 240px; }
+
+/* ——— card guiado: passo principal + seções que abrem e fecham ——— */
+.card-guiado { gap: 10px; }
+.passo { border: 2px solid var(--primary, #5c6e57); border-radius: 12px; padding: 14px; background: color-mix(in srgb, var(--primary, #5c6e57) 6%, var(--surface, #fff)); display: flex; flex-direction: column; gap: 10px; }
+.passo.passo-ok { border-color: var(--success, #2e7d32); }
+.passo.passo-off { border-color: var(--border); background: var(--surface-2, #f6f5f1); }
+.passo-tit { font-size: 1.05rem; font-weight: 700; }
+.passo-destaque { font-size: 1.05rem; }
+.passo-acoes { display: flex; flex-wrap: wrap; gap: 8px; }
+.passo-acoes .btn:not(.sm) { min-height: 44px; padding-left: 16px; padding-right: 16px; }
+.passo-prox { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding-top: 8px; border-top: 1px dashed var(--border); }
+.passo-ver summary { cursor: pointer; color: var(--muted); }
+.secao { border: 1px solid var(--border); border-radius: 10px; background: var(--surface, #fff); }
+.secao-head { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer; min-height: 48px; }
+.secao-head:focus-visible { outline: 2px solid var(--primary, #5c6e57); outline-offset: -2px; border-radius: 10px; }
+.secao-ico { font-size: 1.1rem; }
+.secao-tit { font-weight: 600; }
+.secao-res { color: var(--muted); font-size: .85rem; margin-left: auto; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.secao-seta { color: var(--muted); margin-left: 4px; }
+.secao-res + .secao-seta { margin-left: 4px; }
+.secao-tit + .secao-seta { margin-left: auto; }
+.secao-body { padding: 0 14px 14px; }
+.secao .chat { max-height: 50vh; }
+@media (max-width: 520px) { .secao-res { display: none; } .secao-tit + .secao-seta, .secao-seta { margin-left: auto; } }

@@ -6,6 +6,7 @@ import { ActivityPanel } from './ActivityPanel'
 import { fmtDateTime, fmtDate } from '../lib/utils'
 import WhatsAppPanel from './WhatsAppPanel'
 import SessaoRegistro from './SessaoRegistro'
+import Secao from './Secao'
 import { daysIn } from '../lib/wa'
 
 /**
@@ -17,7 +18,7 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved, onMar
   const { stages, pipelines, profile, toast, isManager, users, waNumbers } = useApp()
   const [contacts, setContacts] = useState([])
   const [history, setHistory] = useState([])
-  const [aba, setAba] = useState('dados') // 'dados' | 'sessao' (registro da sessão 1:1 de venda)
+  const [abrirSessao, setAbrirSessao] = useState(0) // botão "Registrar a sessão" do passo principal abre a seção
   const [f, setF] = useState(() => ({
     title: '', value: '', contact_id: '', owner_id: profile.id, expected_close: '', custom: {}, lost_reason: '', wa_number_id: '',
     pipeline_id: defaults.pipeline_id || pipelines.find((p) => p.is_default)?.id || pipelines[0]?.id,
@@ -76,16 +77,19 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved, onMar
   }
 
   return (
-    <Modal title={deal?.id ? 'Negócio' : 'Novo negócio'} onClose={onClose} wide={deal?.id ? (deal.contact_id ? 'x' : true) : false}
+    <Modal title={deal?.id ? 'Negócio' : 'Novo negócio'} onClose={onClose} wide={!!deal?.id}
       footer={<>
         {deal?.id && (isManager || deal.owner_id === profile.id) && <ConfirmButton onConfirm={remove} className="btn danger" >Excluir</ConfirmButton>}
         {canMarkUnread && <button className="btn" type="button" onClick={onMarkUnread} title="Volta a bolinha vermelha no card (disponível por 24h após a resposta do lead)"><span className="unread-dot-inline" aria-hidden="true" />Marcar como não lida</button>}
         <span className="grow" />
-        <button className="btn" type="button" onClick={onClose}>Cancelar</button>
-        {aba === 'dados' && <button className="btn primary" form="dealform">Salvar</button>}
+        {deal?.id ? <button className="btn" type="button" onClick={onClose}>Fechar</button> : <>
+          <button className="btn" type="button" onClick={onClose}>Cancelar</button>
+          <button className="btn primary" form="dealform">Salvar</button>
+        </>}
       </>}>
       {deal?.id && deal.contact_id && (
         <WhatsAppPanel contactId={deal.contact_id} deal={deal} onSent={onSaved} stageId={f.stage_id}
+          onAbrirSessao={() => { setAbrirSessao((n) => n + 1); setTimeout(() => document.getElementById('sec-sessao')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50) }}
           onStageChanged={(id) => set('stage_id', id)}
           header={
             <div className="deal-head">
@@ -111,18 +115,75 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved, onMar
             </div>
           } />
       )}
-      {deal?.id && (
-        <div className="tabs" style={{ scrollMarginTop: 16, marginTop: deal.contact_id ? 8 : 0, ...(deal.contact_id ? { paddingTop: 6, borderTop: '1px solid var(--border)' } : {}) }}>
-          <button type="button" className={aba === 'dados' ? 'active' : ''} onClick={() => setAba('dados')}>Dados do negócio</button>
-          <button type="button" className={aba === 'sessao' ? 'active' : ''} onClick={(e) => { setAba('sessao'); const el = e.currentTarget.parentElement; setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0) }}>
-            Registro da sessão{deal.sessao_salva_em ? ' ✓' : ''}
-          </button>
+      {deal?.id ? (
+        <div className="stack" style={{ gap: 8, marginTop: 10 }}>
+          <Secao id="sec-sessao" icone="📝" titulo="Registro da sessão" resumo={deal.sessao_salva_em ? `✓ salvo em ${fmtDate(deal.sessao_salva_em)}` : 'depois da consultoria'} abrir={abrirSessao}>
+            <SessaoRegistro deal={deal} contato={contato} onSaved={onSaved} onStageChanged={(id) => set('stage_id', id)} />
+          </Secao>
+          <Secao icone="🗂" titulo="Dados do negócio" resumo={[f.value ? `R$ ${Number(f.value).toLocaleString('pt-BR')}` : null, userName(f.owner_id) || null].filter(Boolean).join(' · ') || 'valor, responsável, campos'} aberta={!deal.contact_id}>
+        <form id="dealform" onSubmit={save} className="stack" style={{ gap: 12 }}>
+            <Field label="Título"><input className="input" value={f.title} onChange={(e) => set('title', e.target.value)} required autoFocus={!deal?.id} /></Field>
+            <div className="grid2">
+              <Field label="Valor (R$)"><input className="input" type="number" step="0.01" min="0" value={f.value} onChange={(e) => set('value', e.target.value)} /></Field>
+              <Field label="Previsão de fechamento"><input className="input" type="date" value={f.expected_close || ''} onChange={(e) => set('expected_close', e.target.value)} /></Field>
+            </div>
+            <div className="grid2">
+              <Field label="Funil">
+                <select className="select" value={f.pipeline_id || ''} onChange={(e) => set('pipeline_id', e.target.value)}>
+                  {pipelines.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Etapa">
+                <select className="select" value={f.stage_id || ''} onChange={(e) => set('stage_id', e.target.value)} required>
+                  {pipeStages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </Field>
+            </div>
+            <Field label="Contato">
+              <select className="select" value={f.contact_id || ''} onChange={(e) => onContact(e.target.value)}>
+                <option value="">—</option>
+                {contacts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </Field>
+            {deal?.id && curStage?.role && (
+              <div className="small muted card" style={{ padding: '8px 10px', background: 'var(--surface-2)' }}>
+                {curStage.role === 'day' && <>Na coluna <b>{curStage.name}</b> há {daysIn(deal.stage_entered_at)} dia(s){curStage.advance_after_days ? ` · avança sozinho após ${curStage.advance_after_days} dia(s) sem resposta` : ''}{deal.cycle > 1 ? ` · ${deal.cycle}ª passagem pela sequência` : ''}.</>}
+                {curStage.role === 'responsive' && <>Lead respondeu — a sequência automática parou.</>}
+                {curStage.role === 'archived' && <>{curStage.name}{deal.reactivate_at ? ` · volta sozinho para o Dia 1 em ${fmtDate(deal.reactivate_at)}` : ''}.</>}
+                {curStage.role === 'reactivate' && <>Prazo de arquivamento venceu — hora de chamar de novo.</>}
+              </div>
+            )}
+            <div className="grid2">
+              <Field label="Responsável"><UserSelect value={f.owner_id} onChange={(v) => set('owner_id', v)} /></Field>
+              {waNumbers.length > 0 && (
+                <Field label="Número de WhatsApp que atende">
+                  <select className="select" value={f.wa_number_id || ''} onChange={(e) => set('wa_number_id', e.target.value)}>
+                    <option value="">Padrão</option>
+                    {waNumbers.filter((n) => n.active).map((n) => <option key={n.id} value={n.id}>{n.label} · {n.phone_display}</option>)}
+                  </select>
+                </Field>
+              )}
+            </div>
+            {curStage?.kind === 'lost' && <Field label="Motivo da perda"><input className="input" value={f.lost_reason || ''} onChange={(e) => set('lost_reason', e.target.value)} /></Field>}
+            <CustomFieldsForm entity="deal" values={f.custom} onChange={(v) => set('custom', v)} />
+          </form>
+            <div className="row" style={{ justifyContent: 'flex-end', marginTop: 10 }}><button className="btn primary" form="dealform">Salvar dados</button></div>
+          </Secao>
+          <Secao icone="🕑" titulo="Histórico e atividades" resumo={history.length ? `${history.length} mudanças de coluna` : 'tarefas e anotações'}>
+          <div className="stack" style={{ gap: 18 }}>
+            <ActivityPanel link={{ deal_id: deal.id }} />
+            {history.length > 0 && (
+              <div className="stack">
+                <h3>Histórico de etapas</h3>
+                {history.map((h) => (
+                  <div key={h.id} className="small muted">{fmtDateTime(h.changed_at)} — {stageName(h.from_stage_id)} → <b>{stageName(h.to_stage_id)}</b>{userName(h.changed_by) && ` · ${userName(h.changed_by)}`}</div>
+                ))}
+              </div>
+            )}
+          </div>
+          </Secao>
         </div>
-      )}
-      {deal?.id && aba === 'sessao' && (
-        <SessaoRegistro deal={deal} contato={contato} onSaved={onSaved} onStageChanged={(id) => set('stage_id', id)} />
-      )}
-      <div className={deal?.id ? 'detail-grid' : ''} style={deal?.id && aba !== 'dados' ? { display: 'none' } : undefined}>
+      ) : (
         <form id="dealform" onSubmit={save} className="stack" style={{ gap: 12 }}>
           <Field label="Título"><input className="input" value={f.title} onChange={(e) => set('title', e.target.value)} required autoFocus={!deal?.id} /></Field>
           <div className="grid2">
@@ -169,20 +230,7 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved, onMar
           {curStage?.kind === 'lost' && <Field label="Motivo da perda"><input className="input" value={f.lost_reason || ''} onChange={(e) => set('lost_reason', e.target.value)} /></Field>}
           <CustomFieldsForm entity="deal" values={f.custom} onChange={(v) => set('custom', v)} />
         </form>
-        {deal?.id && (
-          <div className="stack" style={{ gap: 18 }}>
-            <ActivityPanel link={{ deal_id: deal.id }} />
-            {history.length > 0 && (
-              <div className="stack">
-                <h3>Histórico de etapas</h3>
-                {history.map((h) => (
-                  <div key={h.id} className="small muted">{fmtDateTime(h.changed_at)} — {stageName(h.from_stage_id)} → <b>{stageName(h.to_stage_id)}</b>{userName(h.changed_by) && ` · ${userName(h.changed_by)}`}</div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      )}
     </Modal>
   )
 }

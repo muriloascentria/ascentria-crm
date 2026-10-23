@@ -1,5 +1,6 @@
 import ContratoModal from './ContratoModal'
 import AbrirEm from './AbrirEm'
+import Secao from './Secao'
 import { useMobile } from '../lib/useMobile'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
@@ -11,7 +12,7 @@ import { callCalendar, fillSlots, slotLabel } from '../lib/calendar'
 import { isManual, waLink, abrirWhatsApp, stageText, messageStage, podeReceber, marcarEnviado, desfazerEnviado, marcarRespondeu } from '../lib/manual'
 
 /** Conversa de WhatsApp de um contato (com envio). deal opcional para vincular e calcular a janela de 24h. */
-export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged, header, stageId }) {
+export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged, header, stageId, onAbrirSessao }) {
   const { toast, settings, waNumbers, sellers, stages, profile } = useApp()
   const manual = isManual(settings)
   const via = waNumbers.find((n) => n.id === deal?.wa_number_id) || waNumbers.find((n) => n.is_default) || waNumbers[0]
@@ -35,6 +36,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
   // Quais mensagens prontas já foram para este contato (✓) e qual foi escolhida agora.
   const [sends, setSends] = useState([])
   const [pickedId, setPickedId] = useState(null)
+  const [secMsg, setSecMsg] = useState(0) // incrementa para abrir a seção "Escrever outra mensagem"
   const loadSends = useCallback(() => supabase.from('quick_reply_sends').select('*').eq('contact_id', contactId).then(({ data }) => setSends(data || [])), [contactId])
   useEffect(() => { loadSends() }, [loadSends])
   // Encontro confirmado (dia, hora e link): preenche [DATA], [HORA], [HOJE OU AMANHÃ] e [LINK] sozinho.
@@ -393,40 +395,134 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     } catch (err) { toast(parouEm ? `Parou na mensagem ${parouEm}: ${err.message}` : err.message, 'err'); load() } finally { setBusy(false); setProgress('') }
   }
 
+  // ——— card guiado: o passo principal muda conforme a coluna; o resto fica em seções fechadas ———
+  const inicioReuniao = meeting.date && meeting.time ? new Date(`${meeting.date}T${String(meeting.time).slice(0, 5)}:00-03:00`).getTime() : null
+  const reuniaoPassou = !!inicioReuniao && Date.now() > inicioReuniao + 20 * 60_000
+  const fase = !deal?.id ? 'livre'
+    : curStage?.kind === 'won' ? 'vendido'
+    : (curStage?.kind === 'lost' || curStage?.role === 'archived') ? 'encerrado'
+    : reuniaoPassou ? 'pos'
+    : (naReuniao || (meeting.date && meeting.time)) ? 'reuniao'
+    : (manual && msgStage) ? 'sequencia'
+    : 'agendar'
+  const consultoraReuniao = sellerName(booked?.sellerId || deal?.seller_id)
+  const abrirDia = () => {
+    const t = text.trim() ? text : stageText(msgStage, contato?.name || firstName, deal)
+    if (!text.trim()) { setText(t); setEhDoDia(true) }
+    setPickedId(null)
+    abrirNoWhatsApp(t)
+  }
+  const usarPronta = (q) => { pick(q); setSecMsg((n) => n + 1) }
+  // com a consultoria já marcada, a mensagem de agendamento não faz mais sentido como sugestão
+  const sugerida = fase === 'reuniao' ? sequencia.find((q) => !enviadaEm(q) && q.stage !== 'agendamento') : proxima
+  const proximaPronta = sugerida && (
+    <div className="passo-prox small">
+      <span>Mensagem pronta sugerida: <b>{sugerida.title}</b></span>
+      <button type="button" className="btn sm" onClick={() => usarPronta(sugerida)}>Usar esta</button>
+    </div>
+  )
+  const agendaUI = deal?.id && (
+    <div className="stack" style={{ gap: 6 }}>
+            {activeSellers.length === 0 ? (
+              <div className="small muted">Cadastre as vendedoras em Configurações → Agenda Google para buscar os horários automaticamente.</div>
+            ) : booked ? (
+              <div className="row wrap small" style={{ gap: 8 }}>
+                <span style={{ color: 'var(--success)', fontWeight: 600 }}>✓ Reservado na agenda de {sellerName(booked.sellerId) || 'vendedora'}{meeting.link ? ' · com Google Meet' : ''}</span>
+                <button type="button" className="btn ghost sm" onClick={desfazerReserva} disabled={calBusy === 'release'}>{calBusy === 'release' ? 'Desfazendo…' : 'Desfazer reserva'}</button>
+                {meeting.link && <button type="button" className="btn ghost sm" onClick={ligarGravacao} disabled={calBusy === 'grav'} title="Deixa a reunião do Meet configurada para gravar e transcrever sozinha quando começar">{calBusy === 'grav' ? 'Ligando…' : '🎥 Ligar gravação automática'}</button>}
+              </div>
+            ) : (
+              <>
+                <div className="row wrap" style={{ gap: 6, alignItems: 'center' }}>
+                  <select className="select" value={sellerId} onChange={(e) => { setSellerId(e.target.value); setFound(null) }} aria-label="Vendedora" style={{ width: 'auto', minWidth: 160 }}>
+                    {activeSellers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                  <button type="button" className="btn sm" onClick={buscarHorarios} disabled={calBusy === 'buscar'}>{calBusy === 'buscar' ? 'Buscando…' : 'Buscar horários livres'}</button>
+                </div>
+                {found && found.length > 0 && (
+                  <div className="stack" style={{ gap: 4 }}>
+                    <div className="small muted">Toque para escolher os 2 horários oferecidos (entram em [DIA 1]/[HORA 1] e [DIA 2]/[HORA 2]):</div>
+                    <div className="row wrap" style={{ gap: 6 }}>
+                      {found.map((s) => {
+                        const on = offered.some((o) => o.event_id === s.event_id)
+                        return <button key={s.event_id} type="button" className={'slot-chip' + (on ? ' on' : '')} onClick={() => alternarOferta(s)} aria-pressed={on}>{on ? '✓ ' : ''}{slotLabel(s)}</button>
+                      })}
+                    </div>
+                  </div>
+                )}
+                {offered.length > 0 && (
+                  <div className="stack" style={{ gap: 4 }}>
+                    {manual && offered.length === 2 && msgHorarios && (
+                      <button type="button" className="btn primary sm" style={{ alignSelf: 'flex-start' }} onClick={enviarHorarios}>📲 Enviar os 2 horários pelo WhatsApp</button>
+                    )}
+                    <div className="small">Oferecidos{offered[0]?.seller_id ? ` (agenda de ${sellerName(offered[0].seller_id)})` : ''}. Quando o lead escolher, reserve:</div>
+                    <div className="row wrap" style={{ gap: 6 }}>
+                      {offered.map((s) => (
+                        <button key={s.event_id} type="button" className="btn primary sm" onClick={() => reservar(s)} disabled={!!calBusy}>{calBusy === s.event_id ? 'Reservando…' : `Reservar ${slotLabel(s)}`}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+            {activeSellers.length > 1 && (
+              <div className="stack" style={{ gap: 4 }}>
+                <button type="button" className="btn ghost sm" style={{ alignSelf: 'flex-start' }} onClick={abrirTroca}>⇄ Trocar de vendedora (mesmo horário)</button>
+                {moveOpen && (
+                  <div className="row wrap small" style={{ gap: 6, alignItems: 'center' }}>
+                    Da agenda de
+                    <select className="select" value={moveFrom} onChange={(e) => setMoveFrom(e.target.value)} aria-label="Agenda atual" style={{ width: 'auto' }}>
+                      {activeSellers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                    para
+                    <select className="select" value={moveTo} onChange={(e) => setMoveTo(e.target.value)} aria-label="Nova agenda" style={{ width: 'auto' }}>
+                      {activeSellers.filter((s) => s.id !== moveFrom).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                    <button type="button" className="btn primary sm" onClick={trocarVendedora} disabled={calBusy === 'transfer'}>{calBusy === 'transfer' ? 'Procurando…' : 'Mover encontro'}</button>
+                  </div>
+                )}
+              </div>
+            )}
+              </div>
+  )
+  const camposReuniao = (
+        <div className="row wrap" style={{ gap: 8, alignItems: 'flex-end' }}>
+          <label className="small stack" style={{ gap: 2 }}>Dia
+            <input className="input" type="date" value={meeting.date} onChange={(e) => saveMeeting({ date: e.target.value })} style={{ width: 160 }} />
+          </label>
+          <label className="small stack" style={{ gap: 2 }}>Hora
+            <input className="input" type="time" value={meeting.time} onChange={(e) => saveMeeting({ time: e.target.value })} style={{ width: 120 }} />
+          </label>
+          <label className="small stack grow" style={{ gap: 2, minWidth: 180 }}>Link do Google Meet (opcional)
+            <input className="input" value={meeting.link} placeholder="meet.google.com/..." onChange={(e) => setMeeting({ ...meeting, link: e.target.value })} onBlur={(e) => saveMeeting({ link: e.target.value })} />
+          </label>
+        </div>
+  )
+
   return (
-    <div className="wa-split">
-     <div className="wa-left stack">
+    <div className="card-guiado stack">
       {header}
-      {manual ? (
-        <div className="between">
-          <h3>WhatsApp <span className="small muted" style={{ fontWeight: 400 }}>· envio manual, pelo WhatsApp da equipe</span></h3>
-          {deal?.id && curStage && curStage.kind === 'open' && curStage.role !== 'responsive' && (
-            <button type="button" className="btn sm" onClick={respondeu} title="O lead respondeu no WhatsApp: o card vai para Responsivo e sai da sequência">✅ Respondeu → Responsivo</button>
-          )}
-        </div>
-      ) : (
-        <div className="between">
-          <h3>WhatsApp {via && <span className="small muted" style={{ fontWeight: 400 }}>· via {via.label} ({via.phone_display})</span>}</h3>
-          {deal && (win
-            ? <span className="chip" style={{ '--chip-color': 'var(--success)' }}>janela de 24h aberta</span>
-            : <span className="chip" title="Fora da janela de 24h só é possível enviar templates aprovados pela Meta">fora da janela · só template</span>)}
-        </div>
-      )}
-      {!manual && !settings?.wa_connected && <div className="small muted">WhatsApp ainda não conectado. Configure em Configurações → WhatsApp.</div>}
-      {manual && msgStage && (
-        <div className="card manual-dia" style={{ padding: 10 }}>
+
+      {fase === 'sequencia' && (
+        <div className="passo">
+          <div className="passo-tit">👉 Agora: enviar a mensagem do {msgStage.name}</div>
           {confirmar && !jaEnviada ? (
-            <div className="row wrap small" style={{ gap: 8 }}>
-              <span><b>Enviou a mensagem do {msgStage.name} lá no WhatsApp?</b></span>
-              <button type="button" className="btn primary sm" onClick={confirmarEnvio}>✓ Sim, enviei</button>
-              <button type="button" className="btn sm" onClick={() => { setConfirmar(false); respondeu() }} title="Ao abrir a conversa você viu que o lead tinha respondido: o card vai para Responsivo e sai da sequência">💬 Não: ele(a) tinha respondido</button>
-              <button type="button" className="btn sm" onClick={() => setConfirmar(false)}>Ainda não</button>
+            <div className="stack" style={{ gap: 8 }}>
+              <div><b>Você enviou a mensagem lá no WhatsApp?</b></div>
+              <div className="passo-acoes">
+                <button type="button" className="btn primary" onClick={confirmarEnvio}>✓ Sim, enviei</button>
+                <button type="button" className="btn" onClick={() => { setConfirmar(false); respondeu() }}>💬 Não: já tinha respondido</button>
+                <button type="button" className="btn ghost" onClick={() => setConfirmar(false)}>Ainda não</button>
+              </div>
             </div>
           ) : jaEnviada ? (
-            <div className="row wrap small" style={{ gap: 8 }}>
-              <span style={{ color: 'var(--success)', fontWeight: 600 }}>✓ Mensagem do {msgStage.name} enviada{enviado.at ? ` em ${fmtDateTime(enviado.at)}` : ''}</span>
-              <span className="muted">Amanhã o card passa sozinho para o próximo dia.</span>
-              <button type="button" className="btn ghost sm" onClick={desfazer}>desfazer</button>
+            <div className="stack" style={{ gap: 6 }}>
+              <div style={{ color: 'var(--success)', fontWeight: 600 }}>✓ Mensagem do {msgStage.name} enviada{enviado.at ? ` em ${fmtDateTime(enviado.at)}` : ''}</div>
+              <div className="small muted">Pronto por hoje. Amanhã o card passa sozinho para o próximo dia.</div>
+              <div className="passo-acoes">
+                <button type="button" className="btn" onClick={respondeu}>💬 Respondeu</button>
+                <button type="button" className="btn ghost sm" onClick={desfazer}>desfazer</button>
+              </div>
             </div>
           ) : !podeReceber(contato) ? (
             <div className="small">
@@ -434,28 +530,95 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
               {contato?.marketing_opt_out ? 'Ele pediu para não receber mensagens.' : contato?.source === 'CRM antigo' && !contato?.optin ? 'É da lista antiga, sem autorização registrada.' : 'Contato sem telefone.'}
             </div>
           ) : (
-            <div className="row wrap small" style={{ gap: 8 }}>
-              <span>📲 Hoje: <b>mensagem do {msgStage.name}</b> — já está na caixa abaixo. Clique em <b>Abrir no WhatsApp</b> e envie por lá. <span className="muted">Se na conversa o lead já tiver respondido, não envie: clique em <b>✅ Respondeu</b>.</span></span>
-              {!ehDoDia && <button type="button" className="btn ghost sm" onClick={usarMensagemDoDia}>usar a mensagem do {msgStage.name}</button>}
+            <div className="stack" style={{ gap: 8 }}>
+              <div className="passo-acoes">
+                <button type="button" className="btn primary" onClick={abrirDia}>📲 Abrir no WhatsApp</button>
+                <button type="button" className="btn" onClick={respondeu} title="O lead respondeu: o card vai para Responsivo e sai da sequência">💬 Já respondeu</button>
+              </div>
+              <div className="small muted">Abre o WhatsApp com a mensagem pronta: é só apertar enviar. Se na conversa a pessoa já tiver respondido, não envie e toque em <b>Já respondeu</b>.</div>
+              <details className="passo-ver">
+                <summary className="small">ver ou editar a mensagem</summary>
+                <textarea className="textarea" style={{ minHeight: 110, marginTop: 6 }} value={text} onChange={(e) => setText(e.target.value)} />
+                <div className="row" style={{ justifyContent: 'flex-end', marginTop: 4 }}><AbrirEm /></div>
+              </details>
             </div>
           )}
         </div>
       )}
-      {manual && msgs.length > 0 && mobile && !verHistorico && <button type="button" className="btn ghost sm" style={{ alignSelf: 'flex-start' }} onClick={() => setVerHistorico(true)}>💬 Ver conversa pelo número antigo ({msgs.length})</button>}
-      {manual && msgs.length > 0 && (!mobile || verHistorico) && <div className="small muted">Histórico da conversa pelo número antigo (até a desativação pela Meta). As novas conversas ficam no WhatsApp da equipe.</div>}
-      {(!manual || (msgs.length > 0 && (!mobile || verHistorico))) && <div className="chat" ref={chatRef} onScroll={onChatScroll}>
-        {msgs.length === 0 && <div className="small muted" style={{ textAlign: 'center', padding: 12 }}>Nenhuma mensagem ainda.</div>}
-        {msgs.map((m) => (
-          <div key={m.id} className={'bubble ' + m.direction}>
-            {MEDIA_TYPES.includes(m.type) && m.direction === 'in'
-              ? <MediaContent m={m} />
-              : <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>}
-            <div className="meta">{m.channel === 'instagram' && '📷 Instagram · '}{fmtDateTime(m.created_at)}{m.direction === 'out' && ` · ${statusLabel(m.status)}`}{m.error && <span className="late"> · {m.error}</span>}</div>
+
+      {fase === 'agendar' && (
+        <div className="passo">
+          <div className="passo-tit">👉 Agora: agendar a consultoria gratuita</div>
+          <div className="small muted">1. Escolha a consultora e toque em <b>Buscar horários livres</b>. 2. Envie os 2 horários. 3. Quando a pessoa escolher, toque em <b>Reservar</b>.</div>
+          {agendaUI}
+          {proximaPronta}
+        </div>
+      )}
+
+      {fase === 'reuniao' && (
+        <div className="passo">
+          <div className="passo-tit">📅 Consultoria marcada</div>
+          <div className="passo-destaque">
+            <b>{meetingDateLabel(meeting.date)} às {meetingTimeLabel(meeting.time)}</b>{consultoraReuniao ? ` · com ${consultoraReuniao}` : ''}
           </div>
-        ))}
-      </div>}
-     </div>
-     <div className="wa-right stack">
+          {meeting.link && <a className="small" href={meeting.link} target="_blank" rel="noreferrer">{meeting.link}</a>}
+        {deal?.id && meeting.date && meeting.time && quick.some((q) => q.auto_before) && (
+          <div className="small" style={{ marginTop: 2 }}>⏰ {manual ? 'Lembretes (no horário viram tarefa com o texto pronto)' : 'Lembretes automáticos'}: {['4h', '1h', '15m'].filter((k) => quick.some((q) => q.auto_before === k)).map((k) => {
+            const v = (deal?.reminders || {})[k]
+            return <span key={k} style={{ marginRight: 10 }}>{AUTO_LABEL[k]} {v === 'tarefa' ? '⚠️ tarefa' : v === 'pulado' ? '— pulado' : v ? '✓' : '· agendado'}</span>
+          })}</div>
+        )}
+          <div className="passo-acoes">
+            {booked && meeting.link && <button type="button" className="btn sm" onClick={ligarGravacao} disabled={calBusy === 'grav'} title="Deixa o Meet configurado para gravar e transcrever sozinho">{calBusy === 'grav' ? 'Ligando…' : '🎥 Ligar gravação'}</button>}
+            {podeCancelar && <button type="button" className="btn sm" onClick={leadCancelou} disabled={calBusy === 'cancel'}>{calBusy === 'cancel' ? 'Movendo…' : '↺ Cancelou → Remarcar'}</button>}
+          </div>
+          {proximaPronta}
+        </div>
+      )}
+
+      {fase === 'pos' && (
+        <div className="passo">
+          <div className="passo-tit">✅ Depois da consultoria</div>
+          <div className="small muted">Envie o relatório, registre a sessão e, se ela fechar, gere o contrato.</div>
+          <MeetingFiles deal={deal} contato={contato} firstName={firstName} />
+          <div className="passo-acoes">
+            {onAbrirSessao && <button type="button" className="btn" onClick={onAbrirSessao}>📝 Registrar a sessão</button>}
+            <button type="button" className="btn" onClick={() => setContratoAberto(true)}>📄 Contrato{deal.contrato_status === 'assinado' ? ' ✓' : deal.contrato_url ? ' •' : ''}</button>
+            {podeCancelar && <button type="button" className="btn ghost sm" onClick={leadCancelou} disabled={calBusy === 'cancel'}>↺ Não aconteceu → Remarcar</button>}
+          </div>
+        </div>
+      )}
+
+      {fase === 'vendido' && (
+        <div className="passo passo-ok">
+          <div className="passo-tit">🎉 Vendido</div>
+          <div className="small">{deal.contrato_status === 'assinado' ? '✅ Contrato assinado.' : deal.contrato_status === 'enviado' ? '📨 Contrato enviado, aguardando assinatura.' : 'Contrato ainda não gerado.'}</div>
+          <div className="passo-acoes">
+            <button type="button" className="btn" onClick={() => setContratoAberto(true)}>📄 Contrato</button>
+            {deal.contrato_arquivo_url && <a className="btn ghost sm" href={deal.contrato_arquivo_url} target="_blank" rel="noreferrer">📁 Contrato assinado no Drive</a>}
+          </div>
+        </div>
+      )}
+
+      {fase === 'encerrado' && (
+        <div className="passo passo-off">
+          <div className="passo-tit">Card encerrado: {curStage?.name}</div>
+          <div className="small muted">{deal.lost_reason ? `Motivo: ${deal.lost_reason}. ` : ''}Para voltar a falar com esta pessoa, mude a coluna no topo do card.</div>
+        </div>
+      )}
+
+      {fase !== 'livre' && (
+        <Secao icone="📅" titulo="Reunião" resumo={meeting.date && meeting.time ? `${meetingDateLabel(meeting.date)} às ${meetingTimeLabel(meeting.time)}${consultoraReuniao ? ` · ${consultoraReuniao}` : ''}` : 'não marcada'}>
+          <div className="stack" style={{ gap: 8 }}>
+            {camposReuniao}
+            {fase !== 'agendar' && agendaUI}
+            {fase !== 'reuniao' && podeCancelar && <button type="button" className="btn sm" style={{ alignSelf: 'flex-start' }} onClick={leadCancelou} disabled={calBusy === 'cancel'}>↺ Cancelou → Remarcar</button>}
+            <div className="small muted">{meeting.date && meeting.time ? <>As mensagens prontas já saem com <b>{meetingDateLabel(meeting.date)} às {meetingTimeLabel(meeting.time)}</b>{meeting.link ? ' e o link' : ''}.</> : 'Depois que a pessoa escolher o horário, o dia e a hora entram sozinhos nas mensagens prontas.'}</div>
+          </div>
+        </Secao>
+      )}
+
+      <Secao icone="✉️" titulo={fase === 'livre' ? 'Mensagem' : 'Escrever outra mensagem'} resumo="mensagens prontas, Pix" aberta={fase === 'livre' || !manual} abrir={secMsg}>
       <form onSubmit={send} className="stack">
         <div className="pills">
           {!manual && <button type="button" className={mode === 'text' ? 'active' : ''} onClick={() => setMode('text')} disabled={deal && !win} title={deal && !win ? 'Texto livre só dentro das 24h após a última mensagem do lead' : ''}>Texto</button>}
@@ -554,102 +717,24 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
           </div>
         )}
       </form>
-      <div className="card" style={{ padding: 10, background: 'var(--surface-2, #f6f5f1)' }}>
-        <div className="between" style={{ marginBottom: 6, gap: 8 }}>
-          <div className="small" style={{ fontWeight: 600 }}>📅 Encontro confirmado</div>
-          {podeCancelar && <button type="button" className="btn sm" onClick={leadCancelou} disabled={calBusy === 'cancel'} title="Move para Remarcar, libera o horário na agenda e prepara a pergunta de remarcação">{calBusy === 'cancel' ? 'Movendo…' : '↺ Lead cancelou → Remarcar'}</button>}
-        </div>
-        <div className="row wrap" style={{ gap: 8, alignItems: 'flex-end' }}>
-          <label className="small stack" style={{ gap: 2 }}>Dia
-            <input className="input" type="date" value={meeting.date} onChange={(e) => saveMeeting({ date: e.target.value })} style={{ width: 160 }} />
-          </label>
-          <label className="small stack" style={{ gap: 2 }}>Hora
-            <input className="input" type="time" value={meeting.time} onChange={(e) => saveMeeting({ time: e.target.value })} style={{ width: 120 }} />
-          </label>
-          <label className="small stack grow" style={{ gap: 2, minWidth: 180 }}>Link do Google Meet (opcional)
-            <input className="input" value={meeting.link} placeholder="meet.google.com/..." onChange={(e) => setMeeting({ ...meeting, link: e.target.value })} onBlur={(e) => saveMeeting({ link: e.target.value })} />
-          </label>
-        </div>
-        {deal?.id && (
-          <div className="cal-box">
-            <div className="small" style={{ fontWeight: 600 }}>Agenda Google</div>
-            {activeSellers.length === 0 ? (
-              <div className="small muted">Cadastre as vendedoras em Configurações → Agenda Google para buscar os horários automaticamente.</div>
-            ) : booked ? (
-              <div className="row wrap small" style={{ gap: 8 }}>
-                <span style={{ color: 'var(--success)', fontWeight: 600 }}>✓ Reservado na agenda de {sellerName(booked.sellerId) || 'vendedora'}{meeting.link ? ' · com Google Meet' : ''}</span>
-                <button type="button" className="btn ghost sm" onClick={desfazerReserva} disabled={calBusy === 'release'}>{calBusy === 'release' ? 'Desfazendo…' : 'Desfazer reserva'}</button>
-                {meeting.link && <button type="button" className="btn ghost sm" onClick={ligarGravacao} disabled={calBusy === 'grav'} title="Deixa a reunião do Meet configurada para gravar e transcrever sozinha quando começar">{calBusy === 'grav' ? 'Ligando…' : '🎥 Ligar gravação automática'}</button>}
-              </div>
-            ) : (
-              <>
-                <div className="row wrap" style={{ gap: 6, alignItems: 'center' }}>
-                  <select className="select" value={sellerId} onChange={(e) => { setSellerId(e.target.value); setFound(null) }} aria-label="Vendedora" style={{ width: 'auto', minWidth: 160 }}>
-                    {activeSellers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
-                  <button type="button" className="btn sm" onClick={buscarHorarios} disabled={calBusy === 'buscar'}>{calBusy === 'buscar' ? 'Buscando…' : 'Buscar horários livres'}</button>
-                </div>
-                {found && found.length > 0 && (
-                  <div className="stack" style={{ gap: 4 }}>
-                    <div className="small muted">Toque para escolher os 2 horários oferecidos (entram em [DIA 1]/[HORA 1] e [DIA 2]/[HORA 2]):</div>
-                    <div className="row wrap" style={{ gap: 6 }}>
-                      {found.map((s) => {
-                        const on = offered.some((o) => o.event_id === s.event_id)
-                        return <button key={s.event_id} type="button" className={'slot-chip' + (on ? ' on' : '')} onClick={() => alternarOferta(s)} aria-pressed={on}>{on ? '✓ ' : ''}{slotLabel(s)}</button>
-                      })}
-                    </div>
-                  </div>
-                )}
-                {offered.length > 0 && (
-                  <div className="stack" style={{ gap: 4 }}>
-                    {manual && offered.length === 2 && msgHorarios && (
-                      <button type="button" className="btn primary sm" style={{ alignSelf: 'flex-start' }} onClick={enviarHorarios}>📲 Enviar os 2 horários pelo WhatsApp</button>
-                    )}
-                    <div className="small">Oferecidos{offered[0]?.seller_id ? ` (agenda de ${sellerName(offered[0].seller_id)})` : ''}. Quando o lead escolher, reserve:</div>
-                    <div className="row wrap" style={{ gap: 6 }}>
-                      {offered.map((s) => (
-                        <button key={s.event_id} type="button" className="btn primary sm" onClick={() => reservar(s)} disabled={!!calBusy}>{calBusy === s.event_id ? 'Reservando…' : `Reservar ${slotLabel(s)}`}</button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-            {activeSellers.length > 1 && (
-              <div className="stack" style={{ gap: 4 }}>
-                <button type="button" className="btn ghost sm" style={{ alignSelf: 'flex-start' }} onClick={abrirTroca}>⇄ Trocar de vendedora (mesmo horário)</button>
-                {moveOpen && (
-                  <div className="row wrap small" style={{ gap: 6, alignItems: 'center' }}>
-                    Da agenda de
-                    <select className="select" value={moveFrom} onChange={(e) => setMoveFrom(e.target.value)} aria-label="Agenda atual" style={{ width: 'auto' }}>
-                      {activeSellers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                    para
-                    <select className="select" value={moveTo} onChange={(e) => setMoveTo(e.target.value)} aria-label="Nova agenda" style={{ width: 'auto' }}>
-                      {activeSellers.filter((s) => s.id !== moveFrom).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                    <button type="button" className="btn primary sm" onClick={trocarVendedora} disabled={calBusy === 'transfer'}>{calBusy === 'transfer' ? 'Procurando…' : 'Mover encontro'}</button>
-                  </div>
-                )}
-              </div>
-            )}
+      </Secao>
+
+      {(!manual || msgs.length > 0) && (
+        <Secao icone="💬" titulo={manual ? 'Conversa pelo número antigo' : 'Conversa'} resumo={`${msgs.length} mensagens`} aberta={!manual}>
+      {<div className="chat" ref={chatRef} onScroll={onChatScroll}>
+        {msgs.length === 0 && <div className="small muted" style={{ textAlign: 'center', padding: 12 }}>Nenhuma mensagem ainda.</div>}
+        {msgs.map((m) => (
+          <div key={m.id} className={'bubble ' + m.direction}>
+            {MEDIA_TYPES.includes(m.type) && m.direction === 'in'
+              ? <MediaContent m={m} />
+              : <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>}
+            <div className="meta">{m.channel === 'instagram' && '📷 Instagram · '}{fmtDateTime(m.created_at)}{m.direction === 'out' && ` · ${statusLabel(m.status)}`}{m.error && <span className="late"> · {m.error}</span>}</div>
           </div>
-        )}
-        {deal?.id && meeting.date && meeting.time && quick.some((q) => q.auto_before) && (
-          <div className="small" style={{ marginTop: 6 }}>⏰ {manual ? 'Lembretes (no horário viram tarefa com o texto pronto)' : 'Lembretes automáticos'}: {['4h', '1h', '15m'].filter((k) => quick.some((q) => q.auto_before === k)).map((k) => {
-            const v = (deal?.reminders || {})[k]
-            return <span key={k} style={{ marginRight: 10 }}>{AUTO_LABEL[k]} {v === 'tarefa' ? '⚠️ tarefa' : v === 'pulado' ? '— pulado' : v ? '✓' : '· agendado'}</span>
-          })}</div>
-        )}
-        <div className="small muted" style={{ marginTop: 6 }}>
-          {meeting.date && meeting.time
-            ? <>As mensagens prontas já saem com <b>{meetingDateLabel(meeting.date)} às {meetingTimeLabel(meeting.time)}</b>{meeting.link ? ' e o link' : ''}.</>
-            : 'Preencha depois que o lead escolher o horário: o dia e a hora entram sozinhos em todas as mensagens prontas.'}
-        </div>
-      </div>
-      {deal?.id && <MeetingFiles deal={deal} contato={contato} firstName={firstName} />}
+        ))}
+      </div>}
+        </Secao>
+      )}
       {contratoAberto && <ContratoModal deal={deal} onClose={() => setContratoAberto(false)} onSaved={onSent} />}
-     </div>
     </div>
   )
 }
