@@ -876,9 +876,14 @@ function MeetingFiles({ deal, contato, firstName }) {
           )}
         </div>
       )}
-      {!relatorioPronto && files.some((f) => f.kind === 'anotacoes') && resumo === null && (
-        <div className="row" style={{ marginTop: 8 }}>
-          <button type="button" className="btn primary sm" onClick={prepararResumo} disabled={lendo}>{lendo ? 'Lendo o resumo do Gemini…' : '📲 Enviar resumo ao lead'}</button>
+      {!relatorioPronto && resumo === null && (
+        <div className="small" style={{ marginTop: 8, padding: '8px 10px', borderRadius: 8, background: 'var(--surface-2)' }}>
+          📝 <b>Relatório em preparação.</b>{' '}
+          {deal.relatorio_fonte_em
+            ? 'A transcrição já foi lida; o relatório fica pronto em até 1 hora. Quando ficar, aparece aqui o botão “Mensagem para o lead” e um aviso verde no Funil.'
+            : deal.relatorio_erro && /insuficiente/i.test(deal.relatorio_erro)
+              ? 'A transcrição do Gemini veio curta demais para gerar o relatório.'
+              : 'O CRM lê a transcrição do Gemini cerca de 1h30 depois do início da reunião e gera o relatório em seguida.'}
         </div>
       )}
       {resumo !== null && (
