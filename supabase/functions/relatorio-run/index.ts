@@ -162,33 +162,42 @@ Deno.serve(async (req) => {
   const feitos: any[] = []
   for (const d of deals ?? []) {
     const ini = new Date(`${d.meeting_date}T${String(d.meeting_time).slice(0, 5)}:00${TZ_OFF}`).getTime()
-    if (agora < ini + 45 * 60_000 || agora > ini + 3 * 86_400_000) continue
+    // espera 90 min: o Gemini termina as anotações depois do fim da reunião
+    if (agora < ini + 90 * 60_000 || agora > ini + 3 * 86_400_000) continue
     if (d.relatorio_checado_em && agora - new Date(d.relatorio_checado_em).getTime() < 15 * 60_000) continue
     if (feitos.length >= 8) break
     const marca: any = { relatorio_checado_em: new Date().toISOString() }
     try {
+      // busca os anexos de novo a cada rodada: se a reunião caiu e recomeçou, o Meet anexa um segundo documento
       let files: any[] = Array.isArray(d.meeting_files) ? d.meeting_files : []
-      if (!files.some((f) => f?.kind === 'anotacoes')) {
-        const novos = await buscarArquivos(admin, sa, d, TITULO)
-        if (novos?.length) {
-          files = novos
-          marca.meeting_files = novos
-          marca.meeting_files_checked_at = new Date().toISOString()
-          await levarArquivosParaSessao(admin, d.id, novos).catch(() => null)
+      const novos = await buscarArquivos(admin, sa, d, TITULO).catch(() => null)
+      if (novos?.length && JSON.stringify(novos) !== JSON.stringify(files)) {
+        files = novos
+        marca.meeting_files = novos
+        marca.meeting_files_checked_at = new Date().toISOString()
+        await levarArquivosParaSessao(admin, d.id, novos).catch(() => null)
+      }
+      const docs = files.filter((f) => f?.kind === 'anotacoes' && /\/document\/d\//.test(String(f?.url ?? '')))
+      if (!docs.length) { marca.relatorio_erro = 'as Anotações do Gemini ainda não apareceram no evento'; await admin.from('deals').update(marca).eq('id', d.id); feitos.push({ id: d.id, ok: false, erro: marca.relatorio_erro }); continue }
+      // lê todos os documentos de anotações (e de transcrição) e junta os que têm conteúdo de verdade
+      const partes: string[] = []
+      let principal = docs[0]
+      for (const f of [...docs, ...files.filter((x) => x?.kind === 'transcricao')]) {
+        const id = String(f.url).match(/\/document\/d\/([\w-]+)/)?.[1]
+        if (!id) continue
+        const texto = f.kind === 'anotacoes' ? (await lerAnotacoes(sa, d.seller.email, id).catch(() => ({ fonte: '' }))).fonte
+          : (await linhasPeloDrive(sa, d.seller.email, id).catch(() => [] as string[])).join('\n')
+        if (texto && !/resumo desta reuni[aã]o n[aã]o foi gerado/i.test(texto) && texto.length > 800) {
+          partes.push(`=== ${f.kind === 'anotacoes' ? 'ANOTAÇÕES DO GEMINI' : 'TRANSCRIÇÃO'} (${f.title}) ===\n${texto}`)
+          if (f.kind === 'anotacoes') principal = f
         }
       }
-      const doc = files.find((f) => f?.kind === 'anotacoes' && f?.url)
-      const docId = String(doc?.url ?? '').match(/\/document\/d\/([\w-]+)/)?.[1]
-      if (!docId) { marca.relatorio_erro = 'as Anotações do Gemini ainda não apareceram no evento'; await admin.from('deals').update(marca).eq('id', d.id); feitos.push({ id: d.id, ok: false, erro: marca.relatorio_erro }); continue }
-      const r = await lerAnotacoes(sa, d.seller.email, docId)
-      if (!r.fonte.trim()) { marca.relatorio_erro = 'o documento do Gemini veio vazio'; await admin.from('deals').update(marca).eq('id', d.id); feitos.push({ id: d.id, ok: false, erro: marca.relatorio_erro }); continue }
-      // transcrição completa (quando o Meet anexou o documento de transcrição): ajuda a achar dores e desejos nas palavras do lead
-      let transcricao = ''
-      const tr = files.find((f) => f?.kind === 'transcricao' && f?.url)
-      const trId = String(tr?.url ?? '').match(/\/document\/d\/([\w-]+)/)?.[1]
-      if (trId) transcricao = (await linhasPeloDrive(sa, d.seller.email, trId).catch(() => [] as string[])).join('\n')
-      const fonte = `=== ANOTAÇÕES DO GEMINI ===\n${r.fonte}` + (transcricao ? `\n\n=== TRANSCRIÇÃO ===\n${transcricao}` : '')
-      Object.assign(marca, { relatorio_fonte: fonte.slice(0, 60000), relatorio_fonte_em: new Date().toISOString(), relatorio_erro: null, relatorio_doc_url: doc.url })
+      const fonte = partes.join('\n\n')
+      if (fonte.length < 1500 && agora < ini + 8 * 3_600_000) {
+        marca.relatorio_erro = 'aguardando o Gemini: as anotações ainda estão vazias ou curtas'
+        await admin.from('deals').update(marca).eq('id', d.id); feitos.push({ id: d.id, ok: false, erro: marca.relatorio_erro }); continue
+      }
+      Object.assign(marca, { relatorio_fonte: (fonte || 'sem conteúdo').slice(0, 60000), relatorio_fonte_em: new Date().toISOString(), relatorio_erro: null, relatorio_doc_url: principal.url })
       await admin.from('deals').update(marca).eq('id', d.id)
       feitos.push({ id: d.id, ok: true, lead: d.contact?.name || d.title })
     } catch (e) {
@@ -197,5 +206,111 @@ Deno.serve(async (req) => {
       feitos.push({ id: d.id, ok: false, erro: marca.relatorio_erro })
     }
   }
-  return json({ ok: true, processados: feitos })
+
+  // 2) documento no papel timbrado: para os diagnósticos (SWOT) que a tarefa agendada já escreveu
+  const gerados: any[] = []
+  const { data: cfg } = await admin.from('org_settings').select('relatorio_template_id, relatorio_folder_id, contract_signer_email').eq('id', 1).single()
+  const { data: prontos } = await admin.from('deals')
+    .select('id, title, contact_id, owner_id, relatorio_swot, seller:calendar_sellers(name), contact:contacts(name)')
+    .not('relatorio_swot', 'is', null).is('relatorio_doc_id', null).limit(4)
+  for (const d of prontos ?? []) {
+    try {
+      if (!cfg?.relatorio_template_id) throw new Error('modelo do relatório não configurado')
+      const r = await gerarDocumento(sa, String(cfg.contract_signer_email || 'murilo@ascentria.com.br'), cfg.relatorio_template_id, cfg.relatorio_folder_id, d.relatorio_swot)
+      const nome = String(d.contact?.name || d.title || '').trim().split(/\s+/)[0]
+      const consultora = String(d.relatorio_swot?.consultora || d.seller?.name || '').trim().split(/\s+/)[0]
+      const homem = /^(diego|murilo)$/i.test(consultora)
+      const texto = [
+        `Oi${nome ? `, ${nome}` : ''}! Aqui é ${homem ? 'o' : 'a'} ${consultora}, da equipe do Enfermeiro Murilo. 😊`,
+        `${homem ? 'Obrigado' : 'Obrigada'} pela nossa conversa na consultoria gratuita. Preparei o seu *Relatório de Diagnóstico Profissional*, com o que você me contou organizado em forças, fraquezas, oportunidades e ameaças.`,
+        'O arquivo segue logo abaixo. Qualquer dúvida, é só me chamar por aqui!',
+      ].join('\n\n')
+      await admin.from('deals').update({ relatorio_doc_id: r.id, relatorio_doc_link: r.link, relatorio_texto: texto, relatorio_pronto_em: new Date().toISOString(), relatorio_erro: null }).eq('id', d.id)
+      const { data: jaTem } = await admin.from('activities').select('id').eq('deal_id', d.id).eq('done', false).like('title', '📝 Relatório da consultoria pronto%').limit(1)
+      if (!jaTem?.length) await admin.from('activities').insert({
+        type: 'task', title: `📝 Relatório da consultoria pronto — enviar a ${d.contact?.name || d.title}`,
+        description: 'O Relatório de Diagnóstico (análise SWOT, papel timbrado da Ascentria) está pronto no card, em "Reunião gravada". Baixe o PDF e envie ao lead pelo WhatsApp.',
+        deal_id: d.id, contact_id: d.contact_id, assigned_to: d.owner_id, due_at: new Date().toISOString(), done: false,
+      })
+      gerados.push({ id: d.id, ok: true, doc: r.link })
+    } catch (e) {
+      await admin.from('deals').update({ relatorio_erro: 'documento: ' + (e as Error).message }).eq('id', d.id)
+      gerados.push({ id: d.id, ok: false, erro: (e as Error).message })
+    }
+  }
+  return json({ ok: true, processados: feitos, documentos: gerados })
 })
+
+// ——— documento do relatório (cópia do modelo com o papel timbrado + texto do diagnóstico) ———
+const VERDE = { red: 0.36, green: 0.43, blue: 0.34 }
+const u16 = (t: string) => t.length // String.length já conta em UTF-16, como a API do Google Docs
+
+async function gerarDocumento(sa: SA, dono: string, modeloId: string, pastaId: string | null, sw: any) {
+  const tk = await googleToken(sa, dono, DRIVE_SCOPE)
+  const h = { Authorization: `Bearer ${tk}`, 'Content-Type': 'application/json' }
+  const titulo = `Diagnóstico SWOT - ${sw.participante || 'Lead'} - Consultoria ${String(sw.data_curta || '').replace(/\//g, '-') || new Date().toISOString().slice(0, 10)}`
+  const cp = await fetch(`https://www.googleapis.com/drive/v3/files/${modeloId}/copy?supportsAllDrives=true&fields=id`, { method: 'POST', headers: h, body: JSON.stringify({ name: titulo, ...(pastaId ? { parents: [pastaId] } : {}) }) })
+  const c: any = await cp.json().catch(() => ({}))
+  if (!cp.ok) throw new Error('Drive (cópia): ' + (c?.error?.message || cp.status))
+  const paras: [string, string][] = [
+    ['T', 'RELATÓRIO DE DIAGNÓSTICO PROFISSIONAL'], ['ST', 'Consultoria Gratuita · Análise SWOT'], ['E', ''],
+    ['I', `Participante: ${sw.participante || ''}`], ['I', `Data da consultoria: ${sw.data || ''}`], ['I', `Consultora responsável: ${sw.consultora || ''}`],
+    ...(sw.local ? [['I', `Local de residência: ${sw.local}`] as [string, string]] : []),
+    ['S', 'APRESENTAÇÃO'],
+    ['P', `Este relatório apresenta o diagnóstico da situação profissional relatada por ${String(sw.participante || '').split(' ')[0] || 'a participante'} durante a consultoria gratuita, organizado no modelo SWOT: forças e fraquezas (fatores internos) e oportunidades e ameaças (fatores externos). As informações registradas correspondem exclusivamente ao que foi relatado ao longo da conversa.`],
+    ['S', 'CONTEXTO E OBJETIVO DECLARADO'], ['P', sw.contexto || ''],
+    ['S', 'FORÇAS'], ...(sw.forcas || []).map((x: string) => ['B', x] as [string, string]),
+    ['S', 'FRAQUEZAS'], ...(sw.fraquezas || []).map((x: string) => ['B', x] as [string, string]),
+    ['S', 'OPORTUNIDADES'], ...(sw.oportunidades || []).map((x: string) => ['B', x] as [string, string]),
+    ['S', 'AMEAÇAS'], ...(sw.ameacas || []).map((x: string) => ['B', x] as [string, string]),
+    ['S', 'SÍNTESE DO DIAGNÓSTICO'], ['P', sw.sintese || ''],
+    ['N', `Relatório elaborado com base no registro da consultoria gratuita realizada em ${sw.data_curta || sw.data || ''}. As informações refletem o relato da participante e não constituem orientação profissional.`],
+  ]
+  let text = ''
+  const spans: [string, number, number, string][] = []
+  for (const [tipo, t0] of paras) {
+    const t = String(t0).replace(/\n+/g, ' ').trim()
+    const s = u16(text) + 1
+    text += t + '\n'
+    spans.push([tipo, s, u16(text) + 1, t])
+  }
+  const fim = u16(text) + 1
+  const req: any[] = [
+    { insertText: { location: { index: 1 }, text } },
+    { updateParagraphStyle: { range: { startIndex: 1, endIndex: fim }, paragraphStyle: { lineSpacing: 150, spaceAbove: { magnitude: 0, unit: 'PT' }, spaceBelow: { magnitude: 0, unit: 'PT' }, namedStyleType: 'NORMAL_TEXT', indentFirstLine: { magnitude: 0, unit: 'PT' }, alignment: 'JUSTIFIED' }, fields: 'lineSpacing,spaceAbove,spaceBelow,namedStyleType,indentFirstLine,alignment' } },
+    { updateTextStyle: { range: { startIndex: 1, endIndex: fim }, textStyle: { weightedFontFamily: { fontFamily: 'Times New Roman', weight: 400 }, fontSize: { magnitude: 12, unit: 'PT' }, bold: false, italic: false, foregroundColor: { color: { rgbColor: { red: 0.13, green: 0.13, blue: 0.13 } } } }, fields: 'weightedFontFamily,fontSize,bold,italic,foregroundColor' } },
+  ]
+  const bul: [number, number][] = []
+  for (const [tipo, s, e, t] of spans) {
+    if (e - 1 <= s && tipo !== 'E') continue
+    if (tipo === 'T') {
+      req.push({ updateParagraphStyle: { range: { startIndex: s, endIndex: e }, paragraphStyle: { alignment: 'CENTER' }, fields: 'alignment' } })
+      req.push({ updateTextStyle: { range: { startIndex: s, endIndex: e - 1 }, textStyle: { bold: true, fontSize: { magnitude: 14, unit: 'PT' }, foregroundColor: { color: { rgbColor: VERDE } } }, fields: 'bold,fontSize,foregroundColor' } })
+    } else if (tipo === 'ST') {
+      req.push({ updateParagraphStyle: { range: { startIndex: s, endIndex: e }, paragraphStyle: { alignment: 'CENTER' }, fields: 'alignment' } })
+      req.push({ updateTextStyle: { range: { startIndex: s, endIndex: e - 1 }, textStyle: { fontSize: { magnitude: 10, unit: 'PT' }, italic: true }, fields: 'fontSize,italic' } })
+    } else if (tipo === 'S') {
+      req.push({ updateParagraphStyle: { range: { startIndex: s, endIndex: e }, paragraphStyle: { spaceAbove: { magnitude: 12, unit: 'PT' }, spaceBelow: { magnitude: 4, unit: 'PT' }, alignment: 'START', borderBottom: { color: { color: { rgbColor: VERDE } }, width: { magnitude: 1, unit: 'PT' }, padding: { magnitude: 2, unit: 'PT' }, dashStyle: 'SOLID' } }, fields: 'spaceAbove,spaceBelow,alignment,borderBottom' } })
+      req.push({ updateTextStyle: { range: { startIndex: s, endIndex: e - 1 }, textStyle: { bold: true, foregroundColor: { color: { rgbColor: VERDE } } }, fields: 'bold,foregroundColor' } })
+    } else if (tipo === 'I') {
+      req.push({ updateParagraphStyle: { range: { startIndex: s, endIndex: e }, paragraphStyle: { alignment: 'START' }, fields: 'alignment' } })
+      const k = t.indexOf(':')
+      if (k > 0) req.push({ updateTextStyle: { range: { startIndex: s, endIndex: s + u16(t.slice(0, k + 1)) }, textStyle: { bold: true }, fields: 'bold' } })
+    } else if (tipo === 'P') {
+      req.push({ updateParagraphStyle: { range: { startIndex: s, endIndex: e }, paragraphStyle: { indentFirstLine: { magnitude: 36, unit: 'PT' } }, fields: 'indentFirstLine' } })
+    } else if (tipo === 'N') {
+      req.push({ updateParagraphStyle: { range: { startIndex: s, endIndex: e }, paragraphStyle: { spaceAbove: { magnitude: 12, unit: 'PT' } }, fields: 'spaceAbove' } })
+      req.push({ updateTextStyle: { range: { startIndex: s, endIndex: e - 1 }, textStyle: { italic: true, fontSize: { magnitude: 9, unit: 'PT' }, foregroundColor: { color: { rgbColor: { red: 0.4, green: 0.4, blue: 0.4 } } } }, fields: 'italic,fontSize,foregroundColor' } })
+    } else if (tipo === 'B') {
+      req.push({ updateParagraphStyle: { range: { startIndex: s, endIndex: e }, paragraphStyle: { spaceBelow: { magnitude: 3, unit: 'PT' } }, fields: 'spaceBelow' } })
+      if (bul.length && bul[bul.length - 1][1] === s) bul[bul.length - 1][1] = e; else bul.push([s, e])
+    }
+  }
+  for (const [s, e] of [...bul].reverse()) req.push({ createParagraphBullets: { range: { startIndex: s, endIndex: e }, bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE' } })
+  const up = await fetch(`https://docs.googleapis.com/v1/documents/${c.id}:batchUpdate`, { method: 'POST', headers: h, body: JSON.stringify({ requests: req }) })
+  const u: any = await up.json().catch(() => ({}))
+  if (!up.ok) throw new Error('Docs: ' + (u?.error?.message || up.status))
+  // a equipe (domínio ascentria.com.br) consegue abrir e baixar o PDF
+  await fetch(`https://www.googleapis.com/drive/v3/files/${c.id}/permissions?supportsAllDrives=true&sendNotificationEmail=false`, { method: 'POST', headers: h, body: JSON.stringify({ type: 'domain', domain: 'ascentria.com.br', role: 'reader' }) }).catch(() => null)
+  return { id: c.id as string, link: `https://docs.google.com/document/d/${c.id}/edit` }
+}

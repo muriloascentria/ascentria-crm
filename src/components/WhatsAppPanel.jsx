@@ -775,10 +775,20 @@ function MeetingFiles({ deal, contato, firstName }) {
         <div className="relatorio-pronto" style={{ marginTop: 8 }}>
           {enviadoEm
             ? <div className="small">✓ Relatório enviado ao lead em {new Date(enviadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}.</div>
-            : <div className="small"><b>📝 O relatório da consultoria já está pronto.</b> Dores, desejos e caminhos (Processo de Enfermagem e Nursing Plan), escrito a partir da transcrição/anotações do Gemini: confira e envie ao lead.</div>}
-          <div className="row" style={{ marginTop: 6 }}>
-            <button type="button" className={'btn sm' + (enviadoEm ? ' ghost' : ' primary')} onClick={() => setResumo(deal.relatorio_texto)}>{enviadoEm ? 'Ver / enviar de novo' : '📲 Ver e enviar ao lead'}</button>
-          </div>
+            : deal.relatorio_doc_id
+              ? <div className="small"><b>📝 O Relatório de Diagnóstico está pronto</b> (análise SWOT no papel timbrado da Ascentria, feito a partir da transcrição da consultoria). Confira o documento, baixe o PDF e envie ao lead.</div>
+              : <div className="small"><b>📝 O relatório da consultoria já está pronto.</b> Confira e envie ao lead.</div>}
+          {deal.relatorio_doc_id ? (
+            <div className="row wrap" style={{ marginTop: 6, gap: 6 }}>
+              <a className="btn sm" href={`https://docs.google.com/document/d/${deal.relatorio_doc_id}/edit`} target="_blank" rel="noreferrer">📄 Abrir relatório</a>
+              <a className="btn sm" href={`https://docs.google.com/document/d/${deal.relatorio_doc_id}/export?format=pdf`} target="_blank" rel="noreferrer">⬇️ Baixar PDF</a>
+              <button type="button" className={'btn sm' + (enviadoEm ? ' ghost' : ' primary')} onClick={() => setResumo(deal.relatorio_texto || '')}>{enviadoEm ? 'Enviar de novo' : '📲 Mensagem para o lead'}</button>
+            </div>
+          ) : (
+            <div className="row" style={{ marginTop: 6 }}>
+              <button type="button" className={'btn sm' + (enviadoEm ? ' ghost' : ' primary')} onClick={() => setResumo(deal.relatorio_texto)}>{enviadoEm ? 'Ver / enviar de novo' : '📲 Ver e enviar ao lead'}</button>
+            </div>
+          )}
         </div>
       )}
       {!relatorioPronto && files.some((f) => f.kind === 'anotacoes') && resumo === null && (
@@ -788,8 +798,10 @@ function MeetingFiles({ deal, contato, firstName }) {
       )}
       {resumo !== null && (
         <div className="stack" style={{ gap: 6, marginTop: 8 }}>
-          <div className="small"><b>Relatório para o lead</b> · confira e ajuste o texto antes de enviar (nomes, números e exemplos vêm da reunião: confira se está tudo certo).</div>
-          <textarea className="textarea" style={{ minHeight: 220 }} value={resumo} onChange={(e) => setResumo(e.target.value)} />
+          <div className="small">{deal.relatorio_doc_id
+            ? <><b>Mensagem para o lead</b> · depois de abrir o WhatsApp, anexe o PDF do relatório (botão "Baixar PDF") na mesma conversa.</>
+            : <><b>Relatório para o lead</b> · confira e ajuste o texto antes de enviar (nomes, números e exemplos vêm da reunião: confira se está tudo certo).</>}</div>
+          <textarea className="textarea" style={{ minHeight: deal.relatorio_doc_id ? 120 : 220 }} value={resumo} onChange={(e) => setResumo(e.target.value)} />
           <div className="row wrap" style={{ gap: 8, justifyContent: 'flex-end' }}>
             <button type="button" className="btn ghost sm" onClick={() => setResumo(null)}>cancelar</button>
             <AbrirEm />
