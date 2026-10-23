@@ -3,7 +3,7 @@ import AbrirEm from './AbrirEm'
 import Secao from './Secao'
 import { useMobile } from '../lib/useMobile'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { supabase, invokeFn } from '../lib/supabase'
+import { supabase } from '../lib/supabase'
 import { useApp } from '../lib/store'
 import { inWindow, sendWhatsApp, getMedia, MEDIA_TYPES, QUICK_STAGES, SITUATIONAL_STAGES, quickStageLabel, splitParts, pendingFields, fillMeeting, meetingDateLabel, meetingTimeLabel } from '../lib/wa'
 import { fmtDateTime } from '../lib/utils'
@@ -791,33 +791,10 @@ function MeetingFiles({ deal, contato, firstName, modo }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [enviadoEm, setEnviadoEm] = useState(deal.relatorio_enviado_em || null)
-  const [pdfUrl, setPdfUrl] = useState(deal.relatorio_pdf_url || '')
-  const [gerandoPdf, setGerandoPdf] = useState(false)
-  // abre a mensagem já com o link do PDF (gerado na hora, com o que estiver no documento agora)
-  const abrirMensagemRelatorio = async () => {
-    setGerandoPdf(true)
-    let url = ''
-    try {
-      const { data, error } = await invokeFn('relatorio-run', { body: { acao: 'pdf', deal_id: deal.id } })
-      if (!error && data?.ok) url = data.url
-      else toast('Não consegui gerar o PDF agora: ' + (data?.error || error?.message || 'erro'), 'err')
-    } catch (e) { toast('Não consegui gerar o PDF agora: ' + e.message, 'err') }
-    setGerandoPdf(false)
-    url = url || pdfUrl
-    if (url) setPdfUrl(url)
+  // a mensagem diz "PDF (anexo)": a consultora baixa o PDF e anexa na conversa do WhatsApp
+  const abrirMensagemRelatorio = () => {
     const base = deal.relatorio_texto || ''
-    const texto = base.includes('{PDF}') ? base.replace('{PDF}', url || '(link do PDF)') : (url ? `${base}\n\n📄 Seu relatório em PDF: ${url}` : base)
-    setResumo(texto)
-  }
-  // celular (e Windows com o app do WhatsApp): manda o próprio arquivo PDF, não só o link
-  const podeCompartilharArquivo = typeof navigator !== 'undefined' && !!navigator.canShare && (() => { try { return navigator.canShare({ files: [new File([''], 'a.pdf', { type: 'application/pdf' })] }) } catch { return false } })()
-  const compartilharPdf = async () => {
-    try {
-      const blob = await (await fetch(pdfUrl)).blob()
-      const nome = decodeURIComponent(pdfUrl.split('/').pop() || 'Relatorio.pdf')
-      await navigator.share({ files: [new File([blob], nome, { type: 'application/pdf' })], text: (resumo || '').replace(/📄 Seu relatório em PDF: \S+\n*/, '') })
-      marcarRelatorioEnviado()
-    } catch (e) { if (e?.name !== 'AbortError') toast('Não consegui compartilhar o arquivo: ' + e.message, 'err') }
+    setResumo(base.replace(/📄 Seu relatório em PDF: \{PDF\}/, '📄 Seu relatório segue em PDF (anexo).').replace('{PDF}', '(anexo)'))
   }
   const relatorioPronto = !!deal.relatorio_texto
   const inicio = deal.meeting_date && deal.meeting_time ? new Date(`${deal.meeting_date}T${String(deal.meeting_time).slice(0, 5)}:00-03:00`).getTime() : null
@@ -879,26 +856,24 @@ function MeetingFiles({ deal, contato, firstName, modo }) {
         <div className="passo-tit">{enviadoEm ? '✓ Relatório da consultoria enviado' : '📝 Relatório da consultoria pronto: enviar ao lead'}</div>
         <div className="small muted">{enviadoEm
           ? <>Enviado em {new Date(enviadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}.</>
-          : <>Toque em <b>Enviar relatório ao lead</b>: a mensagem já sai com o link do PDF. Confira e aperte enviar no WhatsApp.</>}</div>
+          : <>1. Toque em <b>⬇️ Baixar PDF</b>. 2. Toque em <b>Enviar relatório ao lead</b> e abra no WhatsApp. 3. Na conversa, anexe o PDF e envie junto com a mensagem.</>}</div>
         {resumo === null && (
           <div className="passo-acoes">
-            {deal.relatorio_doc_id
-              ? <button type="button" className={'btn' + (enviadoEm ? '' : ' primary')} onClick={abrirMensagemRelatorio} disabled={gerandoPdf}>{gerandoPdf ? 'Preparando o PDF…' : enviadoEm ? '📲 Enviar de novo' : '📲 Enviar relatório ao lead'}</button>
-              : <button type="button" className={'btn' + (enviadoEm ? '' : ' primary')} onClick={() => setResumo(deal.relatorio_texto)}>{enviadoEm ? '📲 Ver / enviar de novo' : '📲 Enviar relatório ao lead'}</button>}
+            {deal.relatorio_doc_id && <a className="btn" href={`https://docs.google.com/document/d/${deal.relatorio_doc_id}/export?format=pdf`} target="_blank" rel="noreferrer">⬇️ Baixar PDF</a>}
+            <button type="button" className={'btn' + (enviadoEm ? '' : ' primary')} onClick={abrirMensagemRelatorio}>{enviadoEm ? '📲 Enviar de novo' : '📲 Enviar relatório ao lead'}</button>
             {deal.relatorio_doc_id && <a className="btn ghost sm" href={`https://docs.google.com/document/d/${deal.relatorio_doc_id}/edit`} target="_blank" rel="noreferrer">📄 Ver / editar o relatório</a>}
-            {deal.relatorio_doc_id && <a className="btn ghost sm" href={`https://docs.google.com/document/d/${deal.relatorio_doc_id}/export?format=pdf`} target="_blank" rel="noreferrer">⬇️ Baixar PDF</a>}
           </div>
         )}
       {resumo !== null && (
         <div className="stack" style={{ gap: 6, marginTop: 8 }}>
           <div className="small">{deal.relatorio_doc_id
-            ? <><b>Mensagem para o lead</b> · o link do PDF já está na mensagem: a pessoa toca e o relatório abre no celular dela.</>
+            ? <><b>Mensagem para o lead</b> · depois de abrir no WhatsApp, anexe o PDF baixado (📎) na mesma conversa.</>
             : <><b>Relatório para o lead</b> · confira e ajuste o texto antes de enviar (nomes, números e exemplos vêm da reunião: confira se está tudo certo).</>}</div>
           <textarea className="textarea" style={{ minHeight: deal.relatorio_doc_id ? 120 : 220 }} value={resumo} onChange={(e) => setResumo(e.target.value)} />
           <div className="row wrap" style={{ gap: 8, justifyContent: 'flex-end' }}>
+            {deal.relatorio_doc_id && <a className="btn sm" href={`https://docs.google.com/document/d/${deal.relatorio_doc_id}/export?format=pdf`} target="_blank" rel="noreferrer">⬇️ Baixar PDF</a>}
             <button type="button" className="btn ghost sm" onClick={() => setResumo(null)}>cancelar</button>
             <AbrirEm />
-            {deal.relatorio_doc_id && pdfUrl && podeCompartilharArquivo && <button type="button" className="btn sm" onClick={compartilharPdf} title="Envia o arquivo PDF junto com a mensagem (escolha o WhatsApp na lista)">📎 Enviar como arquivo</button>}
             <button type="button" className="btn primary sm" onClick={enviarResumo}>📲 Abrir no WhatsApp</button>
           </div>
         </div>
