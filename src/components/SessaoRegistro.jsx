@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { invokeFn } from '../lib/supabase'
+import { invokeFn, supabase } from '../lib/supabase'
 import { useApp } from '../lib/store'
 import { fmtDateTime } from '../lib/utils'
 import { Field } from './ui'
@@ -17,13 +17,15 @@ export const linksReuniao = (files) => {
   // sem a transcrição do Meet, vale o documento de anotações do Gemini (traz resumo e transcrição)
   return { video: url('gravacao'), transcricao: url('transcricao') || url('anotacoes') }
 }
+// resultado da sessão → coluna sugerida (a consultora pode escolher outra)
+const COLUNA_DO_RESULTADO = { 'Vendido': 'Fechou mentoria', 'Não vendido': 'Perdido apresentado', 'Desqualificado': 'Desqualificado' }
 const naLista = (nome, lista) => lista.find((o) => o.toLowerCase() === String(nome || '').toLowerCase()) || ''
 
 /**
  * Aba "Registro da sessão" do card: a consultora registra a sessão 1:1 de venda.
  * Salva no card e também no Essência Plat (Registro de Sessões 1:1), pela função "plat-sessao".
  */
-export default function SessaoRegistro({ deal, contato, onSaved, onStageChanged }) {
+export default function SessaoRegistro({ deal, contato, onSaved, onStageChanged, stageId }) {
   const { profile, sellers, users, stages, toast } = useApp()
   const salvo = deal.sessao_registro || null
   const [info, setInfo] = useState({ em: deal.sessao_salva_em, por: deal.sessao_salva_por, plat: deal.plat_sessao_id })
@@ -44,6 +46,14 @@ export default function SessaoRegistro({ deal, contato, onSaved, onStageChanged 
     }
   })
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
+  const colunas = stages.filter((s) => s.pipeline_id === deal.pipeline_id).sort((a, b) => a.position - b.position)
+  const colunaAtual = stageId || deal.stage_id
+  const [destino, setDestino] = useState('') // '' = ainda não escolhida
+  const sugerida = () => {
+    const nome = f.presenca === 'No-show' ? 'Não compareceu' : COLUNA_DO_RESULTADO[f.resultado]
+    return colunas.find((s) => s.name === nome)?.id || ''
+  }
+  const destinoEfetivo = destino || sugerida()
   // a gravação/transcrição chegou com o card aberto: completa os campos ainda vazios
   useEffect(() => {
     const onFiles = (e) => {
@@ -72,10 +82,14 @@ export default function SessaoRegistro({ deal, contato, onSaved, onStageChanged 
     if (msg) { setErro(msg); return toast(msg, 'err') }
     setInfo({ em: data.salvo_em, por: profile.id, plat: data.plat_id })
     toast(`Sessão salva no card e no Essência Plat (nº ${data.numero})` + (data.movido ? ` · card movido para ${data.movido}` : ''))
-    if (data.movido) {
-      const st = stages.find((s) => s.pipeline_id === deal.pipeline_id && s.name === data.movido)
-      if (st) onStageChanged?.(st.id)
+    let colunaFinal = data.movido ? stages.find((s) => s.pipeline_id === deal.pipeline_id && s.name === data.movido)?.id : colunaAtual
+    // a consultora escolheu a coluna: vale a escolha dela
+    if (destinoEfetivo && destinoEfetivo !== colunaFinal) {
+      const { error: e2 } = await supabase.from('deals').update({ stage_id: destinoEfetivo }).eq('id', deal.id)
+      if (e2) toast(e2.message, 'err')
+      else { colunaFinal = destinoEfetivo; toast(`Card movido para ${colunas.find((s) => s.id === destinoEfetivo)?.name}`) }
     }
+    if (colunaFinal && colunaFinal !== colunaAtual) onStageChanged?.(colunaFinal)
     onSaved?.()
   }
 
@@ -122,8 +136,14 @@ export default function SessaoRegistro({ deal, contato, onSaved, onStageChanged 
         <Field label="Link da transcrição"><input className="input" value={f.transcricao || ''} onChange={(e) => set('transcricao', e.target.value)} placeholder="https://..." /></Field>
         <div className="small muted" style={{ alignSelf: 'end', paddingBottom: 8 }}>A gravação e a transcrição entram sozinhas quando o Google anexa à reunião (e vão para o Plat se a sessão já estiver registrada).</div>
       </div>
-      <div className="small muted">
-        Ao salvar, o card muda de coluna sozinho: <b>Vendido</b> → Fechou mentoria · <b>Não vendido</b> → Perdido apresentado · <b>Desqualificado</b> → Desqualificado · <b>No-show</b> → Não compareceu.
+      <div className="mover-card">
+        <Field label="Depois de salvar, colocar o card em">
+          <select className="select" value={destinoEfetivo} onChange={(e) => setDestino(e.target.value)} required>
+            <option value="">Escolha a coluna…</option>
+            {colunas.map((s) => <option key={s.id} value={s.id}>{s.name}{s.id === colunaAtual ? ' (onde está agora)' : ''}</option>)}
+          </select>
+        </Field>
+        <div className="small muted">A coluna é sugerida pelo resultado (Vendido → Fechou mentoria · Não vendido → Perdido apresentado · Desqualificado → Desqualificado · No-show → Não compareceu), mas você pode escolher outra.</div>
       </div>
       {erro && <div className="small late">{erro}</div>}
       <div><button className="btn primary" disabled={busy}>{busy ? 'Salvando…' : info.em ? 'Atualizar registro' : 'Salvar registro'}</button></div>

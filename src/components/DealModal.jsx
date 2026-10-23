@@ -118,7 +118,7 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved, onMar
       {deal?.id ? (
         <div className="stack" style={{ gap: 8, marginTop: 10 }}>
           <Secao id="sec-sessao" icone="📝" titulo="Registro da sessão" resumo={deal.sessao_salva_em ? `✓ salvo em ${fmtDate(deal.sessao_salva_em)}` : 'depois da consultoria'} abrir={abrirSessao}>
-            <SessaoRegistro deal={deal} contato={contato} onSaved={onSaved} onStageChanged={(id) => set('stage_id', id)} />
+            <SessaoRegistro deal={deal} contato={contato} onSaved={onSaved} stageId={f.stage_id} onStageChanged={(id) => set('stage_id', id)} />
           </Secao>
           <Secao icone="🗂" titulo="Dados do negócio" resumo={[f.value ? `R$ ${Number(f.value).toLocaleString('pt-BR')}` : null, userName(f.owner_id) || null].filter(Boolean).join(' · ') || 'valor, responsável, campos'} aberta={!deal.contact_id}>
         <form id="dealform" onSubmit={save} className="stack" style={{ gap: 12 }}>
