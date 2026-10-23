@@ -125,7 +125,10 @@ export default function SessaoRegistro({ deal, contato, onSaved, onStageChanged,
       </div>
       <div className="grid2">
         <Field label="Presença"><select className="select" value={f.presenca || ''} onChange={(e) => set('presenca', e.target.value)} required>{opts(PRESENCAS, f.presenca)}</select></Field>
-        <Field label="Resultado"><select className="select" value={f.resultado || ''} onChange={(e) => set('resultado', e.target.value)} required={f.presenca === 'Show'}>{opts(RESULTADOS, f.resultado)}</select></Field>
+        <Field label="Resultado">
+          <select className="select" value={f.resultado || ''} onChange={(e) => set('resultado', e.target.value)} required={f.presenca === 'Show'}>{opts(RESULTADOS, f.resultado)}</select>
+          <span className="small muted" style={{ display: 'block', marginTop: 4 }}><b>Não vendido</b> = a reunião foi até o final e a pessoa não comprou.</span>
+        </Field>
       </div>
       <div className="grid2">
         <Field label="Valor"><input className="input" value={f.valor || ''} onChange={(e) => set('valor', e.target.value)} placeholder="Ex.: R$ 5.997,00" /></Field>
@@ -148,10 +151,10 @@ export default function SessaoRegistro({ deal, contato, onSaved, onStageChanged,
         <Field label="Depois de salvar, colocar o card em">
           <select className="select" value={destinoEfetivo} onChange={(e) => escolherColuna(e.target.value)} required>
             <option value="">Escolha a coluna…</option>
-            {colunas.map((s) => <option key={s.id} value={s.id}>{s.name}{s.id === colunaAtual ? ' (onde está agora)' : ''}</option>)}
+            {colunas.map((s) => <option key={s.id} value={s.id}>{s.name}{s.name === 'Perdido apresentado' ? ' (foi até o final e não comprou)' : ''}{s.id === colunaAtual ? ' (onde está agora)' : ''}</option>)}
           </select>
         </Field>
-        <div className="small muted">A coluna é sugerida pelo resultado (Vendido → Fechou mentoria · Não vendido → Perdido apresentado · Desqualificado → Desqualificado · No-show → Não compareceu), mas você pode escolher outra. Ao escolher <b>Desqualificado</b>, <b>Fechou mentoria</b>, <b>Perdido apresentado</b> ou <b>Não compareceu</b>, o Resultado acima muda junto e vai assim para o Essência Plat.</div>
+        <div className="small muted">A coluna é sugerida pelo resultado (Vendido → Fechou mentoria · Não vendido (foi até o final e não comprou) → Perdido apresentado · Desqualificado → Desqualificado · No-show → Não compareceu), mas você pode escolher outra. Ao escolher <b>Desqualificado</b>, <b>Fechou mentoria</b>, <b>Perdido apresentado</b> ou <b>Não compareceu</b>, o Resultado acima muda junto e vai assim para o Essência Plat.</div>
       </div>
       {erro && <div className="small late">{erro}</div>}
       <div><button className="btn primary" disabled={busy}>{busy ? 'Salvando…' : info.em ? 'Atualizar registro' : 'Salvar registro'}</button></div>
