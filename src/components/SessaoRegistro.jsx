@@ -54,6 +54,14 @@ export default function SessaoRegistro({ deal, contato, onSaved, onStageChanged,
     return colunas.find((s) => s.name === nome)?.id || ''
   }
   const destinoEfetivo = destino || sugerida()
+  // a coluna escolhida também acerta o Resultado/Presença, para o Essência Plat receber o mesmo dado
+  const escolherColuna = (id) => {
+    setDestino(id)
+    const nome = colunas.find((s) => s.id === id)?.name
+    if (nome === 'Não compareceu') { set('presenca', 'No-show'); set('resultado', '') ; return }
+    const resultado = Object.keys(COLUNA_DO_RESULTADO).find((r) => COLUNA_DO_RESULTADO[r] === nome)
+    if (resultado) { set('resultado', resultado); if (f.presenca !== 'Show') set('presenca', 'Show') }
+  }
   // a gravação/transcrição chegou com o card aberto: completa os campos ainda vazios
   useEffect(() => {
     const onFiles = (e) => {
@@ -138,12 +146,12 @@ export default function SessaoRegistro({ deal, contato, onSaved, onStageChanged,
       </div>
       <div className="mover-card">
         <Field label="Depois de salvar, colocar o card em">
-          <select className="select" value={destinoEfetivo} onChange={(e) => setDestino(e.target.value)} required>
+          <select className="select" value={destinoEfetivo} onChange={(e) => escolherColuna(e.target.value)} required>
             <option value="">Escolha a coluna…</option>
             {colunas.map((s) => <option key={s.id} value={s.id}>{s.name}{s.id === colunaAtual ? ' (onde está agora)' : ''}</option>)}
           </select>
         </Field>
-        <div className="small muted">A coluna é sugerida pelo resultado (Vendido → Fechou mentoria · Não vendido → Perdido apresentado · Desqualificado → Desqualificado · No-show → Não compareceu), mas você pode escolher outra.</div>
+        <div className="small muted">A coluna é sugerida pelo resultado (Vendido → Fechou mentoria · Não vendido → Perdido apresentado · Desqualificado → Desqualificado · No-show → Não compareceu), mas você pode escolher outra. Ao escolher <b>Desqualificado</b>, <b>Fechou mentoria</b>, <b>Perdido apresentado</b> ou <b>Não compareceu</b>, o Resultado acima muda junto e vai assim para o Essência Plat.</div>
       </div>
       {erro && <div className="small late">{erro}</div>}
       <div><button className="btn primary" disabled={busy}>{busy ? 'Salvando…' : info.em ? 'Atualizar registro' : 'Salvar registro'}</button></div>
