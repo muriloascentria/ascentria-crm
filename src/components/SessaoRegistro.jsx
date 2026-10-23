@@ -127,7 +127,7 @@ export default function SessaoRegistro({ deal, contato, onSaved, onStageChanged,
         <Field label="Presença"><select className="select" value={f.presenca || ''} onChange={(e) => set('presenca', e.target.value)} required>{opts(PRESENCAS, f.presenca)}</select></Field>
         <Field label="Resultado">
           <select className="select" value={f.resultado || ''} onChange={(e) => set('resultado', e.target.value)} required={f.presenca === 'Show'}>{opts(RESULTADOS, f.resultado)}</select>
-          <span className="small muted" style={{ display: 'block', marginTop: 4 }}><b>Não vendido</b> = a reunião foi até o final e a pessoa não comprou.</span>
+          <span className="small muted" style={{ display: 'block', marginTop: 4 }}><b>Não vendido</b> = a reunião foi até o final e a pessoa não comprou. <b>Incompleto</b> = a reunião foi interrompida pelo lead, não chegando até o final. <b>Desqualificado</b> = a pessoa não tem o perfil para a mentoria.</span>
         </Field>
       </div>
       <div className="grid2">
