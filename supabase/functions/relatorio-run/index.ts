@@ -140,9 +140,45 @@ async function lerAnotacoes(sa: SA, email: string, docId: string) {
   return { resumo: resumo.slice(0, 3000), etapas: etapas.slice(0, 1500), fonte }
 }
 
+/** PDF do relatório (versão atual do documento, com o que a consultora tiver ajustado) numa pasta pública com
+ *  caminho aleatório: o link vai na mensagem do WhatsApp e abre o PDF direto no celular do lead. */
+async function pdfPublico(admin: any, sa: SA, dono: string, d: { id: string; relatorio_doc_id: string; relatorio_pdf_path?: string | null; nome?: string }) {
+  const tk = await googleToken(sa, dono, DRIVE_SCOPE)
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files/${d.relatorio_doc_id}/export?mimeType=application/pdf&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${tk}` } })
+  if (!r.ok) throw new Error('Drive (PDF): ' + r.status)
+  const bytes = new Uint8Array(await r.arrayBuffer())
+  const slug = String(d.nome || 'lead').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'lead'
+  const path = d.relatorio_pdf_path || `${crypto.randomUUID()}/Relatorio-de-Diagnostico-${slug}.pdf`
+  const up = await admin.storage.from('relatorios').upload(path, bytes, { contentType: 'application/pdf', upsert: true, cacheControl: '60' })
+  if (up.error) throw new Error('PDF: ' + up.error.message)
+  const url = admin.storage.from('relatorios').getPublicUrl(path).data.publicUrl
+  await admin.from('deals').update({ relatorio_pdf_path: path, relatorio_pdf_url: url }).eq('id', d.id)
+  return url
+}
+
 Deno.serve(async (req) => {
   const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
   const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
+  let corpo: any = {}
+  try { corpo = JSON.parse(await req.text() || '{}') } catch { corpo = {} }
+
+  // pedido do CRM (consultora logada): gerar/atualizar o PDF do relatório para mandar na mensagem
+  if (corpo?.acao === 'pdf') {
+    const userClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: 'Bearer ' + token } } })
+    const { data: { user } } = await userClient.auth.getUser()
+    if (!user) return json({ ok: false, error: 'não autenticado' }, 401)
+    let sa1: SA | null = null
+    try { sa1 = JSON.parse(Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON') || 'null') } catch { sa1 = null }
+    if (!sa1?.client_email) return json({ ok: false, error: 'conta do Google não conectada' })
+    const { data: d } = await admin.from('deals').select('id, title, relatorio_doc_id, relatorio_pdf_path, contact:contacts(name)').eq('id', corpo.deal_id).maybeSingle()
+    if (!d?.relatorio_doc_id) return json({ ok: false, error: 'relatório ainda não gerado' })
+    const { data: cfg1 } = await admin.from('org_settings').select('contract_signer_email').eq('id', 1).single()
+    try {
+      const url = await pdfPublico(admin, sa1, String(cfg1?.contract_signer_email || 'murilo@ascentria.com.br'), { ...d, nome: (d as any).contact?.name || d.title })
+      return json({ ok: true, url })
+    } catch (e) { return json({ ok: false, error: (e as Error).message }) }
+  }
+
   const { data: ok } = await admin.rpc('check_cron_secret', { p: token })
   if (!ok) return json({ error: 'não autorizado' }, 401)
 
@@ -220,16 +256,19 @@ Deno.serve(async (req) => {
       const nome = String(d.contact?.name || d.title || '').trim().split(/\s+/)[0]
       const consultora = String(d.relatorio_swot?.consultora || d.seller?.name || '').trim().split(/\s+/)[0]
       const homem = /^(diego|murilo)$/i.test(consultora)
+      try { await pdfPublico(admin, sa, String(cfg.contract_signer_email || 'murilo@ascentria.com.br'), { id: d.id, relatorio_doc_id: r.id, nome: d.contact?.name || d.title }) } catch { /* o CRM gera o PDF quando a consultora abrir a mensagem */ }
+      // {PDF} é trocado pelo link do PDF quando a consultora abre a mensagem no CRM
       const texto = [
         `Oi${nome ? `, ${nome}` : ''}! Aqui é ${homem ? 'o' : 'a'} ${consultora}, da equipe do Enfermeiro Murilo. 😊`,
-        `${homem ? 'Obrigado' : 'Obrigada'} pela nossa conversa na consultoria gratuita. Preparei o seu *Relatório de Diagnóstico Profissional*, com o que você me contou organizado em forças, fraquezas, oportunidades e ameaças.`,
-        'O arquivo segue logo abaixo. Qualquer dúvida, é só me chamar por aqui!',
+        'Parabéns pela sua disposição em melhorar o seu negócio! Preparei o seu *Relatório de Diagnóstico Profissional*, com o que você me contou organizado em forças, fraquezas, oportunidades e ameaças.',
+        '📄 Seu relatório em PDF: {PDF}',
+        'Qualquer dúvida, é só me chamar por aqui!',
       ].join('\n\n')
       await admin.from('deals').update({ relatorio_doc_id: r.id, relatorio_doc_link: r.link, relatorio_texto: texto, relatorio_pronto_em: new Date().toISOString(), relatorio_erro: null }).eq('id', d.id)
       const { data: jaTem } = await admin.from('activities').select('id').eq('deal_id', d.id).eq('done', false).like('title', '📝 Relatório da consultoria pronto%').limit(1)
       if (!jaTem?.length) await admin.from('activities').insert({
         type: 'task', title: `📝 Relatório da consultoria pronto — enviar a ${d.contact?.name || d.title}`,
-        description: 'O Relatório de Diagnóstico (análise SWOT, papel timbrado da Ascentria) está pronto no card, em "Reunião gravada". Baixe o PDF e envie ao lead pelo WhatsApp.',
+        description: 'O Relatório de Diagnóstico (análise SWOT, papel timbrado da Ascentria) está pronto no card. Toque em "Mensagem para o lead": a mensagem já vai com o PDF.',
         deal_id: d.id, contact_id: d.contact_id, assigned_to: d.owner_id, due_at: new Date().toISOString(), done: false,
       })
       gerados.push({ id: d.id, ok: true, doc: r.link })

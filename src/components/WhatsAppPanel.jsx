@@ -3,7 +3,7 @@ import AbrirEm from './AbrirEm'
 import Secao from './Secao'
 import { useMobile } from '../lib/useMobile'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, invokeFn } from '../lib/supabase'
 import { useApp } from '../lib/store'
 import { inWindow, sendWhatsApp, getMedia, MEDIA_TYPES, QUICK_STAGES, SITUATIONAL_STAGES, quickStageLabel, splitParts, pendingFields, fillMeeting, meetingDateLabel, meetingTimeLabel } from '../lib/wa'
 import { fmtDateTime } from '../lib/utils'
@@ -790,6 +790,34 @@ function MeetingFiles({ deal, contato, firstName }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [enviadoEm, setEnviadoEm] = useState(deal.relatorio_enviado_em || null)
+  const [pdfUrl, setPdfUrl] = useState(deal.relatorio_pdf_url || '')
+  const [gerandoPdf, setGerandoPdf] = useState(false)
+  // abre a mensagem já com o link do PDF (gerado na hora, com o que estiver no documento agora)
+  const abrirMensagemRelatorio = async () => {
+    setGerandoPdf(true)
+    let url = ''
+    try {
+      const { data, error } = await invokeFn('relatorio-run', { body: { acao: 'pdf', deal_id: deal.id } })
+      if (!error && data?.ok) url = data.url
+      else toast('Não consegui gerar o PDF agora: ' + (data?.error || error?.message || 'erro'), 'err')
+    } catch (e) { toast('Não consegui gerar o PDF agora: ' + e.message, 'err') }
+    setGerandoPdf(false)
+    url = url || pdfUrl
+    if (url) setPdfUrl(url)
+    const base = deal.relatorio_texto || ''
+    const texto = base.includes('{PDF}') ? base.replace('{PDF}', url || '(link do PDF)') : (url ? `${base}\n\n📄 Seu relatório em PDF: ${url}` : base)
+    setResumo(texto)
+  }
+  // celular (e Windows com o app do WhatsApp): manda o próprio arquivo PDF, não só o link
+  const podeCompartilharArquivo = typeof navigator !== 'undefined' && !!navigator.canShare && (() => { try { return navigator.canShare({ files: [new File([''], 'a.pdf', { type: 'application/pdf' })] }) } catch { return false } })()
+  const compartilharPdf = async () => {
+    try {
+      const blob = await (await fetch(pdfUrl)).blob()
+      const nome = decodeURIComponent(pdfUrl.split('/').pop() || 'Relatorio.pdf')
+      await navigator.share({ files: [new File([blob], nome, { type: 'application/pdf' })], text: (resumo || '').replace(/📄 Seu relatório em PDF: \S+\n*/, '') })
+      marcarRelatorioEnviado()
+    } catch (e) { if (e?.name !== 'AbortError') toast('Não consegui compartilhar o arquivo: ' + e.message, 'err') }
+  }
   const relatorioPronto = !!deal.relatorio_texto
   const inicio = deal.meeting_date && deal.meeting_time ? new Date(`${deal.meeting_date}T${String(deal.meeting_time).slice(0, 5)}:00-03:00`).getTime() : null
   const passou = inicio && Date.now() > inicio + 20 * 60_000
@@ -828,8 +856,12 @@ function MeetingFiles({ deal, contato, firstName }) {
     const link = waLink(contato, resumo || '')
     if (!link) return toast('Este contato não tem telefone cadastrado.', 'err')
     abrirWhatsApp(link)
+    marcarRelatorioEnviado()
+    toast('WhatsApp aberto com a mensagem. Confira e aperte Enter por lá.')
+  }
+  function marcarRelatorioEnviado() {
     const agora = new Date().toISOString()
-    supabase.from('activities').insert({ type: 'whatsapp', title: 'Resumo da reunião enviado ao lead (WhatsApp)', description: resumo, deal_id: deal.id, contact_id: deal.contact_id || null, done: true, done_at: agora }).then(() => {})
+    supabase.from('activities').insert({ type: 'whatsapp', title: 'Relatório da consultoria enviado ao lead (WhatsApp)', description: resumo, deal_id: deal.id, contact_id: deal.contact_id || null, done: true, done_at: agora }).then(() => {})
     // relatório automático: sai do aviso do funil e a tarefa "📝 Relatório… pronto" fica concluída
     supabase.from('deals').update({ relatorio_enviado_em: agora }).eq('id', deal.id).then(() => {})
     supabase.from('activities').update({ done: true, done_at: agora }).eq('deal_id', deal.id).eq('done', false).like('title', '📝 Relatório da consultoria pronto%').then(() => {})
@@ -837,7 +869,6 @@ function MeetingFiles({ deal, contato, firstName }) {
     setEnviadoEm(agora)
     window.dispatchEvent(new CustomEvent('crm:relatorio-enviado', { detail: { dealId: deal.id } }))
     setResumo(null)
-    toast('WhatsApp aberto com o resumo. Confira e aperte Enter por lá.')
   }
   if (!passou) return null
   return (
@@ -867,7 +898,7 @@ function MeetingFiles({ deal, contato, firstName }) {
             <div className="row wrap" style={{ marginTop: 6, gap: 6 }}>
               <a className="btn sm" href={`https://docs.google.com/document/d/${deal.relatorio_doc_id}/edit`} target="_blank" rel="noreferrer">📄 Abrir relatório</a>
               <a className="btn sm" href={`https://docs.google.com/document/d/${deal.relatorio_doc_id}/export?format=pdf`} target="_blank" rel="noreferrer">⬇️ Baixar PDF</a>
-              <button type="button" className={'btn sm' + (enviadoEm ? ' ghost' : ' primary')} onClick={() => setResumo(deal.relatorio_texto || '')}>{enviadoEm ? 'Enviar de novo' : '📲 Mensagem para o lead'}</button>
+              <button type="button" className={'btn sm' + (enviadoEm ? ' ghost' : ' primary')} onClick={abrirMensagemRelatorio} disabled={gerandoPdf}>{gerandoPdf ? 'Preparando o PDF…' : enviadoEm ? 'Enviar de novo' : '📲 Mensagem para o lead (com o PDF)'}</button>
             </div>
           ) : (
             <div className="row" style={{ marginTop: 6 }}>
@@ -889,12 +920,13 @@ function MeetingFiles({ deal, contato, firstName }) {
       {resumo !== null && (
         <div className="stack" style={{ gap: 6, marginTop: 8 }}>
           <div className="small">{deal.relatorio_doc_id
-            ? <><b>Mensagem para o lead</b> · depois de abrir o WhatsApp, anexe o PDF do relatório (botão "Baixar PDF") na mesma conversa.</>
+            ? <><b>Mensagem para o lead</b> · o link do PDF já está na mensagem: a pessoa toca e o relatório abre no celular dela.</>
             : <><b>Relatório para o lead</b> · confira e ajuste o texto antes de enviar (nomes, números e exemplos vêm da reunião: confira se está tudo certo).</>}</div>
           <textarea className="textarea" style={{ minHeight: deal.relatorio_doc_id ? 120 : 220 }} value={resumo} onChange={(e) => setResumo(e.target.value)} />
           <div className="row wrap" style={{ gap: 8, justifyContent: 'flex-end' }}>
             <button type="button" className="btn ghost sm" onClick={() => setResumo(null)}>cancelar</button>
             <AbrirEm />
+            {deal.relatorio_doc_id && pdfUrl && podeCompartilharArquivo && <button type="button" className="btn sm" onClick={compartilharPdf} title="Envia o arquivo PDF junto com a mensagem (escolha o WhatsApp na lista)">📎 Enviar como arquivo</button>}
             <button type="button" className="btn primary sm" onClick={enviarResumo}>📲 Abrir no WhatsApp</button>
           </div>
         </div>
