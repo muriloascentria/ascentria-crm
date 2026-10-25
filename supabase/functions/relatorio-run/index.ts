@@ -281,6 +281,23 @@ Deno.serve(async (req) => {
 })
 
 // ——— documento do relatório (cópia do modelo com o papel timbrado + texto do diagnóstico) ———
+/** Gênero do lead: campo "genero" do diagnóstico ('m'/'f'); sem ele, pelo primeiro nome (terminado em "o" e nomes
+ *  masculinos comuns → masculino). Na dúvida, feminino (a maior parte do público). */
+const MASC = new Set(['bruno', 'daniel', 'diego', 'murilo', 'joao', 'jose', 'luiz', 'luis', 'carlos', 'rafael', 'gabriel', 'samuel', 'miguel', 'matheus', 'mateus', 'lucas', 'thiago', 'tiago', 'felipe', 'filipe', 'henrique', 'vinicius', 'marcos', 'andre', 'alexandre', 'leandro', 'wesley', 'kaique', 'caique', 'davi', 'david', 'igor', 'renan', 'ruan', 'adriano', 'emerson', 'anderson', 'jefferson', 'wellington', 'washington', 'jonathan', 'jonatas', 'elias', 'isaac', 'abel', 'raul', 'ismael', 'natan', 'nathan', 'ian', 'yuri', 'william', 'max', 'enzo', 'heitor', 'arthur', 'artur', 'cristian', 'christian', 'edson', 'nilson', 'gilson', 'wilson', 'robson', 'ronaldo', 'rodrigo', 'eduardo', 'fernando', 'ricardo', 'sergio', 'paulo', 'pedro', 'antonio', 'francisco', 'joaquim', 'leonardo', 'gustavo', 'otavio', 'marcelo', 'fabio', 'flavio', 'claudio', 'julio', 'mauricio', 'rogerio', 'vitor', 'victor', 'hugo'])
+const FEM_O = new Set(['socorro', 'rosario', 'amparo', 'consuelo', 'carmo'])
+function ehMasculino(sw: any): boolean {
+  const g = String(sw?.genero || '').trim().toLowerCase()
+  if (g) return /^m/.test(g)
+  const n = String(sw?.participante || '').trim().split(/\s+/)[0].normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  if (!n || FEM_O.has(n)) return false
+  return MASC.has(n) || /o$/.test(n)
+}
+/** Nome curto: o primeiro nome, ou os dois primeiros em nomes compostos comuns (Maria Luiza, Ana Paula, João Pedro). */
+function nomeCurto(nome: string): string {
+  const w = String(nome || '').trim().split(/\s+/)
+  if (w.length > 1 && /^(maria|ana|joao|jo\u00e3o|jose|jos\u00e9|luiz|lu\u00eds|luis)$/i.test(w[0]) && !/^(da|de|do|das|dos|e)$/i.test(w[1])) return `${w[0]} ${w[1]}`
+  return w[0] || ''
+}
 const VERDE = { red: 0.36, green: 0.43, blue: 0.34 }
 const u16 = (t: string) => t.length // String.length já conta em UTF-16, como a API do Google Docs
 
@@ -291,19 +308,21 @@ async function gerarDocumento(sa: SA, dono: string, modeloId: string, pastaId: s
   const cp = await fetch(`https://www.googleapis.com/drive/v3/files/${modeloId}/copy?supportsAllDrives=true&fields=id`, { method: 'POST', headers: h, body: JSON.stringify({ name: titulo, ...(pastaId ? { parents: [pastaId] } : {}) }) })
   const c: any = await cp.json().catch(() => ({}))
   if (!cp.ok) throw new Error('Drive (cópia): ' + (c?.error?.message || cp.status))
+  const masc = ehMasculino(sw)
+  const oa = masc ? 'o' : 'a'
   const paras: [string, string][] = [
     ['T', 'RELATÓRIO DE DIAGNÓSTICO PROFISSIONAL'], ['ST', 'Consultoria Gratuita · Análise SWOT'], ['E', ''],
-    ['I', `Participante: ${sw.participante || ''}`], ['I', `Data da consultoria: ${sw.data || ''}`], ['I', `Consultora responsável: ${sw.consultora || ''}`],
+    ['I', `Participante: ${sw.participante || ''}`], ['I', `Data da consultoria: ${sw.data || ''}`], ['I', `${/^(diego|murilo)\b/i.test(String(sw.consultora || '')) ? 'Consultor' : 'Consultora'} responsável: ${sw.consultora || ''}`],
     ...(sw.local ? [['I', `Local de residência: ${sw.local}`] as [string, string]] : []),
     ['S', 'APRESENTAÇÃO'],
-    ['P', `Este relatório apresenta o diagnóstico da situação profissional relatada por ${String(sw.participante || '').split(' ')[0] || 'a participante'} durante a consultoria gratuita, organizado no modelo SWOT: forças e fraquezas (fatores internos) e oportunidades e ameaças (fatores externos). As informações registradas correspondem exclusivamente ao que foi relatado ao longo da conversa.`],
+    ['P', `Este relatório apresenta o diagnóstico da situação profissional relatada por ${nomeCurto(sw.participante) || `${oa} participante`} durante a consultoria gratuita, organizado no modelo SWOT: forças e fraquezas (fatores internos) e oportunidades e ameaças (fatores externos). As informações registradas correspondem exclusivamente ao que foi relatado ao longo da conversa.`],
     ['S', 'CONTEXTO E OBJETIVO DECLARADO'], ['P', sw.contexto || ''],
     ['S', 'FORÇAS'], ...(sw.forcas || []).map((x: string) => ['B', x] as [string, string]),
     ['S', 'FRAQUEZAS'], ...(sw.fraquezas || []).map((x: string) => ['B', x] as [string, string]),
     ['S', 'OPORTUNIDADES'], ...(sw.oportunidades || []).map((x: string) => ['B', x] as [string, string]),
     ['S', 'AMEAÇAS'], ...(sw.ameacas || []).map((x: string) => ['B', x] as [string, string]),
     ['S', 'SÍNTESE DO DIAGNÓSTICO'], ['P', sw.sintese || ''],
-    ['N', `Relatório elaborado com base no registro da consultoria gratuita realizada em ${sw.data_curta || sw.data || ''}. As informações refletem o relato da participante e não constituem orientação profissional.`],
+    ['N', `Relatório elaborado com base no registro da consultoria gratuita realizada em ${sw.data_curta || sw.data || ''}. As informações refletem o relato d${oa} participante e não constituem orientação profissional.`],
   ]
   let text = ''
   const spans: [string, number, number, string][] = []
