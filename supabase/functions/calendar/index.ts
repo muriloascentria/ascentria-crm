@@ -21,6 +21,11 @@
 // gravar, transcrever e fazer anotações sozinha quando começar (Google Meet REST API, escopo
 // meetings.space.settings na delegação em todo o domínio). Se o Google recusar, a reserva vale do mesmo jeito.
 //
+// Blocos com etiqueta (rodadas com a Adriana): extendedProperties.private { ecrm_slot: 'tag', ecrm_titulo, ecrm_desc? }.
+// Ex.: "Carmem e Adriana (14:30h)" na agenda da Carmem com a Adriana convidada (mesmo evento = mesmo link do Meet),
+// "Somente Adriana (15h)", "Diego e Adriana (17h)" (Diego convidado, conduz). Enquanto o título for o da etiqueta,
+// o bloco é reservável; ao reservar vira "<etiqueta> | Nome do lead" e ao liberar volta à etiqueta.
+//
 // Secret: GOOGLE_SERVICE_ACCOUNT_JSON (o arquivo .json da conta de serviço, inteiro)
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { cors, json } from '../_shared/wa.ts'
@@ -130,6 +135,19 @@ Deno.serve(async (req) => {
   const { data: settings } = await admin.from('org_settings').select('slot_title').eq('id', 1).single()
   const TITLE = settings?.slot_title || 'DISPONÍVEL PARA AGENDAMENTO'
 
+  // blocos reserváveis: o título de disponibilidade ou um bloco com etiqueta ainda sem lead
+  const priv = (e: any) => e?.extendedProperties?.private ?? {}
+  const ehDupla = (e: any) => priv(e).ecrm_slot === 'tag' && !!priv(e).ecrm_titulo
+  const livre = (e: any) => norm(e?.summary) === norm(TITLE) || (ehDupla(e) && norm(e?.summary) === norm(priv(e).ecrm_titulo))
+  // devolve o bloco à agenda como disponível (o de etiqueta mantém os convidados e volta ao título da etiqueta)
+  const liberar = async (tk: string, id: string, extra: Record<string, unknown> = {}) => {
+    const ev = await gcal(tk, `/${encodeURIComponent(id)}`).catch(() => null)
+    const body = ev && ehDupla(ev)
+      ? { summary: priv(ev).ecrm_titulo, description: priv(ev).ecrm_desc || '', conferenceData: null }
+      : { summary: TITLE, description: '', conferenceData: null, ...extra }
+    return gcal(tk, `/${encodeURIComponent(id)}?conferenceDataVersion=1&sendUpdates=none`, { method: 'PATCH', body: JSON.stringify(body) })
+  }
+
   const seller = async (id: string) => {
     const { data } = await admin.from('calendar_sellers').select('id, name, email, active').eq('id', id).maybeSingle()
     if (!data?.active) throw new Error('Vendedora não encontrada ou inativa.')
@@ -162,11 +180,14 @@ Deno.serve(async (req) => {
       const tk = await googleToken(sa, s.email)
       const from = new Date(Date.now() + 30 * 60_000).toISOString()
       const to = new Date(Date.now() + 30 * 86_400_000).toISOString()
-      const r = await gcal(tk, `?singleEvents=true&orderBy=startTime&maxResults=100&timeMin=${encodeURIComponent(from)}&timeMax=${encodeURIComponent(to)}&q=${encodeURIComponent(TITLE)}`)
-      const slots = (r.items ?? [])
-        .filter((e: any) => norm(e.summary) === norm(TITLE) && e.start?.dateTime && e.status !== 'cancelled')
+      const faixa = `?singleEvents=true&orderBy=startTime&maxResults=100&timeMin=${encodeURIComponent(from)}&timeMax=${encodeURIComponent(to)}`
+      const r = await gcal(tk, `${faixa}&q=${encodeURIComponent(TITLE)}`)
+      const rd = await gcal(tk, `${faixa}&privateExtendedProperty=${encodeURIComponent('ecrm_slot=tag')}`).catch(() => ({ items: [] }))
+      const slots = [...(r.items ?? []), ...(rd.items ?? [])]
+        .filter((e: any) => livre(e) && e.start?.dateTime && e.status !== 'cancelled')
+        .sort((a: any, b: any) => new Date(a.start.dateTime).getTime() - new Date(b.start.dateTime).getTime())
         .slice(0, 8)
-        .map((e: any) => ({ event_id: e.id, seller_id: s.id, start: e.start.dateTime, end: e.end?.dateTime, ...spParts(e.start.dateTime) }))
+        .map((e: any) => ({ event_id: e.id, seller_id: s.id, start: e.start.dateTime, end: e.end?.dateTime, ...spParts(e.start.dateTime), ...(ehDupla(e) ? { com: priv(e).ecrm_titulo } : {}) }))
       if (b.deal_id && Array.isArray(b.offer)) {
         // grava os horários oferecidos ao lead (para reservar depois com um clique)
         await dealFor(b.deal_id)
@@ -179,7 +200,7 @@ Deno.serve(async (req) => {
     if (b.action === 'offer') {
       // só grava a escolha dos horários oferecidos (sem consultar o Google de novo)
       await dealFor(b.deal_id)
-      const offered = (Array.isArray(b.slots) ? b.slots : []).slice(0, 4).map((x: any) => ({ event_id: String(x.event_id), seller_id: String(x.seller_id), start: String(x.start), end: x.end ? String(x.end) : null, date: String(x.date), time: String(x.time) }))
+      const offered = (Array.isArray(b.slots) ? b.slots : []).slice(0, 4).map((x: any) => ({ event_id: String(x.event_id), seller_id: String(x.seller_id), start: String(x.start), end: x.end ? String(x.end) : null, date: String(x.date), time: String(x.time), ...(x.com ? { com: String(x.com) } : {}) }))
       await admin.from('deals').update({ seller_id: offered[0]?.seller_id ?? null, offered_slots: offered }).eq('id', b.deal_id)
       return json({ ok: true })
     }
@@ -193,18 +214,19 @@ Deno.serve(async (req) => {
         try {
           const old = await seller(deal.seller_id)
           const tkOld = old.email === s.email ? tk : await googleToken(sa, old.email)
-          await gcal(tkOld, `/${encodeURIComponent(deal.calendar_event_id)}?conferenceDataVersion=1`, { method: 'PATCH', body: JSON.stringify({ summary: TITLE, description: '', conferenceData: null }) })
+          await liberar(tkOld, deal.calendar_event_id)
         } catch { /* o anterior pode ter sido apagado na agenda; segue */ }
       }
       const ev = await gcal(tk, `/${encodeURIComponent(b.event_id)}`)
-      if (norm(ev.summary) !== norm(TITLE) && ev.id !== deal.calendar_event_id) return json({ ok: false, error: 'Esse horário já foi reservado por outra pessoa. Busque os horários de novo.' })
+      if (!livre(ev) && ev.id !== deal.calendar_event_id) return json({ ok: false, error: 'Esse horário já foi reservado por outra pessoa. Busque os horários de novo.' })
       const nome = deal.contact?.name || deal.title
       const fone = deal.contact?.wa_id ? '+' + deal.contact.wa_id : (deal.contact?.phone || '')
-      const patched = await gcal(tk, `/${encodeURIComponent(b.event_id)}?conferenceDataVersion=1`, {
+      const dupla = ehDupla(ev)
+      const patched = await gcal(tk, `/${encodeURIComponent(b.event_id)}?conferenceDataVersion=1&sendUpdates=none`, {
         method: 'PATCH',
         body: JSON.stringify({
-          summary: `${s.name} | Consultoria | ${nome}`,
-          description: `Lead: ${nome}\nWhatsApp: ${fone}\nAgendado pelo eCRM (https://ecrm.digital)`,
+          summary: dupla ? `${priv(ev).ecrm_titulo} | ${nome}` : `${s.name} | Consultoria | ${nome}`,
+          description: `Lead: ${nome}\nWhatsApp: ${fone}\n${dupla && priv(ev).ecrm_desc ? priv(ev).ecrm_desc + '\n' : ''}Agendado pelo eCRM (https://ecrm.digital)`,
           // sala do Meet própria para cada lead: só reaproveita a do evento quando é o mesmo encontro deste negócio
           // (blocos repetidos criados com Meet compartilham a mesma sala entre todas as semanas)
           conferenceData: ev.id === deal.calendar_event_id && ev.conferenceData?.entryPoints?.length ? ev.conferenceData : { createRequest: { requestId: crypto.randomUUID(), conferenceSolutionKey: { type: 'hangoutsMeet' } } },
@@ -215,7 +237,7 @@ Deno.serve(async (req) => {
       await admin.from('deals').update({ seller_id: s.id, calendar_event_id: patched.id, meeting_date: when.date, meeting_time: when.time, meeting_link: link }).eq('id', deal.id)
       const gravacao = await gravarAutomatico(sa, s.email, link)
       if (!gravacao.ok) console.warn('calendar gravacao', gravacao.error)
-      return json({ ok: true, date: when.date, time: when.time, link, seller: s.name, gravacao })
+      return json({ ok: true, date: when.date, time: when.time, link, seller: dupla ? `${s.name} · ${priv(ev).ecrm_titulo}` : s.name, gravacao })
     }
 
     if (b.action === 'release') {
@@ -223,7 +245,7 @@ Deno.serve(async (req) => {
       if (deal.calendar_event_id && deal.seller_id) {
         const s = await seller(deal.seller_id)
         const tk = await googleToken(sa, s.email)
-        await gcal(tk, `/${encodeURIComponent(deal.calendar_event_id)}?conferenceDataVersion=1`, { method: 'PATCH', body: JSON.stringify({ summary: TITLE, description: '', conferenceData: null }) })
+        await liberar(tk, deal.calendar_event_id)
       }
       await admin.from('deals').update({ calendar_event_id: null, meeting_date: null, meeting_time: null, meeting_link: null }).eq('id', deal.id)
       return json({ ok: true })
@@ -300,7 +322,7 @@ Deno.serve(async (req) => {
       }
       // usa o bloco "disponível" da nova vendedora que começa no mesmo horário; se não tiver, cria o evento
       const r2 = await gcal(tkTo, `?singleEvents=true&timeMin=${encodeURIComponent(new Date(new Date(ev.start.dateTime).getTime() - 60_000).toISOString())}&timeMax=${encodeURIComponent(new Date(new Date(ev.start.dateTime).getTime() + 60_000).toISOString())}`)
-      const same = (r2.items ?? []).find((e: any) => norm(e.summary) === norm(TITLE) && e.start?.dateTime && new Date(e.start.dateTime).getTime() === new Date(ev.start.dateTime).getTime())
+      const same = (r2.items ?? []).find((e: any) => livre(e) && e.start?.dateTime && new Date(e.start.dateTime).getTime() === new Date(ev.start.dateTime).getTime())
       const conf = { createRequest: { requestId: crypto.randomUUID(), conferenceSolutionKey: { type: 'hangoutsMeet' } } }
       // convidados do evento antigo (ex.: e-mail do lead) vão junto, sem a vendedora anterior
       const guests = (ev.attendees ?? []).filter((a: any) => !a.self && !a.organizer && norm(a.email) !== norm(from.email)).map((a: any) => ({ email: a.email }))
@@ -310,7 +332,7 @@ Deno.serve(async (req) => {
         : await gcal(tkTo, `?conferenceDataVersion=1&sendUpdates=none`, { method: 'POST', body: JSON.stringify({ ...body, ...extra, start: ev.start, end: ev.end, conferenceData: conf }) })
 
       // a agenda antiga: o horário volta a ficar disponível
-      await gcal(tkFrom, `/${encodeURIComponent(ev.id)}?conferenceDataVersion=1&sendUpdates=none`, { method: 'PATCH', body: JSON.stringify({ summary: TITLE, description: '', conferenceData: null, ...(guests.length ? { attendees: [] } : {}) }) })
+      await liberar(tkFrom, ev.id, guests.length ? { attendees: [] } : {})
 
       const link = created.hangoutLink || created.conferenceData?.entryPoints?.find((p: any) => p.entryPointType === 'video')?.uri || null
       await admin.from('deals').update({ seller_id: to.id, calendar_event_id: created.id, meeting_date: when.date, meeting_time: when.time, meeting_link: link }).eq('id', deal.id)

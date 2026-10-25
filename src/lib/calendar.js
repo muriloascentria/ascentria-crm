@@ -14,7 +14,7 @@ export async function callCalendar(action, body = {}) {
 }
 
 /** "30/09 (qua) às 14h00" */
-export const slotLabel = (s) => (s ? `${meetingDateLabel(s.date)} às ${meetingTimeLabel(s.time)}` : '')
+export const slotLabel = (s) => (s ? `${meetingDateLabel(s.date)} às ${meetingTimeLabel(s.time)}${s.com ? ` · ${s.com}` : ''}` : '')
 
 const SEMANA = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado']
 /** "2026-10-13" → "Terça-feira (13/10)" (o dia da semana primeiro, como se fala com o lead) */
