@@ -21,7 +21,9 @@
 // gravar, transcrever e fazer anotações sozinha quando começar (Google Meet REST API, escopo
 // meetings.space.settings na delegação em todo o domínio). Se o Google recusar, a reserva vale do mesmo jeito.
 //
-// Blocos com etiqueta (rodadas com a Adriana): extendedProperties.private { ecrm_slot: 'tag', ecrm_titulo, ecrm_desc? }.
+// Blocos com etiqueta (rodadas com a Adriana): extendedProperties.private { ecrm_slot: 'tag', ecrm_titulo, ecrm_etiqueta?, ecrm_desc? }.
+// ecrm_titulo = título do bloco livre (ex.: "Disponível para agendamento (Carmem e Adriana)");
+// ecrm_etiqueta = como fica depois de reservado (ex.: "Carmem e Adriana (14:30h) | Nome do lead").
 // Ex.: "Carmem e Adriana (14:30h)" na agenda da Carmem com a Adriana convidada (mesmo evento = mesmo link do Meet),
 // "Somente Adriana (15h)", "Diego e Adriana (17h)" (Diego convidado, conduz). Enquanto o título for o da etiqueta,
 // o bloco é reservável; ao reservar vira "<etiqueta> | Nome do lead" e ao liberar volta à etiqueta.
@@ -138,6 +140,7 @@ Deno.serve(async (req) => {
   // blocos reserváveis: o título de disponibilidade ou um bloco com etiqueta ainda sem lead
   const priv = (e: any) => e?.extendedProperties?.private ?? {}
   const ehDupla = (e: any) => priv(e).ecrm_slot === 'tag' && !!priv(e).ecrm_titulo
+  const etiqueta = (e: any) => priv(e).ecrm_etiqueta || priv(e).ecrm_titulo
   const livre = (e: any) => norm(e?.summary) === norm(TITLE) || (ehDupla(e) && norm(e?.summary) === norm(priv(e).ecrm_titulo))
   // devolve o bloco à agenda como disponível (o de etiqueta mantém os convidados e volta ao título da etiqueta)
   const liberar = async (tk: string, id: string, extra: Record<string, unknown> = {}) => {
@@ -187,7 +190,7 @@ Deno.serve(async (req) => {
         .filter((e: any) => livre(e) && e.start?.dateTime && e.status !== 'cancelled')
         .sort((a: any, b: any) => new Date(a.start.dateTime).getTime() - new Date(b.start.dateTime).getTime())
         .slice(0, 8)
-        .map((e: any) => ({ event_id: e.id, seller_id: s.id, start: e.start.dateTime, end: e.end?.dateTime, ...spParts(e.start.dateTime), ...(ehDupla(e) ? { com: priv(e).ecrm_titulo } : {}) }))
+        .map((e: any) => ({ event_id: e.id, seller_id: s.id, start: e.start.dateTime, end: e.end?.dateTime, ...spParts(e.start.dateTime), ...(ehDupla(e) ? { com: etiqueta(e) } : {}) }))
       if (b.deal_id && Array.isArray(b.offer)) {
         // grava os horários oferecidos ao lead (para reservar depois com um clique)
         await dealFor(b.deal_id)
@@ -225,7 +228,7 @@ Deno.serve(async (req) => {
       const patched = await gcal(tk, `/${encodeURIComponent(b.event_id)}?conferenceDataVersion=1&sendUpdates=none`, {
         method: 'PATCH',
         body: JSON.stringify({
-          summary: dupla ? `${priv(ev).ecrm_titulo} | ${nome}` : `${s.name} | Consultoria | ${nome}`,
+          summary: dupla ? `${etiqueta(ev)} | ${nome}` : `${s.name} | Consultoria | ${nome}`,
           description: `Lead: ${nome}\nWhatsApp: ${fone}\n${dupla && priv(ev).ecrm_desc ? priv(ev).ecrm_desc + '\n' : ''}Agendado pelo eCRM (https://ecrm.digital)`,
           // sala do Meet própria para cada lead: só reaproveita a do evento quando é o mesmo encontro deste negócio
           // (blocos repetidos criados com Meet compartilham a mesma sala entre todas as semanas)
@@ -237,7 +240,7 @@ Deno.serve(async (req) => {
       await admin.from('deals').update({ seller_id: s.id, calendar_event_id: patched.id, meeting_date: when.date, meeting_time: when.time, meeting_link: link }).eq('id', deal.id)
       const gravacao = await gravarAutomatico(sa, s.email, link)
       if (!gravacao.ok) console.warn('calendar gravacao', gravacao.error)
-      return json({ ok: true, date: when.date, time: when.time, link, seller: dupla ? `${s.name} · ${priv(ev).ecrm_titulo}` : s.name, gravacao })
+      return json({ ok: true, date: when.date, time: when.time, link, seller: dupla ? `${s.name} · ${etiqueta(ev)}` : s.name, gravacao })
     }
 
     if (b.action === 'release') {
