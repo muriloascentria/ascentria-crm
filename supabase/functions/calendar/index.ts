@@ -186,7 +186,8 @@ Deno.serve(async (req) => {
       const faixa = `?singleEvents=true&orderBy=startTime&maxResults=100&timeMin=${encodeURIComponent(from)}&timeMax=${encodeURIComponent(to)}`
       const r = await gcal(tk, `${faixa}&q=${encodeURIComponent(TITLE)}`)
       const rd = await gcal(tk, `${faixa}&privateExtendedProperty=${encodeURIComponent('ecrm_slot=tag')}`).catch(() => ({ items: [] }))
-      const slots = [...(r.items ?? []), ...(rd.items ?? [])]
+      // a busca por texto também acha os blocos com etiqueta ("Disponível para agendamento (…)"): um por evento
+      const slots = [...new Map([...(r.items ?? []), ...(rd.items ?? [])].map((e: any) => [e.id, e])).values()]
         .filter((e: any) => livre(e) && e.start?.dateTime && e.status !== 'cancelled')
         .sort((a: any, b: any) => new Date(a.start.dateTime).getTime() - new Date(b.start.dateTime).getTime())
         .slice(0, 8)
