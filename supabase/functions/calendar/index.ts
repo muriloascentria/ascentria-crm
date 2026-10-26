@@ -24,6 +24,8 @@
 // Blocos com etiqueta (rodadas com a Adriana): extendedProperties.private { ecrm_slot: 'tag', ecrm_titulo, ecrm_etiqueta?, ecrm_desc? }.
 // ecrm_titulo = título do bloco livre (ex.: "Disponível para agendamento (Carmem e Adriana)");
 // ecrm_etiqueta = como fica depois de reservado (ex.: "Carmem e Adriana (14:30h) | Nome do lead").
+// ecrm_convidar = e-mail que entra como convidado só quando o lead é reservado (ex.: a Adriana nos horários
+// do Diego e da Carmem) e sai quando a reserva é desfeita: na agenda dela só aparecem reuniões confirmadas.
 // Ex.: "Carmem e Adriana (14:30h)" na agenda da Carmem com a Adriana convidada (mesmo evento = mesmo link do Meet),
 // "Somente Adriana (15h)", "Diego e Adriana (17h)" (Diego convidado, conduz). Enquanto o título for o da etiqueta,
 // o bloco é reservável; ao reservar vira "<etiqueta> | Nome do lead" e ao liberar volta à etiqueta.
@@ -143,10 +145,19 @@ Deno.serve(async (req) => {
   const etiqueta = (e: any) => priv(e).ecrm_etiqueta || priv(e).ecrm_titulo
   const livre = (e: any) => norm(e?.summary) === norm(TITLE) || (ehDupla(e) && norm(e?.summary) === norm(priv(e).ecrm_titulo))
   // devolve o bloco à agenda como disponível (o de etiqueta mantém os convidados e volta ao título da etiqueta)
+  // convidados do evento com quem acompanha (ecrm_convidar) incluído ou retirado
+  const comConvidado = (ev: any, incluir: boolean) => {
+    const quem = String(priv(ev).ecrm_convidar || '').toLowerCase()
+    const outros = (ev?.attendees ?? []).filter((a: any) => String(a.email).toLowerCase() !== quem)
+      .map((a: any) => ({ email: a.email, responseStatus: a.responseStatus, ...(a.optional ? { optional: true } : {}) }))
+    if (!quem) return null
+    return incluir ? [...outros, { email: quem, responseStatus: 'accepted' }] : outros
+  }
   const liberar = async (tk: string, id: string, extra: Record<string, unknown> = {}) => {
     const ev = await gcal(tk, `/${encodeURIComponent(id)}`).catch(() => null)
+    const sem = ev && ehDupla(ev) ? comConvidado(ev, false) : null
     const body = ev && ehDupla(ev)
-      ? { summary: priv(ev).ecrm_titulo, description: priv(ev).ecrm_desc || '', conferenceData: null }
+      ? { summary: priv(ev).ecrm_titulo, description: priv(ev).ecrm_desc || '', conferenceData: null, ...(sem ? { attendees: sem } : {}) }
       : { summary: TITLE, description: '', conferenceData: null, ...extra }
     return gcal(tk, `/${encodeURIComponent(id)}?conferenceDataVersion=1&sendUpdates=none`, { method: 'PATCH', body: JSON.stringify(body) })
   }
@@ -226,11 +237,13 @@ Deno.serve(async (req) => {
       const nome = deal.contact?.name || deal.title
       const fone = deal.contact?.wa_id ? '+' + deal.contact.wa_id : (deal.contact?.phone || '')
       const dupla = ehDupla(ev)
+      const convidados = dupla ? comConvidado(ev, true) : null
       const patched = await gcal(tk, `/${encodeURIComponent(b.event_id)}?conferenceDataVersion=1&sendUpdates=none`, {
         method: 'PATCH',
         body: JSON.stringify({
           summary: dupla ? `${etiqueta(ev)} | ${nome}` : `${s.name} | Consultoria | ${nome}`,
           description: `Lead: ${nome}\nWhatsApp: ${fone}\n${dupla && priv(ev).ecrm_desc ? priv(ev).ecrm_desc + '\n' : ''}Agendado pelo eCRM (https://ecrm.digital)`,
+          ...(convidados ? { attendees: convidados } : {}),
           // sala do Meet própria para cada lead: só reaproveita a do evento quando é o mesmo encontro deste negócio
           // (blocos repetidos criados com Meet compartilham a mesma sala entre todas as semanas)
           conferenceData: ev.id === deal.calendar_event_id && ev.conferenceData?.entryPoints?.length ? ev.conferenceData : { createRequest: { requestId: crypto.randomUUID(), conferenceSolutionKey: { type: 'hangoutsMeet' } } },
