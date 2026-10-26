@@ -12,6 +12,8 @@ import { callCalendar, fillSlots, slotLabel } from '../lib/calendar'
 import { isManual, waLink, abrirWhatsApp, stageText, messageStage, podeReceber, marcarEnviado, desfazerEnviado, marcarRespondeu } from '../lib/manual'
 
 /** Conversa de WhatsApp de um contato (com envio). deal opcional para vincular e calcular a janela de 24h. */
+const TODOS = '__todos'
+
 export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged, header, stageId, onAbrirSessao }) {
   const { toast, settings, waNumbers, sellers, stages, profile } = useApp()
   const manual = isManual(settings)
@@ -55,10 +57,11 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
   useEffect(() => {
     setOffered(Array.isArray(deal?.offered_slots) ? deal.offered_slots : [])
     setBooked(deal?.calendar_event_id ? { eventId: deal.calendar_event_id, sellerId: deal.seller_id } : null)
-    setSellerId(deal?.seller_id || '')
+    setSellerId((sellers || []).filter((x) => x.active).length > 1 ? TODOS : (deal?.seller_id || ''))
     setFound(null)
   }, [deal?.id]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (!sellerId && activeSellers[0]) setSellerId(activeSellers[0].id) }, [activeSellers.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  // padrão: buscar em todas as agendas (dá para oferecer um horário do Diego e outro da Carmem/Adriana)
+  useEffect(() => { if (!sellerId && activeSellers.length) setSellerId(activeSellers.length > 1 ? TODOS : activeSellers[0].id) }, [activeSellers.length]) // eslint-disable-line react-hooks/exhaustive-deps
   const sellerName = (id) => activeSellers.find((s) => s.id === id)?.name || (sellers || []).find((s) => s.id === id)?.name || ''
   const aplicarNaMensagem = (fn) => {
     setText((t) => fn(t))
@@ -75,13 +78,18 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     if (!sellerId) return toast('Escolha a vendedora', 'err')
     setCalBusy('buscar')
     try {
-      const r = await callCalendar('slots', { seller_id: sellerId })
-      setFound(r.slots || [])
-      if (!r.slots?.length) toast(`Nenhum horário "${settings?.slot_title || 'DISPONÍVEL PARA AGENDAMENTO'}" nos próximos 30 dias da agenda de ${r.seller}.`, 'err')
+      const ids = sellerId === TODOS ? activeSellers.map((s) => s.id) : [sellerId]
+      const res = await Promise.all(ids.map((id) => callCalendar('slots', { seller_id: id }).catch((e) => { toast(`${sellerName(id)}: ${e.message}`, 'err'); return { slots: [] } })))
+      // na busca em todas as agendas: até 5 horários de cada consultor
+      const slots = res.flatMap((r) => (ids.length > 1 ? (r.slots || []).slice(0, 5) : (r.slots || []))).sort((a, b) => (a.start < b.start ? -1 : 1))
+      setFound(slots)
+      if (!slots.length) toast(`Nenhum horário livre nos próximos 30 dias${ids.length > 1 ? '' : ` da agenda de ${sellerName(ids[0])}`}.`, 'err')
       else {
-        // por padrão: o primeiro horário livre + o primeiro de OUTRO dia (a mensagem oferece dois dias diferentes)
-        const [a, ...resto] = r.slots
-        const b = resto.find((x) => x.date !== a.date) || resto[0]
+        // por padrão: o primeiro horário livre + o primeiro de OUTRO dia (a mensagem oferece dois dias diferentes);
+        // buscando em todas as agendas, o segundo vem de outro consultor
+        const [a, ...resto] = slots
+        const b = (ids.length > 1 && (resto.find((x) => x.seller_id !== a.seller_id && x.date !== a.date) || resto.find((x) => x.seller_id !== a.seller_id)))
+          || resto.find((x) => x.date !== a.date) || resto[0]
         await oferecer(b ? [a, b] : [a])
       }
     } catch (e) { toast(e.message, 'err') } finally { setCalBusy('') }
@@ -435,19 +443,25 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
               <>
                 <div className="row wrap" style={{ gap: 6, alignItems: 'center' }}>
                   <select className="select" value={sellerId} onChange={(e) => { setSellerId(e.target.value); setFound(null) }} aria-label="Vendedora" style={{ width: 'auto', minWidth: 160 }}>
+                    {activeSellers.length > 1 && <option value={TODOS}>Todos os consultores</option>}
                     {activeSellers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                   <button type="button" className="btn sm" onClick={buscarHorarios} disabled={calBusy === 'buscar'}>{calBusy === 'buscar' ? 'Buscando…' : 'Buscar horários livres'}</button>
                 </div>
                 {found && found.length > 0 && (
                   <div className="stack" style={{ gap: 4 }}>
-                    <div className="small muted">Toque para escolher os 2 horários oferecidos (entram em [DIA 1]/[HORA 1] e [DIA 2]/[HORA 2]):</div>
-                    <div className="row wrap" style={{ gap: 6 }}>
-                      {found.map((s) => {
-                        const on = offered.some((o) => o.event_id === s.event_id)
-                        return <button key={s.event_id} type="button" className={'slot-chip' + (on ? ' on' : '')} onClick={() => alternarOferta(s)} aria-pressed={on}>{on ? '✓ ' : ''}{slotLabel(s)}</button>
-                      })}
-                    </div>
+                    <div className="small muted">Toque para escolher os 2 horários oferecidos (entram em [DIA 1]/[HORA 1] e [DIA 2]/[HORA 2]). Pode escolher de consultores diferentes:</div>
+                    {[...new Set(found.map((s) => s.seller_id))].map((sid) => (
+                      <div key={sid} className="stack" style={{ gap: 4 }}>
+                        {sellerId === TODOS && <div className="small" style={{ fontWeight: 600 }}>{sellerName(sid)}</div>}
+                        <div className="row wrap" style={{ gap: 6 }}>
+                          {found.filter((s) => s.seller_id === sid).map((s) => {
+                            const on = offered.some((o) => o.event_id === s.event_id)
+                            return <button key={s.event_id} type="button" className={'slot-chip' + (on ? ' on' : '')} onClick={() => alternarOferta(s)} aria-pressed={on}>{on ? '✓ ' : ''}{slotLabel(s)}</button>
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
                 {offered.length > 0 && (
@@ -455,10 +469,10 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
                     {manual && offered.length === 2 && msgHorarios && (
                       <button type="button" className="btn primary sm" style={{ alignSelf: 'flex-start' }} onClick={enviarHorarios}>📲 Enviar os 2 horários pelo WhatsApp</button>
                     )}
-                    <div className="small">Oferecidos{offered[0]?.seller_id ? ` (agenda de ${sellerName(offered[0].seller_id)})` : ''}. Quando o lead escolher, reserve:</div>
+                    <div className="small">Oferecidos{offered.some((o) => o.seller_id) ? ` (agenda de ${[...new Set(offered.map((o) => sellerName(o.seller_id)).filter(Boolean))].join(' e ')})` : ''}. Quando o lead escolher, reserve:</div>
                     <div className="row wrap" style={{ gap: 6 }}>
                       {offered.map((s) => (
-                        <button key={s.event_id} type="button" className="btn primary sm" onClick={() => reservar(s)} disabled={!!calBusy}>{calBusy === s.event_id ? 'Reservando…' : `Reservar ${slotLabel(s)}`}</button>
+                        <button key={s.event_id} type="button" className="btn primary sm" onClick={() => reservar(s)} disabled={!!calBusy}>{calBusy === s.event_id ? 'Reservando…' : `Reservar ${slotLabel(s)}${sellerName(s.seller_id) ? ` · ${sellerName(s.seller_id)}` : ''}`}</button>
                       ))}
                     </div>
                   </div>
