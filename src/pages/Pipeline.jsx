@@ -9,6 +9,8 @@ import { DEMO } from '../lib/supabase'
 import ContatarHoje from '../components/ContatarHoje'
 import { isManual, devidos } from '../lib/manual'
 import { useMobile } from '../lib/useMobile'
+import { leadAssinouEm } from '../lib/contrato'
+import { useSearchParams } from 'react-router-dom'
 
 /**
  * Rodinha do mouse rola o quadro na horizontal, com animação suave.
@@ -67,15 +69,6 @@ export default function Pipeline() {
   const manual = isManual(settings)
   // lembretes do encontro que não saíram sozinhos (viraram tarefa) e ainda não foram feitos
   const [pendLembretes, setPendLembretes] = useState([])
-  // contratos assinados nos últimos 3 dias (de qualquer funil), para o aviso verde no topo
-  const [assinados, setAssinados] = useState([])
-  const chaveVistos = `contratosVistos:${profile.id}`
-  const [vistos, setVistos] = useState(() => { try { return JSON.parse(localStorage.getItem(chaveVistos) || '[]') } catch { return [] } })
-  const marcarVisto = (id) => {
-    const novo = [...new Set([...vistos, id])].slice(-200)
-    setVistos(novo)
-    try { localStorage.setItem(chaveVistos, JSON.stringify(novo)) } catch { /* sem armazenamento: o aviso some só nesta sessão */ }
-  }
 
   useEffect(() => { if (!pipelineId && pipelines.length) setPipelineId(pipelines.find((p) => p.is_default)?.id || pipelines[0].id) }, [pipelines, pipelineId])
 
@@ -89,10 +82,6 @@ export default function Pipeline() {
     const { data: acts } = await supabase.from('activities').select('id, deal_id, title, created_at')
       .eq('done', false).like('title', 'Enviar lembrete à mão%').gte('created_at', new Date(Date.now() - 2 * 86_400_000).toISOString())
     setPendLembretes(acts || [])
-    const { data: ass } = await supabase.from('deals').select('*, contact:contacts(name), seller:calendar_sellers(name, email)')
-      .eq('contrato_status', 'assinado').gte('contrato_assinado_em', new Date(Date.now() - 3 * 86_400_000).toISOString())
-      .order('contrato_assinado_em', { ascending: false })
-    setAssinados(ass || [])
   }, [pipelineId, toast])
   useEffect(() => { load() }, [load])
   // relatório enviado de dentro do card: sai na hora do aviso verde e da etiqueta
@@ -105,6 +94,17 @@ export default function Pipeline() {
     const iv = setInterval(() => { if (document.visibilityState === 'visible' && !dragId && !modal && !hojeAberto) load() }, 30_000)
     return () => clearInterval(iv)
   }, [load, dragId, modal, hojeAberto])
+  // link do aviso de contrato assinado (/funil?negocio=<id>): abre o card certo, no funil dele
+  const [params, setParams] = useSearchParams()
+  useEffect(() => {
+    const id = params.get('negocio')
+    if (!id) return
+    ;(async () => {
+      const { data: d } = await supabase.from('deals').select('*, contact:contacts(name, phone, wa_id, source, optin, marketing_opt_out), seller:calendar_sellers(name)').eq('id', id).maybeSingle()
+      if (d) { if (d.pipeline_id) setPipelineId(d.pipeline_id); setModal({ deal: d }) }
+      setParams({}, { replace: true })
+    })()
+  }, [params]) // eslint-disable-line react-hooks/exhaustive-deps
   const openDeal = (d) => {
     setModal({ deal: d })
     if (isUnread(d)) {
@@ -165,10 +165,6 @@ export default function Pipeline() {
   const relatorioPend = (d) => !!d.relatorio_pronto_em && !d.relatorio_enviado_em
   const relatoriosProntos = deals.filter(relatorioPend)
   const lembretePend = (d) => encontroAindaVale(d) && pendLembretes.some((a) => a.deal_id === d.id)
-  // aviso de contrato assinado: para a vendedora do encontro, para quem é dona do card e para a gestão
-  const meuEmail = String(profile.email || '').toLowerCase()
-  const contratosNovos = assinados.filter((d) => !vistos.includes(d.id) &&
-    (isManager || d.owner_id === profile.id || String(d.seller?.email || '').toLowerCase() === meuEmail))
   // celular: uma coluna por vez, escolhida nos botões de cima (lembra a última escolhida)
   const mobile = useMobile()
   const [colMob, setColMob] = useState(() => { try { return localStorage.getItem('funilColuna') || '' } catch { return '' } })
@@ -198,22 +194,6 @@ export default function Pipeline() {
           <button className={'btn' + (mobile ? '' : ' primary')} onClick={() => setModal({ deal: null, defaults: { pipeline_id: pipelineId } })} title="Novo negócio">{mobile ? '+' : '+ Negócio'}</button>
         </div>
       </div>
-
-      {contratosNovos.length > 0 && (
-        <div className="alert-contrato" role="status">
-          <b>✅ {contratosNovos.length === 1 ? 'Contrato assinado' : `${contratosNovos.length} contratos assinados`}</b> — o Murilo e o lead já assinaram:
-          <span className="row wrap" style={{ gap: 6, marginTop: 6 }}>
-            {contratosNovos.map((d) => (
-              <span key={d.id} className="row" style={{ gap: 2 }}>
-                <button type="button" className="btn sm" onClick={() => openDeal(d)}>
-                  {d.contact?.name || d.title}{d.seller?.name ? ` · ${d.seller.name}` : ''}{d.contrato_assinado_em ? ` · ${fmtDate(d.contrato_assinado_em).slice(0, 5)}` : ''}
-                </button>
-                <button type="button" className="btn ghost sm" title="Já vi — tirar o aviso" onClick={() => marcarVisto(d.id)}>✕</button>
-              </span>
-            ))}
-          </span>
-        </div>
-      )}
 
       {emReuniao.length > 0 && (
         <div className="alert-reuniao" role="status">
@@ -282,7 +262,9 @@ export default function Pipeline() {
                           : <div className="tag-reuniao breve">🕒 Reunião em {reuniao(d).falta} min ({reuniao(d).ini}){d.seller?.name ? ` · ${d.seller.name}` : ''}</div>)}
                         <div className="title">{d.title}</div>
                         {d.contrato_status === 'assinado' && <div className="tag-contrato ok" title="Contrato assinado pelo Murilo e pelo lead">✅ Contrato assinado</div>}
-                        {d.contrato_status === 'enviado' && <div className="tag-contrato" title="Contrato enviado para assinatura (Autentique)">📨 Contrato enviado</div>}
+                        {d.contrato_status === 'enviado' && (leadAssinouEm(d, settings)
+                          ? <div className="tag-contrato lead" title="O lead já assinou na Autentique; falta a assinatura do Murilo">✍️ Lead assinou · falta o Murilo</div>
+                          : <div className="tag-contrato" title="Contrato enviado para assinatura (Autentique)">📨 Contrato enviado</div>)}
                         {d.contrato_status === 'recusado' && <div className="tag-contrato no" title="O contrato foi recusado na Autentique">⛔ Contrato recusado</div>}
                         {relatorioPend(d) && <div className="tag-relatorio" title="O relatório da consultoria já está pronto: abra o card e envie ao lead">📝 Relatório pronto para enviar</div>}
                         {lembretePend(d) && <div className="tag-lembrete" title="O lembrete do encontro não saiu sozinho: envie à mão (texto pronto em Atividades, dentro do card)">⚠ lembrete não enviado</div>}

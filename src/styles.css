@@ -344,3 +344,13 @@ input[type=color] { width: 40px; height: 32px; padding: 2px; border: 1px solid v
 .secao .chat { max-height: 50vh; }
 @media (max-width: 520px) { .secao-res { display: none; } .secao-tit + .secao-seta, .secao-seta { margin-left: auto; } }
 .mover-card { border: 2px solid var(--primary); border-radius: 10px; padding: 10px 12px; background: color-mix(in srgb, var(--primary) 6%, var(--surface)); display: flex; flex-direction: column; gap: 6px; }
+
+/* Contrato assinado pelo lead: aviso verde bem chamativo, em todas as telas */
+.alert-assinado { position: sticky; top: 0; z-index: 29; background: #1e7d45; color: #fff; border-radius: 12px; padding: 14px 16px; margin: 0 0 14px; font-size: 14px; box-shadow: 0 6px 22px rgba(30,125,69,.45); animation: assinado-pulsa 1.4s ease-in-out infinite; }
+.alert-assinado-titulo { font-size: 18px; font-weight: 800; letter-spacing: .02em; }
+.alert-assinado-item { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: rgba(255,255,255,.15); border-radius: 8px; padding: 8px 10px; }
+.alert-assinado .btn { color: #fff; background: transparent; border: 1px solid rgba(255,255,255,.85); }
+.alert-assinado .alert-assinado-btn { background: #fff; color: #1e7d45; font-weight: 700; border-color: #fff; }
+@keyframes assinado-pulsa { 0%, 100% { background: #1e7d45; } 50% { background: #27a35a; box-shadow: 0 6px 30px rgba(39,163,90,.7); } }
+@media (prefers-reduced-motion: reduce) { .alert-assinado { animation: none; } }
+.tag-contrato.lead { color: #fff; background: #27a35a; }

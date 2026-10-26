@@ -9,6 +9,7 @@ import { inWindow, sendWhatsApp, getMedia, MEDIA_TYPES, QUICK_STAGES, SITUATIONA
 import { fmtDateTime } from '../lib/utils'
 import { Field } from './ui'
 import { callCalendar, fillSlots, slotLabel } from '../lib/calendar'
+import { leadAssinouEm } from '../lib/contrato'
 import { isManual, waLink, abrirWhatsApp, stageText, messageStage, podeReceber, marcarEnviado, desfazerEnviado, marcarRespondeu } from '../lib/manual'
 
 /** Conversa de WhatsApp de um contato (com envio). deal opcional para vincular e calcular a janela de 24h. */
@@ -607,7 +608,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
       {fase === 'vendido' && (
         <div className="passo passo-ok">
           <div className="passo-tit">🎉 Vendido</div>
-          <div className="small">{deal.contrato_status === 'assinado' ? '✅ Contrato assinado.' : deal.contrato_status === 'enviado' ? '📨 Contrato enviado, aguardando assinatura.' : 'Contrato ainda não gerado.'}</div>
+          <div className="small">{deal.contrato_status === 'assinado' ? '✅ Contrato assinado pelo lead e pelo Murilo.' : deal.contrato_status === 'enviado' ? (leadAssinouEm(deal, settings) ? '✍️ O lead já assinou o contrato. Falta só a assinatura do Murilo.' : '📨 Contrato enviado, aguardando a assinatura do lead.') : 'Contrato ainda não gerado.'}</div>
           <div className="passo-acoes">
             <button type="button" className="btn" onClick={() => setContratoAberto(true)}>📄 Contrato</button>
             {deal.contrato_arquivo_url && <a className="btn ghost sm" href={deal.contrato_arquivo_url} target="_blank" rel="noreferrer">📁 Contrato assinado no Drive</a>}

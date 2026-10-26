@@ -29,12 +29,24 @@ Deno.serve(async (req) => {
   const tipo = String(ev?.type ?? '')
   const obj = ev?.data?.object ?? ev?.data ?? {}
   // id do documento: no evento de documento é o próprio objeto; no de assinatura vem junto da assinatura
-  const docId = obj?.object === 'document' ? obj.id : (obj?.document?.id ?? obj?.document_id ?? obj?.document ?? null)
-  if (!docId || typeof docId !== 'string') return ok({ ok: true, ignorado: tipo || 'sem documento' })
+  // o formato do aviso varia por tipo de evento: junta todos os textos com cara de id e procura o card por eles
+  const ids = new Set<string>()
+  const direto = obj?.object === 'document' ? obj.id : (obj?.document?.id ?? obj?.document_id ?? obj?.document ?? null)
+  if (typeof direto === 'string') ids.add(direto)
+  const varrer = (v: unknown, n = 0) => {
+    if (n > 6 || v == null) return
+    if (typeof v === 'string') { if (/^[a-f0-9]{30,}$/i.test(v)) ids.add(v); return }
+    if (Array.isArray(v)) { v.forEach((x) => varrer(x, n + 1)); return }
+    if (typeof v === 'object') Object.values(v as Record<string, unknown>).forEach((x) => varrer(x, n + 1))
+  }
+  varrer(body)
+  if (!ids.size) { console.warn('autentique-webhook sem id de documento', tipo, Object.keys(obj ?? {})); return ok({ ok: true, ignorado: tipo || 'sem documento' }) }
 
   const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
-  const { data: deal } = await admin.from('deals').select('id').eq('contrato_autentique_id', docId).maybeSingle()
-  if (!deal) return ok({ ok: true, ignorado: 'documento não é de um card' })
+  const { data: achados } = await admin.from('deals').select('id, contrato_autentique_id').in('contrato_autentique_id', [...ids]).limit(1)
+  const deal = achados?.[0]
+  if (!deal) { console.warn('autentique-webhook: documento não é de um card', tipo, Object.keys(obj ?? {})); return ok({ ok: true, ignorado: 'documento não é de um card' }) }
+  const docId = deal.contrato_autentique_id as string
 
   try {
     const doc = await buscarDocumento(docId)

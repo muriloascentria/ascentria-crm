@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import ProfileModal from './ProfileModal'
 import LembretesUrgentes from './LembretesUrgentes'
+import ContratosAssinados from './ContratosAssinados'
 import AvisosFundo from './AvisosFundo'
 import NovaVersao from './NovaVersao'
 
@@ -86,7 +87,7 @@ export default function Layout() {
           ))}
         </nav>
         {DEMO && <div className="demo-banner">Modo demonstração — dados fictícios; alterações valem só nesta sessão. Recarregue para voltar ao início.</div>}
-        <main className="main"><NovaVersao /><AvisosFundo /><LembretesUrgentes /><Outlet /></main>
+        <main className="main"><NovaVersao /><AvisosFundo /><LembretesUrgentes /><ContratosAssinados /><Outlet /></main>
       </div>
       <Toasts />
       {editingProfile && <ProfileModal onClose={() => setEditingProfile(false)} />}
