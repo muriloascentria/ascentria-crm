@@ -73,15 +73,42 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
   // conta das parcelas: (total − entrada) ÷ parcelas
   const total = num(f.valor_total), entrada = num(f.entrada) ?? 0, nParc = Number(String(f.num_parcelas).replace(/\D/g, '')) || 0
   const sugestaoParcela = total != null && nParc > 0 ? Math.round(((total - entrada) / nParc) * 100) / 100 : null
+  // número de parcelas em branco, mas com o valor da parcela: deduz pela conta (ex.: 9.497 ÷ 949,70 = 10)
+  const vParc = num(f.valor_parcela)
+  const restante = total != null ? Math.round((total - entrada) * 100) / 100 : null
+  const nDeduzido = !nParc && vParc && restante > 0 && Math.abs(restante / vParc - Math.round(restante / vParc)) < 0.01 ? Math.round(restante / vParc) : null
   const parcelaConfere = sugestaoParcela == null || !f.valor_parcela || Math.abs((num(f.valor_parcela) ?? 0) - sugestaoParcela) < 0.05
 
-  const gerar = async (e) => {
+  // 1º passo: confere os dados e mostra o resumo para a consultora revisar com o lead (nada é enviado ainda)
+  const [revisar, setRevisar] = useState(null)
+  const [conferi, setConferi] = useState(false)
+  const gerar = (e) => {
     e.preventDefault()
+    setErro('')
+    // número de parcelas: obrigatório quando sobra valor depois da entrada (sem ele o contrato saía com "0 parcelas")
+    const n = nParc || nDeduzido || 0
+    if (total == null) return setErro('Informe o valor total.')
+    if (restante > 0.01 && !n) return setErro('Informe o número de parcelas (o valor total é maior que a entrada).')
+    // parcela em branco: usa a conta (total − entrada ÷ parcelas)
+    const dados = { ...f, num_parcelas: n ? String(n) : '', valor_parcela: f.valor_parcela || (n ? brl(Math.round((restante / n) * 100) / 100) : '') }
+    const avisos = []
+    const cpf = String(f.cpf || '').replace(/\D/g, '')
+    if (cpf.length !== 11) avisos.push(`O CPF tem ${cpf.length} números (o certo são 11).`)
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(f.email || '').trim())) avisos.push('O e-mail parece incompleto: é para ele que vai o pedido de assinatura.')
+    const vP = num(dados.valor_parcela)
+    if (n && vP != null && Math.abs(entrada + n * vP - total) > 1) avisos.push(`A conta não fecha: entrada ${brl(entrada)} + ${n} × ${brl(vP)} = ${brl(entrada + n * vP)}, mas o total é ${brl(total)}.`)
+    if (!/\d{5}-?\d{3}/.test(`${f.endereco} ${f.bairro} ${f.cidade_uf}`)) avisos.push('Não achei o CEP no endereço (confira se precisa).')
+    if (!String(f.vencimentos || '').trim() && n) avisos.push('Os vencimentos das parcelas estão em branco.')
+    setConferi(false)
+    setRevisar({ dados, n, avisos })
+  }
+  // 2º passo: depois de conferir, gera o contrato e envia para assinatura
+  const enviar = async () => {
+    if (!revisar) return
     setErro('')
     setBusy(true)
     try {
-      // parcela em branco: usa a conta (total − entrada ÷ parcelas)
-      const dados = { ...f, valor_parcela: f.valor_parcela || (sugestaoParcela != null ? brl(sugestaoParcela) : '') }
+      const { dados } = revisar
       const r = await chamar({ action: 'gerar', deal_id: deal.id, dados })
       // e-mail do lead fica salvo no contato para as próximas vezes
       if (f.email && deal.contact_id) await supabase.from('contacts').update({ email: f.email.trim() }).eq('id', deal.contact_id)
@@ -89,6 +116,8 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
       if (r.enviado) toast('Contrato enviado para assinatura (Murilo e lead)')
       else if (r.erro_envio) { setErro('O contrato foi gerado, mas não foi enviado para assinatura: ' + r.erro_envio); toast('Contrato gerado, mas o envio falhou', 'err') }
       else toast('Contrato gerado no Google Docs')
+      setF(dados)
+      setRevisar(null)
       onSaved?.()
     } catch (err) {
       setErro(err.message); toast(err.message, 'err')
@@ -120,10 +149,21 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
     <Modal stack wide title="📄 Contrato — Mentoria Essência" onClose={onClose}
       footer={<>
         <span className="grow" />
-        <button className="btn" type="button" onClick={onClose}>Fechar</button>
-        <button className="btn primary" form="contratoform" disabled={busy || estado.status === 'assinado'}>
-          {busy ? 'Enviando…' : estado.url ? 'Corrigir e reenviar' : 'Gerar e enviar para assinatura'}
-        </button>
+        {revisar ? (
+          <>
+            <button className="btn" type="button" onClick={() => setRevisar(null)} disabled={busy}>← Voltar e corrigir</button>
+            <button className="btn primary" type="button" onClick={enviar} disabled={busy || !conferi}>
+              {busy ? 'Enviando…' : '✓ Está tudo certo: enviar para assinatura'}
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="btn" type="button" onClick={onClose}>Fechar</button>
+            <button className="btn primary" form="contratoform" disabled={busy || estado.status === 'assinado'}>
+              {estado.url ? 'Revisar e reenviar' : 'Revisar antes de enviar'}
+            </button>
+          </>
+        )}
       </>}>
       {estado.url && (
         <div className="card stack" style={{ gap: 8, marginBottom: 14, background: 'var(--surface-2)' }}>
@@ -158,7 +198,50 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
           {estado.url && estado.status !== 'assinado' && <div className="small muted">Precisa corrigir algo? Ajuste os campos abaixo e clique em "Corrigir e reenviar": o envio anterior é cancelado e um novo vai para os dois.</div>}
         </div>
       )}
-      <form id="contratoform" onSubmit={gerar} className="stack" style={{ gap: 12 }}>
+      {revisar && (() => {
+        const d = revisar.dados
+        const mes = (ym) => { const [y, m] = String(ym || '').split('-'); return m ? `${m}/${y}` : '—' }
+        const linhas = [
+          ['Nome completo', d.nome], ['CPF', d.cpf], ['E-mail (assinatura)', d.email],
+          ['Endereço', d.endereco], ['Bairro', d.bairro], ['Cidade - UF', d.cidade_uf],
+          ['Valor total', brl(num(d.valor_total))], ['Forma de pagamento', d.forma_pagamento],
+          ['Entrada', d.entrada ? brl(num(d.entrada)) : 'sem entrada'],
+          ['Parcelas', revisar.n ? `${revisar.n} parcela(s) de ${brl(num(d.valor_parcela))}` : 'sem parcelas (pagamento à vista)'],
+          ['Vencimentos', d.vencimentos || '—'],
+          ['Data do contrato', String(d.data || '').split('-').reverse().join('/')], ['Vigência', `${mes(d.vigencia_inicio)} a ${mes(d.vigencia_fim)}`],
+          ['Cláusula especial', d.clausula_especial || 'nenhuma'],
+        ]
+        return (
+          <div className="stack" style={{ gap: 10 }}>
+            <div className="passo" style={{ margin: 0 }}>
+              <div className="passo-tit">🔎 Confira os dados antes de enviar</div>
+              <div className="small">Leia com o lead, campo por campo. É exatamente isto que vai para o contrato e para a assinatura.</div>
+            </div>
+            <table className="small" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <tbody>
+                {linhas.map(([k, v]) => (
+                  <tr key={k} style={{ borderBottom: '1px solid var(--border, #e5e5e5)' }}>
+                    <td style={{ padding: '6px 8px 6px 0', color: 'var(--muted)', whiteSpace: 'nowrap', verticalAlign: 'top' }}>{k}</td>
+                    <td style={{ padding: '6px 0', fontWeight: 600, wordBreak: 'break-word' }}>{v || <span className="late">— em branco —</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {revisar.avisos.length > 0 && (
+              <div className="card" style={{ background: '#fff4e5', borderColor: '#f0b35b' }}>
+                <b>⚠ Atenção</b>
+                <ul className="small" style={{ margin: '6px 0 0', paddingLeft: 18 }}>{revisar.avisos.map((a) => <li key={a}>{a}</li>)}</ul>
+              </div>
+            )}
+            <label className="row" style={{ gap: 8, alignItems: 'center', fontWeight: 600 }}>
+              <input type="checkbox" checked={conferi} onChange={(e) => setConferi(e.target.checked)} />
+              Conferi todos os dados e estão corretos
+            </label>
+            {erro && <div className="small late">{erro}</div>}
+          </div>
+        )
+      })()}
+      <form id="contratoform" onSubmit={gerar} className="stack" style={{ gap: 12, display: revisar ? 'none' : undefined }}>
         <div className="small muted">Os campos abaixo entram no modelo do contrato. Valores por extenso, datas e vigência são escritos automaticamente.</div>
         <h3 style={{ margin: '4px 0 0' }}>Contratante</h3>
         <div className="grid2">
@@ -184,7 +267,12 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
         </div>
         <div className="grid2">
           <Field label="Entrada (via Pix, na data de hoje)"><input className="input" value={f.entrada} onChange={(e) => set('entrada', e.target.value)} placeholder="R$ 1.997,00" /></Field>
-          <Field label="Número de parcelas"><input className="input" inputMode="numeric" value={f.num_parcelas} onChange={(e) => set('num_parcelas', e.target.value)} placeholder="10" /></Field>
+          <Field label="Número de parcelas" hint={nDeduzido ? `Pela conta: ${nDeduzido} parcelas` : (restante > 0.01 && !nParc ? '⚠ Obrigatório quando há valor depois da entrada' : '')}>
+            <div className="row" style={{ gap: 6 }}>
+              <input className="input grow" inputMode="numeric" value={f.num_parcelas} onChange={(e) => set('num_parcelas', e.target.value)} placeholder="10" />
+              {nDeduzido && <button type="button" className="btn ghost sm" onClick={() => set('num_parcelas', String(nDeduzido))}>usar</button>}
+            </div>
+          </Field>
         </div>
         <div className="grid2">
           <Field label="Valor de cada parcela" hint={sugestaoParcela != null ? (parcelaConfere ? `Pela conta: ${brl(sugestaoParcela)}` : `⚠ Pela conta daria ${brl(sugestaoParcela)} (total − entrada ÷ parcelas)`) : ''}>
