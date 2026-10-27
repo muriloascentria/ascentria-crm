@@ -157,7 +157,7 @@ Deno.serve(async (req) => {
     const ev = await gcal(tk, `/${encodeURIComponent(id)}`).catch(() => null)
     const sem = ev && ehDupla(ev) ? comConvidado(ev, false) : null
     const body = ev && ehDupla(ev)
-      ? { summary: priv(ev).ecrm_titulo, description: priv(ev).ecrm_desc || '', conferenceData: null, ...(sem ? { attendees: sem } : {}) }
+      ? { summary: priv(ev).ecrm_titulo, description: '', conferenceData: null, ...(sem ? { attendees: sem } : {}) }
       : { summary: TITLE, description: '', conferenceData: null, ...extra }
     return gcal(tk, `/${encodeURIComponent(id)}?conferenceDataVersion=1&sendUpdates=none`, { method: 'PATCH', body: JSON.stringify(body) })
   }
@@ -242,7 +242,7 @@ Deno.serve(async (req) => {
         method: 'PATCH',
         body: JSON.stringify({
           summary: dupla ? `${etiqueta(ev)} | ${nome}` : `${s.name} | Consultoria | ${nome}`,
-          description: `Lead: ${nome}\nWhatsApp: ${fone}\n${dupla && priv(ev).ecrm_desc ? priv(ev).ecrm_desc + '\n' : ''}Agendado pelo eCRM (https://ecrm.digital)`,
+          description: `Lead: ${nome}\nWhatsApp: ${fone}\nAgendado pelo eCRM (https://ecrm.digital)`,
           ...(convidados ? { attendees: convidados } : {}),
           // sala do Meet própria para cada lead: só reaproveita a do evento quando é o mesmo encontro deste negócio
           // (blocos repetidos criados com Meet compartilham a mesma sala entre todas as semanas)
