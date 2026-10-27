@@ -100,8 +100,17 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     const nova = tem ? offered.filter((o) => o.event_id !== s.event_id) : [...offered, s].slice(-2)
     oferecer(nova)
   }
+  // "hoje", "amanhã" ou "daqui a N dias": evita reservar a terça da semana que vem achando que é amanhã
+  const quandoRel = (date) => {
+    const hoje = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })); hoje.setHours(0, 0, 0, 0)
+    const [y, m, d] = String(date || '').split('-').map(Number)
+    const n = Math.round((new Date(y, m - 1, d) - hoje) / 86_400_000)
+    return n === 0 ? 'HOJE' : n === 1 ? 'AMANHÃ' : n > 1 ? `daqui a ${n} dias` : ''
+  }
   const reservar = async (s) => {
     if (!deal?.id) return
+    const quem = deal.contact?.name || deal.title || 'o lead'
+    if (!window.confirm(`Reservar ${quem} para ${slotLabel(s)} (${quandoRel(s.date)}) na agenda de ${sellerName(s.seller_id) || 'consultora'}?`)) return
     setCalBusy(s.event_id)
     try {
       const r = await callCalendar('book', { deal_id: deal.id, seller_id: s.seller_id, event_id: s.event_id })
@@ -458,7 +467,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
                         <div className="row wrap" style={{ gap: 6 }}>
                           {found.filter((s) => s.seller_id === sid).map((s) => {
                             const on = offered.some((o) => o.event_id === s.event_id)
-                            return <button key={s.event_id} type="button" className={'slot-chip' + (on ? ' on' : '')} onClick={() => alternarOferta(s)} aria-pressed={on}>{on ? '✓ ' : ''}{slotLabel(s)}</button>
+                            return <button key={s.event_id} type="button" className={'slot-chip' + (on ? ' on' : '')} onClick={() => alternarOferta(s)} aria-pressed={on}>{on ? '✓ ' : ''}{slotLabel(s)}{['HOJE', 'AMANHÃ'].includes(quandoRel(s.date)) ? ` · ${quandoRel(s.date).toLowerCase()}` : ''}</button>
                           })}
                         </div>
                       </div>
@@ -473,7 +482,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
                     <div className="small">Oferecidos{offered.some((o) => o.seller_id) ? ` (agenda de ${[...new Set(offered.map((o) => sellerName(o.seller_id)).filter(Boolean))].join(' e ')})` : ''}. Quando o lead escolher, reserve:</div>
                     <div className="row wrap" style={{ gap: 6 }}>
                       {offered.map((s) => (
-                        <button key={s.event_id} type="button" className="btn primary sm" onClick={() => reservar(s)} disabled={!!calBusy}>{calBusy === s.event_id ? 'Reservando…' : `Reservar ${slotLabel(s)}${sellerName(s.seller_id) ? ` · ${sellerName(s.seller_id)}` : ''}`}</button>
+                        <button key={s.event_id} type="button" className="btn primary sm" onClick={() => reservar(s)} disabled={!!calBusy}>{calBusy === s.event_id ? 'Reservando…' : `Reservar ${slotLabel(s)} (${quandoRel(s.date)})${sellerName(s.seller_id) ? ` · ${sellerName(s.seller_id)}` : ''}`}</button>
                       ))}
                     </div>
                   </div>
