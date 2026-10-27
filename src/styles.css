@@ -360,3 +360,18 @@ input[type=color] { width: 40px; height: 32px; padding: 2px; border: 1px solid v
 .acoes-topo .acao-topo { flex: 1 1 140px; justify-content: center; font-weight: 700; font-size: 15px; padding: 10px 14px; background: var(--primary); border-color: var(--primary); color: #fff; }
 .acoes-topo .acao-topo:hover { filter: brightness(1.1); }
 .acoes-topo .acao-topo.ok { background: #2e7d32; border-color: #2e7d32; }
+
+/* Contrato: letras maiores para a consultora e o lead conseguirem ler juntos */
+.contrato-form { font-size: 17px; }
+.contrato-form h3 { font-size: 20px; }
+.contrato-form label, .contrato-form .field > span, .contrato-form .field-label { font-size: 15px; font-weight: 600; }
+.contrato-form .input, .contrato-form .select, .contrato-form .textarea { font-size: 18px; padding: 10px 12px; min-height: 46px; }
+.contrato-form .small { font-size: 14px; }
+.contrato-form .btn.sm { font-size: 14px; }
+.contrato-revisao { font-size: 18px; }
+.contrato-revisao .passo-tit { font-size: 21px; }
+.contrato-revisao .small { font-size: 15px; }
+.contrato-revisao .revisao-tabela { font-size: 19px; }
+.contrato-revisao .revisao-tabela td:first-child { font-size: 16px; }
+.contrato-revisao input[type=checkbox] { width: 22px; height: 22px; }
+.contrato-revisao label { font-size: 18px; }

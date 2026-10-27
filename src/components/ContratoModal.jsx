@@ -270,17 +270,17 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
           ['Cláusula especial', d.clausula_especial || 'nenhuma'],
         ]
         return (
-          <div className="stack" style={{ gap: 10 }}>
+          <div className="stack contrato-revisao" style={{ gap: 12 }}>
             <div className="passo" style={{ margin: 0 }}>
               <div className="passo-tit">🔎 Confira os dados antes de enviar</div>
               <div className="small">Leia com o lead, campo por campo. É exatamente isto que vai para o contrato e para a assinatura.</div>
             </div>
-            <table className="small" style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table className="revisao-tabela" style={{ width: '100%', borderCollapse: 'collapse' }}>
               <tbody>
                 {linhas.map(([k, v]) => (
                   <tr key={k} style={{ borderBottom: '1px solid var(--border, #e5e5e5)' }}>
-                    <td style={{ padding: '6px 8px 6px 0', color: 'var(--muted)', whiteSpace: 'nowrap', verticalAlign: 'top' }}>{k}</td>
-                    <td style={{ padding: '6px 0', fontWeight: 600, wordBreak: 'break-word' }}>{v || <span className="late">— em branco —</span>}</td>
+                    <td style={{ padding: '10px 12px 10px 0', color: 'var(--muted)', whiteSpace: 'nowrap', verticalAlign: 'top' }}>{k}</td>
+                    <td style={{ padding: '10px 0', fontWeight: 700, wordBreak: 'break-word' }}>{v || <span className="late">— em branco —</span>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -288,7 +288,7 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
             {revisar.avisos.length > 0 && (
               <div className="card" style={{ background: '#fff4e5', borderColor: '#f0b35b' }}>
                 <b>⚠ Atenção</b>
-                <ul className="small" style={{ margin: '6px 0 0', paddingLeft: 18 }}>{revisar.avisos.map((a) => <li key={a}>{a}</li>)}</ul>
+                <ul style={{ margin: '6px 0 0', paddingLeft: 20 }}>{revisar.avisos.map((a) => <li key={a}>{a}</li>)}</ul>
               </div>
             )}
             <label className="row" style={{ gap: 8, alignItems: 'center', fontWeight: 600 }}>
@@ -299,7 +299,7 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
           </div>
         )
       })()}
-      <form id="contratoform" onSubmit={gerar} className="stack" style={{ gap: 12, display: revisar ? 'none' : undefined }}>
+      <form id="contratoform" onSubmit={gerar} className="stack contrato-form" style={{ gap: 12, display: revisar ? 'none' : undefined }}>
         <div className="small muted">Os campos abaixo entram no modelo do contrato. Valores por extenso, datas e vigência são escritos automaticamente.</div>
         <h3 style={{ margin: '4px 0 0' }}>Contratante</h3>
         <div className="grid2">
