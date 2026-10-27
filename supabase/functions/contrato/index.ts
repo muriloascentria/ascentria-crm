@@ -241,7 +241,9 @@ Deno.serve(async (req) => {
     // (antes o contrato saía com "0 (zero) parcelas")
     const restante = Math.round((total - entrada) * 100) / 100
     if (!nParc && parcela > 0 && restante > 0 && Math.abs(restante / parcela - Math.round(restante / parcela)) < 0.01) nParc = Math.round(restante / parcela)
-    if (!nParc && restante > 0.01) return json({ ok: false, error: 'Informe o número de parcelas (o valor total é maior que a entrada).' })
+    // à vista (forma de pagamento "à vista" ou nº de parcelas digitado como 0): 0 parcelas é o certo
+    const aVista = /vista/i.test(String(x.forma_pagamento ?? '')) || String(x.num_parcelas ?? '').trim() === '0'
+    if (!nParc && restante > 0.01 && !aVista) return json({ ok: false, error: 'Informe o número de parcelas (o valor total é maior que a entrada). Se o pagamento for à vista, coloque 0.' })
     const hoje = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10)
     const dataIso = /^\d{4}-\d{2}-\d{2}$/.test(txt(x.data)) ? txt(x.data) : hoje
     const ini = /^\d{4}-\d{2}$/.test(txt(x.vigencia_inicio)) ? txt(x.vigencia_inicio) : dataIso.slice(0, 7)
@@ -314,7 +316,7 @@ Deno.serve(async (req) => {
 
     const url = doc.webViewLink || `https://docs.google.com/document/d/${doc.id}/edit`
     const agora = new Date().toISOString()
-    const dados = { ...x, nome, num_parcelas: nParc ? String(nParc) : '', data: dataIso, vigencia_inicio: ini, vigencia_fim: fim, dono }
+    const dados = { ...x, nome, num_parcelas: nParc ? String(nParc) : (aVista ? '0' : ''), data: dataIso, vigencia_inicio: ini, vigencia_fim: fim, dono }
     const signatario = String(st?.contract_signer_email || 'murilo@ascentria.com.br')
     const patch: Record<string, unknown> = {
       contrato: dados, contrato_doc_id: doc.id, contrato_url: url, contrato_status: 'gerado', contrato_gerado_em: agora, contrato_assinado_em: null,

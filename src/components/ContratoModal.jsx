@@ -76,6 +76,8 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
   // número de parcelas em branco, mas com o valor da parcela: deduz pela conta (ex.: 9.497 ÷ 949,70 = 10)
   const vParc = num(f.valor_parcela)
   const restante = total != null ? Math.round((total - entrada) * 100) / 100 : null
+  // à vista: forma de pagamento "à vista" ou nº de parcelas digitado como 0 → 0 parcelas é permitido
+  const aVista = /vista/i.test(String(f.forma_pagamento || '')) || String(f.num_parcelas ?? '').trim() === '0'
   const nDeduzido = !nParc && vParc && restante > 0 && Math.abs(restante / vParc - Math.round(restante / vParc)) < 0.01 ? Math.round(restante / vParc) : null
   const parcelaConfere = sugestaoParcela == null || !f.valor_parcela || Math.abs((num(f.valor_parcela) ?? 0) - sugestaoParcela) < 0.05
 
@@ -88,9 +90,9 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
     // número de parcelas: obrigatório quando sobra valor depois da entrada (sem ele o contrato saía com "0 parcelas")
     const n = nParc || nDeduzido || 0
     if (total == null) return setErro('Informe o valor total.')
-    if (restante > 0.01 && !n) return setErro('Informe o número de parcelas (o valor total é maior que a entrada).')
+    if (restante > 0.01 && !n && !aVista) return setErro('Informe o número de parcelas (o valor total é maior que a entrada). Se o pagamento for à vista, coloque 0.')
     // parcela em branco: usa a conta (total − entrada ÷ parcelas)
-    const dados = { ...f, num_parcelas: n ? String(n) : '', valor_parcela: f.valor_parcela || (n ? brl(Math.round((restante / n) * 100) / 100) : '') }
+    const dados = { ...f, num_parcelas: n ? String(n) : (aVista ? '0' : ''), valor_parcela: f.valor_parcela || (n ? brl(Math.round((restante / n) * 100) / 100) : '') }
     const avisos = []
     const cpf = String(f.cpf || '').replace(/\D/g, '')
     if (cpf.length !== 11) avisos.push(`O CPF tem ${cpf.length} números (o certo são 11).`)
@@ -206,7 +208,7 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
           ['Endereço', d.endereco], ['Bairro', d.bairro], ['Cidade - UF', d.cidade_uf],
           ['Valor total', brl(num(d.valor_total))], ['Forma de pagamento', d.forma_pagamento],
           ['Entrada', d.entrada ? brl(num(d.entrada)) : 'sem entrada'],
-          ['Parcelas', revisar.n ? `${revisar.n} parcela(s) de ${brl(num(d.valor_parcela))}` : 'sem parcelas (pagamento à vista)'],
+          ['Parcelas', revisar.n ? `${revisar.n} parcela(s) de ${brl(num(d.valor_parcela))}` : '0 parcelas (pagamento à vista)'],
           ['Vencimentos', d.vencimentos || '—'],
           ['Data do contrato', String(d.data || '').split('-').reverse().join('/')], ['Vigência', `${mes(d.vigencia_inicio)} a ${mes(d.vigencia_fim)}`],
           ['Cláusula especial', d.clausula_especial || 'nenhuma'],
@@ -267,7 +269,7 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
         </div>
         <div className="grid2">
           <Field label="Entrada (via Pix, na data de hoje)"><input className="input" value={f.entrada} onChange={(e) => set('entrada', e.target.value)} placeholder="R$ 1.997,00" /></Field>
-          <Field label="Número de parcelas" hint={nDeduzido ? `Pela conta: ${nDeduzido} parcelas` : (restante > 0.01 && !nParc ? '⚠ Obrigatório quando há valor depois da entrada' : '')}>
+          <Field label="Número de parcelas" hint={nDeduzido ? `Pela conta: ${nDeduzido} parcelas` : (aVista ? 'À vista: 0 parcelas' : restante > 0.01 && !nParc ? '⚠ Obrigatório quando há valor depois da entrada (à vista: coloque 0)' : '')}>
             <div className="row" style={{ gap: 6 }}>
               <input className="input grow" inputMode="numeric" value={f.num_parcelas} onChange={(e) => set('num_parcelas', e.target.value)} placeholder="10" />
               {nDeduzido && <button type="button" className="btn ghost sm" onClick={() => set('num_parcelas', String(nDeduzido))}>usar</button>}
