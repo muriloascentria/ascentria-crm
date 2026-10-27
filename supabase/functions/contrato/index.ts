@@ -235,8 +235,13 @@ Deno.serve(async (req) => {
     const nome = txt(x.nome, 200)
     if (!nome) return json({ ok: false, error: 'Informe o nome completo do lead.' })
     const total = valorNum(x.valor_total), entrada = valorNum(x.entrada) ?? 0, parcela = valorNum(x.valor_parcela) ?? 0
-    const nParc = Math.max(0, Math.floor(Number(String(x.num_parcelas ?? '').replace(/\D/g, '')) || 0))
+    let nParc = Math.max(0, Math.floor(Number(String(x.num_parcelas ?? '').replace(/\D/g, '')) || 0))
     if (total == null) return json({ ok: false, error: 'Informe o valor total.' })
+    // número de parcelas em branco: deduz pela conta (total − entrada) ÷ parcela; sem como deduzir, não gera
+    // (antes o contrato saía com "0 (zero) parcelas")
+    const restante = Math.round((total - entrada) * 100) / 100
+    if (!nParc && parcela > 0 && restante > 0 && Math.abs(restante / parcela - Math.round(restante / parcela)) < 0.01) nParc = Math.round(restante / parcela)
+    if (!nParc && restante > 0.01) return json({ ok: false, error: 'Informe o número de parcelas (o valor total é maior que a entrada).' })
     const hoje = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10)
     const dataIso = /^\d{4}-\d{2}-\d{2}$/.test(txt(x.data)) ? txt(x.data) : hoje
     const ini = /^\d{4}-\d{2}$/.test(txt(x.vigencia_inicio)) ? txt(x.vigencia_inicio) : dataIso.slice(0, 7)
@@ -309,7 +314,7 @@ Deno.serve(async (req) => {
 
     const url = doc.webViewLink || `https://docs.google.com/document/d/${doc.id}/edit`
     const agora = new Date().toISOString()
-    const dados = { ...x, nome, data: dataIso, vigencia_inicio: ini, vigencia_fim: fim, dono }
+    const dados = { ...x, nome, num_parcelas: nParc ? String(nParc) : '', data: dataIso, vigencia_inicio: ini, vigencia_fim: fim, dono }
     const signatario = String(st?.contract_signer_email || 'murilo@ascentria.com.br')
     const patch: Record<string, unknown> = {
       contrato: dados, contrato_doc_id: doc.id, contrato_url: url, contrato_status: 'gerado', contrato_gerado_em: agora, contrato_assinado_em: null,
