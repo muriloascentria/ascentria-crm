@@ -274,6 +274,18 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     setMode('text')
     setText((t) => (t.trim() ? `${t.replace(/\s+$/, '')}\n\n${chave}` : chave))
   }
+  // botão Pix do topo do card: copia a chave e, se der para escrever ao lead, já põe na caixa de mensagem
+  const pixTopo = async () => {
+    const chave = String(settings?.pix_key || '').trim()
+    if (!chave) return
+    try { await navigator.clipboard?.writeText(chave) } catch { /* sem área de transferência */ }
+    if (win) {
+      inserirPix()
+      setSecMsg((n) => n + 1)
+      setTimeout(() => document.querySelector('.card-guiado textarea')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80)
+      toast('Chave Pix copiada e colocada na mensagem')
+    } else toast('Chave Pix copiada')
+  }
   const abrirMensagens = () => {
     // Ao abrir, a lista já vai para a etapa da próxima mensagem.
     // Card na coluna "Remarcar": abre direto nas mensagens de Remarcação.
@@ -526,6 +538,16 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
   return (
     <div className="card-guiado stack">
       {header}
+      {deal?.id && (
+        <div className="acoes-topo">
+          <button type="button" className={`btn acao-topo${deal.contrato_status === 'assinado' ? ' ok' : ''}`} onClick={() => setContratoAberto(true)} title="Gerar, conferir e enviar o contrato da Mentoria Essência">
+            📄 Contrato{deal.contrato_status === 'assinado' ? ' ✓ assinado' : deal.contrato_status === 'enviado' ? ' · enviado' : deal.contrato_url ? ' · gerado' : ''}
+          </button>
+          {settings?.pix_key && (
+            <button type="button" className="btn acao-topo" onClick={pixTopo} title={win ? 'Copia a chave Pix e coloca na caixa de mensagem' : 'Copia a chave Pix'}>💠 Pix</button>
+          )}
+        </div>
+      )}
       {deal?.id && <MeetingFiles deal={deal} contato={contato} firstName={firstName} modo="relatorio" />}
 
       {fase === 'sequencia' && (
