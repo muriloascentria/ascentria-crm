@@ -17,6 +17,32 @@ const num = (t) => {
 }
 const brl = (v) => (v == null ? '' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
 
+const r2 = (v) => Math.round(v * 100) / 100
+// cronograma de parcelas: [{ qtd, valor }] em ordem (parcelas de mesmo valor agrupadas)
+const nCron = (c) => (c || []).reduce((a, x) => a + x.qtd, 0)
+const somaCron = (c) => r2((c || []).reduce((a, x) => a + x.qtd * x.valor, 0))
+function descCron(c) {
+  let i = 1
+  return (c || []).map((x) => { const de = i, ate = i + x.qtd - 1; i += x.qtd; return `${x.qtd} × ${brl(x.valor)} (${de === ate ? `${de}ª` : `${de}ª a ${ate}ª`})` }).join(' + ')
+}
+/** Parcelas iguais: quantas parcelas de `valor` cabem no restante (a sobra vira uma última parcela menor). */
+function calcIguais(restante, valor) {
+  const k = Math.floor((restante + 0.005) / valor), sobra = r2(restante - k * valor)
+  return { k, sobra }
+}
+/** Escalonadas: começa em `inicial` e sobe `aumento` a cada `meses` parcelas, até fechar o restante (a última é o que faltar). */
+function calcEscalonado(restante, inicial, aumento, meses) {
+  const c = []
+  let falta = r2(restante), i = 0
+  while (falta > 0.009 && i < 120) {
+    const v = r2(Math.min(inicial + Math.floor(i / meses) * aumento, falta))
+    if (c.length && Math.abs(c[c.length - 1].valor - v) < 0.005) c[c.length - 1].qtd++
+    else c.push({ qtd: 1, valor: v })
+    falta = r2(falta - v); i++
+  }
+  return falta > 0.009 ? null : c
+}
+
 async function chamar(body) {
   const { data, error } = await invokeFn('contrato', { body })
   let msg = error?.message
@@ -60,6 +86,10 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
     }
   })
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
+  // mudou algo do pagamento em parcelas iguais: a conta feita antes (com última parcela diferente) deixa de valer
+  const setPag = (k, v) => setF((x) => ({ ...x, [k]: v, ...(x.parcelamento !== 'escalonado' ? { cronograma: null } : {}) }))
+  const [opcoes, setOpcoes] = useState(null) // escolhas quando a conta das parcelas iguais não fecha exata
+  const escalonado = f.parcelamento === 'escalonado'
 
   // nome e e-mail do lead vêm do contato, se já estiverem cadastrados
   useEffect(() => {
@@ -79,6 +109,28 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
   // à vista: forma de pagamento "à vista" ou nº de parcelas digitado como 0 → 0 parcelas é permitido
   const aVista = /vista/i.test(String(f.forma_pagamento || '')) || String(f.num_parcelas ?? '').trim() === '0'
   const nDeduzido = !nParc && vParc && restante > 0 && Math.abs(restante / vParc - Math.round(restante / vParc)) < 0.01 ? Math.round(restante / vParc) : null
+  const cron = f.cronograma?.length ? f.cronograma : null
+  const cronFecha = cron && total != null && Math.abs(entrada + somaCron(cron) - total) < 0.02
+  const calcular = () => {
+    setErro(''); setOpcoes(null)
+    if (total == null) return setErro('Informe o valor total antes de calcular.')
+    if (!(restante > 0.009)) return setErro('A entrada já cobre o valor total: não há parcelas.')
+    if (!escalonado) {
+      if (!(vParc > 0)) return setErro('Informe o valor de cada parcela para calcular.')
+      const { k, sobra } = calcIguais(restante, vParc)
+      if (k < 1) return setErro(`A parcela de ${brl(vParc)} é maior que o valor que falta (${brl(restante)}).`)
+      if (sobra < 0.01) { setF((x) => ({ ...x, num_parcelas: String(k), cronograma: null })); return }
+      setOpcoes({ k, sobra, v: vParc })
+      return
+    }
+    const ini = num(f.esc_inicial), aum = num(f.esc_aumento) ?? 0, meses = Number(String(f.esc_meses || '').replace(/\D/g, '')) || 0
+    if (!(ini > 0)) return setErro('Informe o valor da primeira parcela.')
+    if (aum < 0) return setErro('O aumento não pode ser negativo.')
+    if (!(meses > 0)) return setErro('Informe a cada quantos meses a parcela sobe.')
+    const c = calcEscalonado(restante, ini, aum, meses)
+    if (!c) return setErro('Com esses valores passaria de 120 parcelas. Aumente a parcela inicial ou o aumento.')
+    setF((x) => ({ ...x, cronograma: c, num_parcelas: String(nCron(c)), valor_parcela: brl(c[0].valor) }))
+  }
   const parcelaConfere = sugestaoParcela == null || !f.valor_parcela || Math.abs((num(f.valor_parcela) ?? 0) - sugestaoParcela) < 0.05
 
   // 1º passo: confere os dados e mostra o resumo para a consultora revisar com o lead (nada é enviado ainda)
@@ -88,17 +140,21 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
     e.preventDefault()
     setErro('')
     // número de parcelas: obrigatório quando sobra valor depois da entrada (sem ele o contrato saía com "0 parcelas")
-    const n = nParc || nDeduzido || 0
     if (total == null) return setErro('Informe o valor total.')
+    if (escalonado && !cron) return setErro('Parcelas escalonadas: preencha os campos e clique em "Calcular parcelas".')
+    if (cron && !cronFecha) return setErro(`As parcelas calculadas não fecham mais o total (entrada ${brl(entrada)} + parcelas ${brl(somaCron(cron))} ≠ ${brl(total)}). Clique em "Calcular" de novo.`)
+    const n = cron ? nCron(cron) : (nParc || nDeduzido || 0)
     if (restante > 0.01 && !n && !aVista) return setErro('Informe o número de parcelas (o valor total é maior que a entrada). Se o pagamento for à vista, coloque 0.')
     // parcela em branco: usa a conta (total − entrada ÷ parcelas)
-    const dados = { ...f, num_parcelas: n ? String(n) : (aVista ? '0' : ''), valor_parcela: f.valor_parcela || (n ? brl(Math.round((restante / n) * 100) / 100) : '') }
+    const dados = cron
+      ? { ...f, num_parcelas: String(n), valor_parcela: brl(cron[0].valor) }
+      : { ...f, cronograma: null, num_parcelas: n ? String(n) : (aVista ? '0' : ''), valor_parcela: f.valor_parcela || (n ? brl(Math.round((restante / n) * 100) / 100) : '') }
     const avisos = []
     const cpf = String(f.cpf || '').replace(/\D/g, '')
     if (cpf.length !== 11) avisos.push(`O CPF tem ${cpf.length} números (o certo são 11).`)
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(f.email || '').trim())) avisos.push('O e-mail parece incompleto: é para ele que vai o pedido de assinatura.')
     const vP = num(dados.valor_parcela)
-    if (n && vP != null && Math.abs(entrada + n * vP - total) > 1) avisos.push(`A conta não fecha: entrada ${brl(entrada)} + ${n} × ${brl(vP)} = ${brl(entrada + n * vP)}, mas o total é ${brl(total)}.`)
+    if (!cron && n && vP != null && Math.abs(entrada + n * vP - total) > 1) avisos.push(`A conta não fecha: entrada ${brl(entrada)} + ${n} × ${brl(vP)} = ${brl(entrada + n * vP)}, mas o total é ${brl(total)}.`)
     if (!/\d{5}-?\d{3}/.test(`${f.endereco} ${f.bairro} ${f.cidade_uf}`)) avisos.push('Não achei o CEP no endereço (confira se precisa).')
     if (!String(f.vencimentos || '').trim() && n) avisos.push('Os vencimentos das parcelas estão em branco.')
     setConferi(false)
@@ -208,7 +264,7 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
           ['Endereço', d.endereco], ['Bairro', d.bairro], ['Cidade - UF', d.cidade_uf],
           ['Valor total', brl(num(d.valor_total))], ['Forma de pagamento', d.forma_pagamento],
           ['Entrada', d.entrada ? brl(num(d.entrada)) : 'sem entrada'],
-          ['Parcelas', revisar.n ? `${revisar.n} parcela(s) de ${brl(num(d.valor_parcela))}` : '0 parcelas (pagamento à vista)'],
+          ['Parcelas', d.cronograma?.length > 1 ? `${revisar.n} parcelas${d.parcelamento === 'escalonado' ? ' escalonadas' : ''}, sem juros: ${descCron(d.cronograma)}` : revisar.n ? `${revisar.n} parcela(s) de ${brl(num(d.valor_parcela))}` : '0 parcelas (pagamento à vista)'],
           ['Vencimentos', d.vencimentos || '—'],
           ['Data do contrato', String(d.data || '').split('-').reverse().join('/')], ['Vigência', `${mes(d.vigencia_inicio)} a ${mes(d.vigencia_fim)}`],
           ['Cláusula especial', d.clausula_especial || 'nenhuma'],
@@ -261,30 +317,74 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
 
         <h3 style={{ margin: '8px 0 0' }}>Valor e pagamento</h3>
         <div className="grid2">
-          <Field label="Valor total"><input className="input" value={f.valor_total} onChange={(e) => set('valor_total', e.target.value)} required /></Field>
+          <Field label="Valor total"><input className="input" value={f.valor_total} onChange={(e) => setPag('valor_total', e.target.value)} required /></Field>
           <Field label="Forma de pagamento">
             <input className="input" list="formas-pagto" value={f.forma_pagamento} onChange={(e) => set('forma_pagamento', e.target.value)} required />
             <datalist id="formas-pagto">{FORMAS.map((x) => <option key={x} value={x} />)}</datalist>
           </Field>
         </div>
         <div className="grid2">
-          <Field label="Entrada (via Pix, na data de hoje)"><input className="input" value={f.entrada} onChange={(e) => set('entrada', e.target.value)} placeholder="R$ 1.997,00" /></Field>
-          <Field label="Número de parcelas" hint={nDeduzido ? `Pela conta: ${nDeduzido} parcelas` : (aVista ? 'À vista: 0 parcelas' : restante > 0.01 && !nParc ? '⚠ Obrigatório quando há valor depois da entrada (à vista: coloque 0)' : '')}>
+          <Field label="Entrada (via Pix, na data de hoje)"><input className="input" value={f.entrada} onChange={(e) => setPag('entrada', e.target.value)} placeholder="R$ 1.997,00" /></Field>
+          <Field label="Tipo de parcelamento">
             <div className="row" style={{ gap: 6 }}>
-              <input className="input grow" inputMode="numeric" value={f.num_parcelas} onChange={(e) => set('num_parcelas', e.target.value)} placeholder="10" />
-              {nDeduzido && <button type="button" className="btn ghost sm" onClick={() => set('num_parcelas', String(nDeduzido))}>usar</button>}
+              <button type="button" className={`btn sm ${!escalonado ? 'primary' : ''}`} onClick={() => { setOpcoes(null); setF((x) => ({ ...x, parcelamento: 'iguais', cronograma: null })) }}>Parcelas iguais</button>
+              <button type="button" className={`btn sm ${escalonado ? 'primary' : ''}`} onClick={() => { setOpcoes(null); setF((x) => ({ ...x, parcelamento: 'escalonado', cronograma: null })) }}>Parcelas escalonadas</button>
             </div>
           </Field>
         </div>
-        <div className="grid2">
-          <Field label="Valor de cada parcela" hint={sugestaoParcela != null ? (parcelaConfere ? `Pela conta: ${brl(sugestaoParcela)}` : `⚠ Pela conta daria ${brl(sugestaoParcela)} (total − entrada ÷ parcelas)`) : ''}>
-            <div className="row" style={{ gap: 6 }}>
-              <input className="input grow" value={f.valor_parcela} onChange={(e) => set('valor_parcela', e.target.value)} placeholder="R$ 1.000,00" />
-              {sugestaoParcela != null && (!f.valor_parcela || !parcelaConfere) && <button type="button" className="btn ghost sm" onClick={() => set('valor_parcela', brl(sugestaoParcela))}>usar</button>}
+        {!escalonado ? (
+          <>
+            <div className="grid2">
+              <Field label="Valor de cada parcela" hint={sugestaoParcela != null && !cron ? (parcelaConfere ? `Pela conta: ${brl(sugestaoParcela)}` : `⚠ Pela conta daria ${brl(sugestaoParcela)} (total − entrada ÷ parcelas)`) : ''}>
+                <div className="row" style={{ gap: 6 }}>
+                  <input className="input grow" value={f.valor_parcela} onChange={(e) => setPag('valor_parcela', e.target.value)} placeholder="R$ 550,00" />
+                  {sugestaoParcela != null && !cron && (!f.valor_parcela || !parcelaConfere) && <button type="button" className="btn ghost sm" onClick={() => setPag('valor_parcela', brl(sugestaoParcela))}>usar</button>}
+                </div>
+              </Field>
+              <Field label="Número de parcelas" hint={nDeduzido ? `Pela conta: ${nDeduzido} parcelas` : (aVista ? 'À vista: 0 parcelas' : restante > 0.01 && !nParc ? '⚠ Obrigatório quando há valor depois da entrada (à vista: coloque 0)' : '')}>
+                <div className="row" style={{ gap: 6 }}>
+                  <input className="input grow" inputMode="numeric" value={f.num_parcelas} onChange={(e) => setPag('num_parcelas', e.target.value)} placeholder="10" />
+                  {nDeduzido && <button type="button" className="btn ghost sm" onClick={() => setPag('num_parcelas', String(nDeduzido))}>usar</button>}
+                </div>
+              </Field>
             </div>
-          </Field>
-          <Field label="Vencimentos"><input className="input" value={f.vencimentos} onChange={(e) => set('vencimentos', e.target.value)} placeholder="Todo dia 10, de 10/11/2026 a 10/08/2027" /></Field>
-        </div>
+            <div className="row wrap" style={{ gap: 8, alignItems: 'center' }}>
+              <button type="button" className="btn sm" onClick={calcular}>🧮 Calcular nº de parcelas</button>
+              <span className="small muted">Preencha a entrada e o valor da parcela que o lead consegue pagar: o CRM calcula quantas parcelas fecham o total, sem juros.</span>
+            </div>
+            {opcoes && (
+              <div className="card stack" style={{ gap: 6, background: 'var(--surface-2)' }}>
+                <div className="small">Com parcelas de <b>{brl(opcoes.v)}</b> a conta não fecha exata: sobram <b>{brl(opcoes.sobra)}</b>. Escolha como fica:</div>
+                <button type="button" className="btn sm" style={{ justifyContent: 'flex-start' }} onClick={() => { setF((x) => ({ ...x, num_parcelas: String(opcoes.k + 1), cronograma: [{ qtd: opcoes.k, valor: opcoes.v }, { qtd: 1, valor: opcoes.sobra }] })); setOpcoes(null) }}>
+                  {opcoes.k + 1} parcelas: {opcoes.k} × {brl(opcoes.v)} + a última de {brl(opcoes.sobra)}
+                </button>
+                <button type="button" className="btn sm" style={{ justifyContent: 'flex-start' }} onClick={() => { setF((x) => ({ ...x, entrada: brl(r2(entrada + opcoes.sobra)), num_parcelas: String(opcoes.k), cronograma: null })); setOpcoes(null) }}>
+                  Entrada de {brl(r2(entrada + opcoes.sobra))} + {opcoes.k} × {brl(opcoes.v)}
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="grid3">
+              <Field label="1ª parcela (começa com)"><input className="input" value={f.esc_inicial || ''} onChange={(e) => set('esc_inicial', e.target.value)} placeholder="R$ 400,00" /></Field>
+              <Field label="Sobe quanto"><input className="input" value={f.esc_aumento || ''} onChange={(e) => set('esc_aumento', e.target.value)} placeholder="R$ 400,00" /></Field>
+              <Field label="A cada quantos meses"><input className="input" inputMode="numeric" value={f.esc_meses || ''} onChange={(e) => set('esc_meses', e.target.value)} placeholder="3" /></Field>
+            </div>
+            <div className="row wrap" style={{ gap: 8, alignItems: 'center' }}>
+              <button type="button" className="btn sm" onClick={calcular}>🧮 Calcular parcelas</button>
+              <span className="small muted">O CRM monta as parcelas, subindo de valor, até fechar o total sem juros. A última é o que faltar.</span>
+            </div>
+          </>
+        )}
+        {cron && (
+          <div className="card stack" style={{ gap: 4, background: cronFecha ? 'var(--surface-2)' : '#fff4e5' }}>
+            <b className="small">{nCron(cron)} parcelas, sem juros{escalonado ? ' (escalonadas)' : ''}</b>
+            {(() => { let i = 1; return cron.map((x, k) => { const de = i, ate = i + x.qtd - 1; i += x.qtd; return <div key={k} className="small">{de === ate ? `${de}ª parcela` : `${de}ª a ${ate}ª parcela`}: <b>{x.qtd} × {brl(x.valor)}</b> <span className="muted">= {brl(r2(x.qtd * x.valor))}</span></div> }) })()}
+            <div className="small">Entrada {brl(entrada)} + parcelas {brl(somaCron(cron))} = <b>{brl(r2(entrada + somaCron(cron)))}</b> {cronFecha ? '✓ fecha o total' : <span className="late">⚠ não fecha o total de {brl(total)}: clique em Calcular de novo</span>}</div>
+          </div>
+        )}
+        <Field label="Vencimentos"><input className="input" value={f.vencimentos} onChange={(e) => set('vencimentos', e.target.value)} placeholder="Todo dia 10, de 10/11/2026 a 10/08/2027" /></Field>
 
         <h3 style={{ margin: '8px 0 0' }}>Datas</h3>
         <div className="grid2">

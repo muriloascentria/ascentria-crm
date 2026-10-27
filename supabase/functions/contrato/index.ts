@@ -244,6 +244,24 @@ Deno.serve(async (req) => {
     // à vista (forma de pagamento "à vista" ou nº de parcelas digitado como 0): 0 parcelas é o certo
     const aVista = /vista/i.test(String(x.forma_pagamento ?? '')) || String(x.num_parcelas ?? '').trim() === '0'
     if (!nParc && restante > 0.01 && !aVista) return json({ ok: false, error: 'Informe o número de parcelas (o valor total é maior que a entrada). Se o pagamento for à vista, coloque 0.' })
+    // cronograma (parcela final diferente ou parcelas escalonadas): [{ qtd, valor }] em ordem
+    const cron = Array.isArray(x.cronograma)
+      ? x.cronograma.map((c: any) => ({ qtd: Math.floor(Number(c?.qtd) || 0), valor: Math.round((Number(c?.valor) || 0) * 100) / 100 })).filter((c: any) => c.qtd > 0 && c.valor > 0)
+      : []
+    let textoParcelas = ''
+    if (cron.length) {
+      const soma = cron.reduce((a: number, c: any) => a + c.qtd * c.valor, 0)
+      if (Math.abs(entrada + soma - total) > 0.05) return json({ ok: false, error: `As parcelas (${brl(soma)}) mais a entrada (${brl(entrada)}) não fecham o total de ${brl(total)}. Recalcule as parcelas.` })
+      nParc = cron.reduce((a: number, c: any) => a + c.qtd, 0)
+      if (cron.length > 1) {
+        let i = 1
+        const partes = cron.map((c: any) => {
+          const de = i, ate = i + c.qtd - 1; i += c.qtd
+          return `${c.qtd} ${c.qtd === 1 ? 'parcela' : 'parcelas'} de ${brl(c.valor)} (${reaisExtenso(c.valor)}), ${de === ate ? `a ${de}ª` : `da ${de}ª à ${ate}ª`}`
+        })
+        textoParcelas = `${x.parcelamento === 'escalonado' ? 'escalonadas: ' : ''}${partes.slice(0, -1).join('; ')}; e ${partes[partes.length - 1]}`
+      }
+    }
     const hoje = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10)
     const dataIso = /^\d{4}-\d{2}-\d{2}$/.test(txt(x.data)) ? txt(x.data) : hoje
     const ini = /^\d{4}-\d{2}$/.test(txt(x.vigencia_inicio)) ? txt(x.vigencia_inicio) : dataIso.slice(0, 7)
@@ -257,8 +275,9 @@ Deno.serve(async (req) => {
       VALOR_TOTAL: brl(total), VALOR_TOTAL_EXTENSO: reaisExtenso(total),
       FORMA_PAGAMENTO: txt(x.forma_pagamento, 120) || '—',
       ENTRADA: brl(entrada), ENTRADA_EXTENSO: reaisExtenso(entrada),
-      NUM_PARCELAS: String(nParc), NUM_PARCELAS_EXTENSO: extenso(nParc),
-      VALOR_PARCELA: brl(parcela), VALOR_PARCELA_EXTENSO: reaisExtenso(parcela),
+      // "vezes" é feminino: uma/duas (ex.: vinte e uma vezes)
+      NUM_PARCELAS: String(nParc), NUM_PARCELAS_EXTENSO: extenso(nParc).replace(/\bum\b/g, 'uma').replace(/\bdois\b/g, 'duas'),
+      VALOR_PARCELA: textoParcelas || brl(cron[0]?.valor ?? parcela), VALOR_PARCELA_EXTENSO: textoParcelas ? 'sem juros' : reaisExtenso(cron[0]?.valor ?? parcela),
       VENCIMENTOS: txt(x.vencimentos, 300) || '—',
       VIGENCIA_INICIO: mesAno(ini), VIGENCIA_FIM: mesAno(fim),
       DATA_CONTRATO: dataExtenso(dataIso),
@@ -292,7 +311,11 @@ Deno.serve(async (req) => {
     // troca os campos e tira o destaque amarelo
     await g(tk, `${DOCS}/${doc.id}:batchUpdate`, {
       method: 'POST',
-      body: JSON.stringify({ requests: Object.entries(campos).map(([k, v]) => ({ replaceAllText: { containsText: { text: `{{${k}}}`, matchCase: true }, replaceText: v } })) }),
+      body: JSON.stringify({ requests: [
+        // parcelas diferentes: o texto completo entra no lugar de "valor (extenso)"
+        ...(textoParcelas ? [{ replaceAllText: { containsText: { text: '{{VALOR_PARCELA}} ({{VALOR_PARCELA_EXTENSO}})', matchCase: true }, replaceText: `${textoParcelas}, sem juros` } }] : []),
+        ...Object.entries(campos).map(([k, v]) => ({ replaceAllText: { containsText: { text: `{{${k}}}`, matchCase: true }, replaceText: v } })),
+      ] }),
     })
     // garantia de entrega (12.5 a 12.7) e cláusula especial (20, opcional, antes das assinaturas)
     await inserirClausulas(tk, doc.id, txt(x.clausula_especial, 3000))
@@ -316,7 +339,7 @@ Deno.serve(async (req) => {
 
     const url = doc.webViewLink || `https://docs.google.com/document/d/${doc.id}/edit`
     const agora = new Date().toISOString()
-    const dados = { ...x, nome, num_parcelas: nParc ? String(nParc) : (aVista ? '0' : ''), data: dataIso, vigencia_inicio: ini, vigencia_fim: fim, dono }
+    const dados = { ...x, nome, cronograma: cron.length ? cron : null, num_parcelas: nParc ? String(nParc) : (aVista ? '0' : ''), data: dataIso, vigencia_inicio: ini, vigencia_fim: fim, dono }
     const signatario = String(st?.contract_signer_email || 'murilo@ascentria.com.br')
     const patch: Record<string, unknown> = {
       contrato: dados, contrato_doc_id: doc.id, contrato_url: url, contrato_status: 'gerado', contrato_gerado_em: agora, contrato_assinado_em: null,
