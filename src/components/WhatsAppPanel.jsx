@@ -3,7 +3,7 @@ import AbrirEm from './AbrirEm'
 import Secao from './Secao'
 import { useMobile } from '../lib/useMobile'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, invokeFn } from '../lib/supabase'
 import { useApp } from '../lib/store'
 import { inWindow, sendWhatsApp, getMedia, MEDIA_TYPES, QUICK_STAGES, SITUATIONAL_STAGES, quickStageLabel, splitParts, pendingFields, fillMeeting, meetingDateLabel, meetingTimeLabel } from '../lib/wa'
 import { fmtDateTime } from '../lib/utils'
@@ -876,6 +876,20 @@ function MeetingFiles({ deal, contato, firstName, modo }) {
       ].filter(Boolean).join('\n\n'))
     } catch (e) { setErr(e.message) } finally { setLendo(false) }
   }
+  // Baixar PDF: gera o PDF atualizado do relatório num link público (não depende de estar logado no Google)
+  const baixarPdf = async (e) => {
+    e?.preventDefault?.()
+    const aba = window.open('', '_blank')
+    let url = deal.relatorio_pdf_url || null
+    try {
+      const { data } = await invokeFn('relatorio-run', { body: { acao: 'pdf', deal_id: deal.id } })
+      if (data?.ok && data.url) url = data.url
+    } catch { /* usa o PDF que já existe */ }
+    if (!url) url = `https://docs.google.com/document/d/${deal.relatorio_doc_id}/export?format=pdf`
+    const final = url + (url.includes('?') ? '&' : '?') + 'download=' + encodeURIComponent(`Relatorio-${(contato?.name || deal.title || 'lead').replace(/[^\p{L}\p{N}]+/gu, '-')}.pdf`)
+    if (aba) aba.location.href = final
+    else window.location.href = final
+  }
   const enviarResumo = () => {
     const link = waLink(contato, resumo || '')
     if (!link) return toast('Este contato não tem telefone cadastrado.', 'err')
@@ -905,7 +919,7 @@ function MeetingFiles({ deal, contato, firstName, modo }) {
           : <>1. Toque em <b>⬇️ Baixar PDF</b>. 2. Toque em <b>Enviar relatório ao lead</b> e abra no WhatsApp. 3. Na conversa, anexe o PDF e envie junto com a mensagem.</>}</div>
         {resumo === null && (
           <div className="passo-acoes">
-            {deal.relatorio_doc_id && <a className="btn" href={`https://docs.google.com/document/d/${deal.relatorio_doc_id}/export?format=pdf`} target="_blank" rel="noreferrer">⬇️ Baixar PDF</a>}
+            {deal.relatorio_doc_id && <button type="button" className="btn" onClick={baixarPdf}>⬇️ Baixar PDF</button>}
             <button type="button" className={'btn' + (enviadoEm ? '' : ' primary')} onClick={abrirMensagemRelatorio}>{enviadoEm ? '📲 Enviar de novo' : '📲 Enviar relatório ao lead'}</button>
             {deal.relatorio_doc_id && <a className="btn ghost sm" href={`https://docs.google.com/document/d/${deal.relatorio_doc_id}/edit`} target="_blank" rel="noreferrer">📄 Ver / editar o relatório</a>}
           </div>
@@ -917,7 +931,7 @@ function MeetingFiles({ deal, contato, firstName, modo }) {
             : <><b>Relatório para o lead</b> · confira e ajuste o texto antes de enviar (nomes, números e exemplos vêm da reunião: confira se está tudo certo).</>}</div>
           <textarea className="textarea" style={{ minHeight: deal.relatorio_doc_id ? 120 : 220 }} value={resumo} onChange={(e) => setResumo(e.target.value)} />
           <div className="row wrap" style={{ gap: 8, justifyContent: 'flex-end' }}>
-            {deal.relatorio_doc_id && <a className="btn sm" href={`https://docs.google.com/document/d/${deal.relatorio_doc_id}/export?format=pdf`} target="_blank" rel="noreferrer">⬇️ Baixar PDF</a>}
+            {deal.relatorio_doc_id && <button type="button" className="btn sm" onClick={baixarPdf}>⬇️ Baixar PDF</button>}
             <button type="button" className="btn ghost sm" onClick={() => setResumo(null)}>cancelar</button>
             <AbrirEm />
             <button type="button" className="btn primary sm" onClick={enviarResumo}>📲 Abrir no WhatsApp</button>
