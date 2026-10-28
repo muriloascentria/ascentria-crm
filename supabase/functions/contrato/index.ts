@@ -314,6 +314,13 @@ Deno.serve(async (req) => {
       body: JSON.stringify({ requests: [
         // parcelas diferentes: o texto completo entra no lugar de "valor (extenso)"
         ...(textoParcelas ? [{ replaceAllText: { containsText: { text: '{{VALOR_PARCELA}} ({{VALOR_PARCELA_EXTENSO}})', matchCase: true }, replaceText: `${textoParcelas}, sem juros` } }] : []),
+        // sem entrada: não escreve "R$ 0,00 (zero reais) - via pix na data de hoje"
+        ...(entrada <= 0 ? [{ replaceAllText: { containsText: { text: '\\{\\{ENTRADA\\}\\} \\(\\{\\{ENTRADA_EXTENSO\\}\\}\\)\\s*[-–—]?\\s*via pix na data de hoje', matchCase: false, searchByRegex: true }, replaceText: 'sem entrada' } }] : []),
+        // à vista (sem parcelas): não escreve "0 (zero vezes)" nem "R$ 0,00 (zero reais)"
+        ...(!nParc ? [
+          { replaceAllText: { containsText: { text: '{{NUM_PARCELAS}} ({{NUM_PARCELAS_EXTENSO}} vezes)', matchCase: true }, replaceText: 'pagamento à vista, sem parcelas' } },
+          { replaceAllText: { containsText: { text: '{{VALOR_PARCELA}} ({{VALOR_PARCELA_EXTENSO}})', matchCase: true }, replaceText: 'não se aplica' } },
+        ] : []),
         ...Object.entries(campos).map(([k, v]) => ({ replaceAllText: { containsText: { text: `{{${k}}}`, matchCase: true }, replaceText: v } })),
       ] }),
     })
