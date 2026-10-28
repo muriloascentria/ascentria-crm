@@ -231,8 +231,12 @@ export default function Pipeline() {
       {pipeStages.length === 0 ? <Empty title="Nenhuma etapa" text="Configure as etapas deste funil em Configurações → Funis." /> : (
         <div className={'kanban' + (mobile ? ' one' : '')} ref={boardRef}>
           {(mobile ? pipeStages.filter((s) => s.id === colAtiva?.id) : pipeStages).map((s) => {
-            // Ordem: respostas não lidas primeiro; depois quem respondeu por último no topo; quem nunca respondeu fica abaixo.
-            const items = filtered.filter((d) => d.stage_id === s.id).sort((a, b) => (Number(isUnread(b)) - Number(isUnread(a))) || ((b.last_inbound_at ? Date.parse(b.last_inbound_at) : 0) - (a.last_inbound_at ? Date.parse(a.last_inbound_at) : 0)))
+            // Ordem: respostas não lidas primeiro. Nas etapas de fechamento (Ganho/Perdido, ex.: "Fechou mentoria"),
+            // depois vem quem fechou por último (closed_at); nas demais, quem respondeu por último no topo.
+            const fechamento = s.kind === 'won' || s.kind === 'lost'
+            const ts = (v) => (v ? Date.parse(v) : 0)
+            const items = filtered.filter((d) => d.stage_id === s.id).sort((a, b) => (Number(isUnread(b)) - Number(isUnread(a)))
+              || (fechamento ? ts(b.closed_at) - ts(a.closed_at) : ts(b.last_inbound_at) - ts(a.last_inbound_at)))
             const unreadN = items.filter(isUnread).length
             const sum = items.reduce((a, d) => a + Number(d.value), 0)
             return (
