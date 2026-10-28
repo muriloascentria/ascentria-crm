@@ -292,15 +292,15 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     } else toast('Chave Pix copiada')
   }
   // pesquisa pós-consultoria do Murilo: copia (para mandar do WhatsApp dele) e deixa pronta na caixa de mensagem
-  const pesquisaMurilo = async () => {
-    const q = quick.find((x) => x.stage === 'pos')
+  // (a pesquisa vem em 2 mensagens: cada uma tem seu botão "Enviar esta"; a 1ª já fica copiada)
+  const pesquisaMurilo = async (q) => {
     if (!q) return
-    const t = fill(q.body)
-    try { await navigator.clipboard?.writeText(t) } catch { /* sem área de transferência */ }
+    const partes = splitParts(q.body).map(fill)
+    try { await navigator.clipboard?.writeText(partes[0] || '') } catch { /* sem área de transferência */ }
     pick(q)
     setSecMsg((n) => n + 1)
     setTimeout(() => document.querySelector('.card-guiado textarea')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80)
-    toast('Pesquisa copiada e colocada na caixa de mensagem')
+    toast(partes.length > 1 ? `Pronto: ${partes.length} mensagens, envie uma de cada vez (a 1ª já está copiada)` : 'Mensagem copiada e colocada na caixa de mensagem')
   }
   const abrirMensagens = () => {
     // Ao abrir, a lista já vai para a etapa da próxima mensagem.
@@ -645,9 +645,12 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
           <div className="small muted">Envie o relatório, registre a sessão e, se ela fechar, gere o contrato.</div>
           <MeetingFiles deal={deal} contato={contato} firstName={firstName} />
           <div className="passo-acoes">
-            {quick.some((q) => q.stage === 'pos') && (
-              <button type="button" className="btn" onClick={pesquisaMurilo} title="Mensagem do Murilo perguntando como foi a reunião (copia e coloca na caixa de mensagem)">🤓 Pesquisa do Murilo</button>
-            )}
+            {quick.filter((q) => q.stage === 'pos').map((q, i) => (
+              <button key={q.id} type="button" className={i === 0 ? 'btn' : 'btn ghost sm'} onClick={() => pesquisaMurilo(q)}
+                title={i === 0 ? 'Mensagem do Murilo perguntando como foi a reunião' : 'Resposta do Murilo depois que o lead der a nota'}>
+                {i === 0 ? `🤓 ${q.title}` : `↳ ${q.title}`}
+              </button>
+            ))}
             {onAbrirSessao && <button type="button" className="btn" onClick={onAbrirSessao}>📝 Registrar a sessão</button>}
             <button type="button" className="btn" onClick={() => setContratoAberto(true)}>📄 Contrato{deal.contrato_status === 'assinado' ? ' ✓' : deal.contrato_url ? ' •' : ''}</button>
             {podeCancelar && <button type="button" className="btn ghost sm" onClick={leadCancelou} disabled={calBusy === 'cancel'}>↺ Não aconteceu → Remarcar</button>}
