@@ -227,7 +227,12 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     supabase.from('quick_replies').select('*').order('position').then(({ data }) => setQuick(data || []))
     supabase.from('contacts').select('id,name,phone,wa_id,source,optin,marketing_opt_out').eq('id', contactId).single().then(({ data }) => { setContato(data || null); setFirstName((data?.name || '').split(' ')[0]) })
   }, [contactId])
-  const fill = (t = '') => fillSlots(fillMeeting(t.replace(/{{primeiro_nome}}/g, firstName).replace(/{{nome}}/g, firstName), meeting), offered)
+  // {{consultora}}: quem fez a reunião (ex.: "a Carmem", "o Diego")
+  const consultoraTxt = () => {
+    const n = String(sellers.find((x) => x.id === deal?.seller_id)?.name || '').split(' ')[0]
+    return n ? `${/^(diego|murilo)$/i.test(n) ? 'o' : 'a'} ${n}` : 'nossa consultora'
+  }
+  const fill = (t = '') => fillSlots(fillMeeting(t.replace(/{{primeiro_nome}}/g, firstName).replace(/{{nome}}/g, firstName).replace(/{{consultora}}/g, consultoraTxt()), meeting), offered)
   const pick = (q) => {
     setShowQuick(false)
     setPickedId(q.id)
@@ -285,6 +290,17 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
       setTimeout(() => document.querySelector('.card-guiado textarea')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80)
       toast('Chave Pix copiada e colocada na mensagem')
     } else toast('Chave Pix copiada')
+  }
+  // pesquisa pós-consultoria do Murilo: copia (para mandar do WhatsApp dele) e deixa pronta na caixa de mensagem
+  const pesquisaMurilo = async () => {
+    const q = quick.find((x) => x.stage === 'pos')
+    if (!q) return
+    const t = fill(q.body)
+    try { await navigator.clipboard?.writeText(t) } catch { /* sem área de transferência */ }
+    pick(q)
+    setSecMsg((n) => n + 1)
+    setTimeout(() => document.querySelector('.card-guiado textarea')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80)
+    toast('Pesquisa copiada e colocada na caixa de mensagem')
   }
   const abrirMensagens = () => {
     // Ao abrir, a lista já vai para a etapa da próxima mensagem.
@@ -629,6 +645,9 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
           <div className="small muted">Envie o relatório, registre a sessão e, se ela fechar, gere o contrato.</div>
           <MeetingFiles deal={deal} contato={contato} firstName={firstName} />
           <div className="passo-acoes">
+            {quick.some((q) => q.stage === 'pos') && (
+              <button type="button" className="btn" onClick={pesquisaMurilo} title="Mensagem do Murilo perguntando como foi a reunião (copia e coloca na caixa de mensagem)">🤓 Pesquisa do Murilo</button>
+            )}
             {onAbrirSessao && <button type="button" className="btn" onClick={onAbrirSessao}>📝 Registrar a sessão</button>}
             <button type="button" className="btn" onClick={() => setContratoAberto(true)}>📄 Contrato{deal.contrato_status === 'assinado' ? ' ✓' : deal.contrato_url ? ' •' : ''}</button>
             {podeCancelar && <button type="button" className="btn ghost sm" onClick={leadCancelou} disabled={calBusy === 'cancel'}>↺ Não aconteceu → Remarcar</button>}
