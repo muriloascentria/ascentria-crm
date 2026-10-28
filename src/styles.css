@@ -375,3 +375,20 @@ input[type=color] { width: 40px; height: 32px; padding: 2px; border: 1px solid v
 .contrato-revisao .revisao-tabela td:first-child { font-size: 16px; }
 .contrato-revisao input[type=checkbox] { width: 22px; height: 22px; }
 .contrato-revisao label { font-size: 18px; }
+
+/* Placar de vendas do mês (funil) */
+.placar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; padding: 12px 16px; margin: 0 0 12px; border-radius: 12px;
+  background: linear-gradient(90deg, #fff8e1, #e8f5e9); border: 1px solid #f0d78c; color: #2b2b2b; }
+.placar-mes { display: flex; align-items: center; gap: 4px; font-size: 16px; }
+.placar-num { display: flex; flex-direction: column; line-height: 1.15; }
+.placar-rot { font-size: 12px; color: #6b6b6b; font-weight: 600; }
+.placar-val { font-size: 22px; font-weight: 800; color: #1b5e20; }
+.placar-sub { font-size: 12px; color: #6b6b6b; }
+.placar-rank { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 260px; }
+.placar-pessoa { background: #fff; border: 1px solid #e5e5e5; border-radius: 999px; padding: 4px 10px; font-size: 14px; }
+.placar-pessoa.lider { border-color: #e0b400; box-shadow: 0 0 0 2px #ffe58a inset; }
+@media (prefers-color-scheme: dark) {
+  .placar { background: linear-gradient(90deg, #3a3220, #1f3324); border-color: #6b5a24; color: #eee; }
+  .placar-val { color: #8bd68f; }
+  .placar-pessoa { background: #2a2a2a; border-color: #444; }
+}
