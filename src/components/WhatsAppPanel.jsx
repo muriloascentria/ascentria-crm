@@ -11,6 +11,7 @@ import { Field } from './ui'
 import { callCalendar, fillSlots, slotLabel } from '../lib/calendar'
 import { leadAssinouEm } from '../lib/contrato'
 import { isManual, waLink, abrirWhatsApp, stageText, messageStage, podeReceber, marcarEnviado, desfazerEnviado, marcarRespondeu } from '../lib/manual'
+import { TITULO_PESQUISA } from './PesquisaPendente'
 
 /** Conversa de WhatsApp de um contato (com envio). deal opcional para vincular e calcular a janela de 24h. */
 const TODOS = '__todos'
@@ -299,6 +300,12 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     try { await navigator.clipboard?.writeText(partes[0] || '') } catch { /* sem área de transferência */ }
     pick(q)
     setSecMsg((n) => n + 1)
+    // 1ª mensagem da pesquisa: registra no card para o aviso "hora da pesquisa" sumir
+    const primeira = quick.filter((x) => x.stage === 'pos')[0]
+    if (deal?.id && primeira && q.id === primeira.id) {
+      supabase.from('activities').insert({ type: 'whatsapp', title: TITULO_PESQUISA, deal_id: deal.id, contact_id: deal.contact_id || null, done: true, done_at: new Date().toISOString() })
+        .then(() => window.dispatchEvent(new Event('pesquisa-enviada')))
+    }
     setTimeout(() => document.querySelector('.card-guiado textarea')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80)
     toast(partes.length > 1 ? `Pronto: ${partes.length} mensagens, envie uma de cada vez (a 1ª já está copiada)` : 'Mensagem copiada e colocada na caixa de mensagem')
   }

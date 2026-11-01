@@ -349,6 +349,11 @@ input[type=color] { width: 40px; height: 32px; padding: 2px; border: 1px solid v
 .alert-assinado { position: sticky; top: 0; z-index: 29; background: #1e7d45; color: #fff; border-radius: 12px; padding: 14px 16px; margin: 0 0 14px; font-size: 14px; box-shadow: 0 6px 22px rgba(30,125,69,.45); animation: assinado-pulsa 1.4s ease-in-out infinite; }
 .alert-assinado-titulo { font-size: 18px; font-weight: 800; letter-spacing: .02em; }
 .alert-assinado-item { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: rgba(255,255,255,.15); border-radius: 8px; padding: 8px 10px; }
+.alert-pesquisa { position: sticky; top: 0; z-index: 28; background: #1f5fa8; color: #fff; border-radius: 12px; padding: 14px 16px; margin: 0 0 14px; font-size: 14px; box-shadow: 0 6px 22px rgba(31,95,168,.4); }
+.alert-pesquisa-titulo { font-size: 17px; font-weight: 800; }
+.alert-pesquisa-item { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: rgba(255,255,255,.15); border-radius: 8px; padding: 8px 10px; }
+.alert-pesquisa .btn.ghost { color: #fff; border-color: rgba(255,255,255,.5); }
+.alert-pesquisa-btn { background: #fff; color: #1f5fa8; font-weight: 700; }
 .alert-assinado .btn { color: #fff; background: transparent; border: 1px solid rgba(255,255,255,.85); }
 .alert-assinado .alert-assinado-btn { background: #fff; color: #1e7d45; font-weight: 700; border-color: #fff; }
 @keyframes assinado-pulsa { 0%, 100% { background: #1e7d45; } 50% { background: #27a35a; box-shadow: 0 6px 30px rgba(39,163,90,.7); } }
