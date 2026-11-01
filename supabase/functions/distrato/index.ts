@@ -68,8 +68,18 @@ Deno.serve(async (req) => {
       await admin.from('deals').update(patch).eq('id', d.id)
       return json({ ok: true, ...r })
     }
-    if (b.action !== 'enviar') return json({ ok: false, error: 'Ação desconhecida' }, 400)
+    if (b.action !== 'enviar' && b.action !== 'previa') return json({ ok: false, error: 'Ação desconhecida' }, 400)
     if (!d.distrato_doc_id) return json({ ok: false, error: 'Este card não tem termo de cancelamento.' })
+    if (b.action === 'previa') {
+      // texto atual do documento, para revisar no CRM antes de enviar
+      const { data: st0 } = await admin.from('org_settings').select('contract_signer_email').eq('id', 1).single()
+      const sa0: SA = JSON.parse(Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON')!)
+      const tk0 = await googleToken(sa0, String(st0?.contract_signer_email || 'murilo@ascentria.com.br'))
+      const r = await fetch(`https://www.googleapis.com/drive/v3/files/${d.distrato_doc_id}/export?mimeType=text/plain`, { headers: { Authorization: `Bearer ${tk0}` } })
+      if (!r.ok) throw new Error('Não consegui ler o termo (Google ' + r.status + ').')
+      const texto = (await r.text()).replace(/^\uFEFF/, '').replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim()
+      return json({ ok: true, texto, email: d.contact?.email || null, nome: d.contact?.name || d.title, signatario: String(st0?.contract_signer_email || 'murilo@ascentria.com.br') })
+    }
     const email = String(b.email || d.contact?.email || '').trim().toLowerCase()
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ ok: false, error: 'O contato não tem e-mail válido para a assinatura.' })
     const { data: st } = await admin.from('org_settings').select('contract_signer_email').eq('id', 1).single()

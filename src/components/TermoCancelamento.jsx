@@ -11,6 +11,8 @@ export default function TermoCancelamento({ deal, contato }) {
   const { toast } = useApp()
   const [d, setD] = useState(deal)
   const [busy, setBusy] = useState('')
+  const [previa, setPrevia] = useState(null) // revisão antes de enviar: { texto, email, nome, signatario }
+  const [conferi, setConferi] = useState(false)
   useEffect(() => { setD(deal) }, [deal])
 
   const recarregar = async () => {
@@ -27,13 +29,23 @@ export default function TermoCancelamento({ deal, contato }) {
   const email = contato?.email || ''
   const nome = String(contato?.name || deal.title || '').trim().split(/\s+/)[0]
 
-  const enviar = async () => {
+  // 1º passo: abre a revisão com o texto atual do termo (como no contrato)
+  const revisar = async () => {
     if (!email) return toast('Cadastre o e-mail do lead no contato antes de enviar.', 'err')
-    if (d.distrato_status === 'enviado' && !confirm('O termo já foi enviado. Enviar de novo? O envio anterior será cancelado.')) return
+    setBusy('previa')
+    const { data, error } = await invokeFn('distrato', { body: { action: 'previa', deal_id: deal.id } })
+    setBusy('')
+    if (error || !data?.ok) return toast(data?.error || error?.message || 'Não consegui abrir o termo.', 'err')
+    setConferi(false)
+    setPrevia(data)
+  }
+  // 2º passo: depois de conferido, envia
+  const enviar = async () => {
     setBusy('enviar')
     const { data, error } = await invokeFn('distrato', { body: { action: 'enviar', deal_id: deal.id } })
     setBusy('')
     if (error || !data?.ok) return toast(data?.error || error?.message || 'Não consegui enviar.', 'err')
+    setPrevia(null)
     toast(`Termo enviado para assinatura: ${data.email}. Agora avise no WhatsApp.`)
     recarregar()
   }
@@ -66,14 +78,36 @@ export default function TermoCancelamento({ deal, contato }) {
       <div className="small muted">
         {st === 'enviado' || st === 'assinado' || st === 'recusado'
           ? <>Enviado em {quando(d.distrato_enviado_em)} para {email}. {sigs.map((s) => `${s.nome || s.email}: ${s.assinado_em ? 'assinou ✓' : s.recusado_em ? 'recusou' : s.visto_em ? 'abriu, falta assinar' : 'falta assinar'}`).join(' · ')}</>
-          : <>1. Toque em <b>Enviar por e-mail</b> (vai pela Autentique para você e para {email || 'o e-mail do lead'}). 2. Toque em <b>Avisar no WhatsApp</b>.</>}
+          : <>1. Toque em <b>Revisar e enviar por e-mail</b>, confira o termo e confirme (vai pela Autentique para você e para {email || 'o e-mail do lead'}). 2. Toque em <b>Avisar no WhatsApp</b>.</>}
       </div>
-      <div className="passo-acoes">
-        {st !== 'assinado' && <button type="button" className={'btn' + (st ? '' : ' primary')} onClick={enviar} disabled={!!busy}>{busy === 'enviar' ? 'Enviando…' : st ? '📧 Enviar de novo' : '📧 Enviar por e-mail para assinatura'}</button>}
+      {previa && (
+        <div className="contrato-revisao stack" style={{ gap: 10, marginTop: 10 }}>
+          <div className="passo-tit">🔎 Revise o termo antes de enviar</div>
+          <div className="small">
+            <div><b>Vai para assinatura de:</b></div>
+            <div>• Murilo Pedroso Alves · {previa.signatario}</div>
+            <div>• {previa.nome} · <b>{previa.email}</b></div>
+          </div>
+          <div className="termo-previa">{previa.texto}</div>
+          <div className="small muted">Precisa mudar algo? Toque em <b>✏️ Editar o termo</b>, ajuste no Google Docs e depois toque em <b>↻ Atualizar</b> para ver a versão nova aqui.</div>
+          <label className="row" style={{ gap: 8, alignItems: 'center' }}>
+            <input type="checkbox" checked={conferi} onChange={(e) => setConferi(e.target.checked)} />
+            <span>Conferi nome, CPF, valores, datas e o e-mail da lead.</span>
+          </label>
+          <div className="passo-acoes">
+            <button type="button" className="btn primary" onClick={enviar} disabled={!conferi || !!busy}>{busy === 'enviar' ? 'Enviando…' : '✅ Confirmar e enviar por e-mail'}</button>
+            <a className="btn" href={`https://docs.google.com/document/d/${d.distrato_doc_id}/edit`} target="_blank" rel="noreferrer">✏️ Editar o termo</a>
+            <button type="button" className="btn ghost sm" onClick={revisar} disabled={!!busy}>{busy === 'previa' ? 'Atualizando…' : '↻ Atualizar'}</button>
+            <button type="button" className="btn ghost sm" onClick={() => setPrevia(null)}>Voltar</button>
+          </div>
+        </div>
+      )}
+      {!previa && <div className="passo-acoes">
+        {st !== 'assinado' && <button type="button" className={'btn' + (st ? '' : ' primary')} onClick={revisar} disabled={!!busy}>{busy === 'previa' ? 'Abrindo…' : st ? '📧 Revisar e enviar de novo' : '📧 Revisar e enviar por e-mail'}</button>}
         {(st === 'enviado' || st === 'recusado') && <button type="button" className="btn primary" onClick={avisar}>📲 Avisar no WhatsApp</button>}
         <a className="btn ghost sm" href={d.distrato_pdf_url || d.distrato_url || `https://docs.google.com/document/d/${d.distrato_doc_id}/edit`} target="_blank" rel="noreferrer">{d.distrato_pdf_url ? '📄 PDF assinado' : '📄 Ver / editar o termo'}</a>
         {st === 'enviado' && <button type="button" className="btn ghost sm" onClick={() => conferir(false)} disabled={!!busy}>{busy === 'status' ? 'Conferindo…' : '↻ Conferir assinatura'}</button>}
-      </div>
+      </div>}
     </div>
   )
 }
