@@ -7,6 +7,7 @@ import { fmtDateTime, fmtDate } from '../lib/utils'
 import WhatsAppPanel from './WhatsAppPanel'
 import SessaoRegistro from './SessaoRegistro'
 import Secao from './Secao'
+import TermoCancelamento from './TermoCancelamento'
 import { daysIn } from '../lib/wa'
 
 /** Documentos pendentes do card (tarefas abertas com link do Google Docs/Drive): ficam à vista, com botão para abrir. */
@@ -59,7 +60,7 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved, onMar
   const curStage = stages.find((s) => s.id === f.stage_id)
 
   useEffect(() => {
-    supabase.from('contacts').select('id,name,phone,wa_id,marketing_opt_out,opt_out_at,opt_out_motivo,optin').order('name').then(({ data }) => setContacts(data || []))
+    supabase.from('contacts').select('id,name,phone,email,wa_id,marketing_opt_out,opt_out_at,opt_out_motivo,optin').order('name').then(({ data }) => setContacts(data || []))
     if (deal?.id) supabase.from('deal_stage_history').select('*').eq('deal_id', deal.id).order('changed_at', { ascending: false }).then(({ data }) => setHistory(data || []))
   }, [deal?.id])
 
@@ -146,6 +147,7 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved, onMar
       )}
       {deal?.id ? (
         <div className="stack" style={{ gap: 8, marginTop: 10 }}>
+          <TermoCancelamento deal={deal} contato={contato} />
           <DocsPendentes dealId={deal.id} />
           <Secao id="sec-sessao" icone="📝" titulo="Registro da sessão" resumo={deal.sessao_salva_em ? `✓ salvo em ${fmtDate(deal.sessao_salva_em)}` : 'depois da consultoria'} abrir={abrirSessao}>
             <SessaoRegistro deal={deal} contato={contato} onSaved={onSaved} stageId={f.stage_id} onStageChanged={(id) => set('stage_id', id)} />
