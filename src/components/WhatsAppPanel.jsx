@@ -878,7 +878,7 @@ function MeetingFiles({ deal, contato, firstName, modo }) {
       `Oi${nome ? `, ${nome}` : ''}! Aqui é o Enfermeiro Murilo 🤓`,
       `${consultora ? `${art} ${consultora} me passou como foi a conversa de vocês, e` : 'Eu'} fiz questão de te enviar pessoalmente o seu *Relatório de Diagnóstico Profissional*: tudo o que você trouxe, organizado em forças, fraquezas, oportunidades e ameaças.`,
       '📄 Segue em PDF (anexo). Vale ler com calma, principalmente a parte das oportunidades.',
-      'E me conta uma coisa: de 0 a 10, o quanto essa conversa te ajudou a enxergar o próximo passo do seu consultório?',
+      'E me conta uma coisa: de 0 a 10, o quanto essa conversa te ajudou a enxergar o próximo passo do seu consultório? Pode responder só com o número 🙂',
     ].join('\n\n'))
   }
   const relatorioPronto = !!deal.relatorio_texto
