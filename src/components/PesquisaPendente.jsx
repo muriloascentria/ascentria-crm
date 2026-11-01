@@ -23,7 +23,7 @@ export default function PesquisaPendente() {
     if (!isManager) return
     const desde = new Date(Date.now() - (JANELA_DIAS + 1) * 86_400_000).toISOString().slice(0, 10)
     const { data } = await supabase.from('deals')
-      .select('id, title, meeting_date, meeting_time, stage:stages(name), contact:contacts(name), seller:calendar_sellers(name)')
+      .select('id, title, meeting_date, meeting_time, relatorio_texto, relatorio_enviado_em, stage:stages(name), contact:contacts(name), seller:calendar_sellers(name)')
       .gte('meeting_date', desde)
       .not('meeting_time', 'is', null)
     const agora = Date.now()
@@ -62,7 +62,7 @@ export default function PesquisaPendente() {
 
   return (
     <div className="alert-pesquisa" role="alert">
-      <div className="alert-pesquisa-titulo">🤓 {pendentes.length === 1 ? 'Hora de enviar a pesquisa pós-reunião' : `${pendentes.length} pesquisas pós-reunião para enviar`}</div>
+      <div className="alert-pesquisa-titulo">🤓 {pendentes.length === 1 ? 'Hora de enviar o relatório + pesquisa' : `${pendentes.length} leads esperando o relatório + pesquisa`}</div>
       <div className="stack" style={{ gap: 6, marginTop: 8 }}>
         {pendentes.map((d) => (
           <div key={d.id} className="alert-pesquisa-item">
@@ -71,6 +71,7 @@ export default function PesquisaPendente() {
               {d.seller?.name && <> · reunião com <b>{d.seller.name}</b></>}
               <span> · {quando(d.ini)}</span>
               {d.stage?.name && <span> · {d.stage.name}</span>}
+              <span> · {d.relatorio_enviado_em ? 'relatório já foi; falta a pesquisa' : d.relatorio_texto ? '📄 relatório pronto: enviar com a pesquisa' : '⏳ relatório ainda sendo gerado'}</span>
             </div>
             <button type="button" className="btn sm alert-pesquisa-btn" onClick={() => navigate(`/funil?negocio=${d.id}`)}>Abrir card</button>
             <button type="button" className="btn sm" onClick={() => jaEnviei(d)}>✓ Já enviei</button>

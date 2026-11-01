@@ -867,9 +867,19 @@ function MeetingFiles({ deal, contato, firstName, modo }) {
   const [err, setErr] = useState('')
   const [enviadoEm, setEnviadoEm] = useState(deal.relatorio_enviado_em || null)
   // a mensagem diz "PDF (anexo)": a consultora baixa o PDF e anexa na conversa do WhatsApp
+  // Padrão: o relatório sai na voz do Enfermeiro Murilo (a autoridade) e já termina com a pergunta da pesquisa.
+  // Uma mensagem só, uma pergunta só: o lead responde a nota e a conversa segue com o Murilo.
   const abrirMensagemRelatorio = () => {
     const base = deal.relatorio_texto || ''
-    setResumo(base.replace(/📄 Seu relatório em PDF: \{PDF\}/, '📄 Seu relatório segue em PDF (anexo).').replace('{PDF}', '(anexo)'))
+    const consultora = (base.match(/Aqui é (?:a|o) ([^\s,]+)/) || [])[1] || ''
+    const art = /^(diego|murilo)$/i.test(consultora) ? 'O' : 'A'
+    const nome = String(contato?.name || deal.title || '').trim().split(/\s+/)[0]
+    setResumo([
+      `Oi${nome ? `, ${nome}` : ''}! Aqui é o Enfermeiro Murilo 🤓`,
+      `${consultora ? `${art} ${consultora} me passou como foi a conversa de vocês, e` : 'Eu'} fiz questão de te enviar pessoalmente o seu *Relatório de Diagnóstico Profissional*: tudo o que você trouxe, organizado em forças, fraquezas, oportunidades e ameaças.`,
+      '📄 Segue em PDF (anexo). Vale ler com calma, principalmente a parte das oportunidades.',
+      'E me conta uma coisa: de 0 a 10, o quanto essa conversa te ajudou a enxergar o próximo passo do seu consultório?',
+    ].join('\n\n'))
   }
   const relatorioPronto = !!deal.relatorio_texto
   const inicio = deal.meeting_date && deal.meeting_time ? new Date(`${deal.meeting_date}T${String(deal.meeting_time).slice(0, 5)}:00-03:00`).getTime() : null
@@ -932,6 +942,8 @@ function MeetingFiles({ deal, contato, firstName, modo }) {
     // relatório automático: sai do aviso do funil e a tarefa "📝 Relatório… pronto" fica concluída
     supabase.from('deals').update({ relatorio_enviado_em: agora }).eq('id', deal.id).then(() => {})
     supabase.from('activities').update({ done: true, done_at: agora }).eq('deal_id', deal.id).eq('done', false).like('title', '📝 Relatório da consultoria pronto%').then(() => {})
+    // a mensagem do relatório já leva a pesquisa do Murilo: o aviso "hora da pesquisa" some
+    if (/de 0 a 10/.test(resumo || '')) supabase.from('activities').insert({ type: 'whatsapp', title: TITULO_PESQUISA, deal_id: deal.id, contact_id: deal.contact_id || null, done: true, done_at: agora }).then(() => window.dispatchEvent(new Event('pesquisa-enviada')))
     deal.relatorio_enviado_em = agora
     setEnviadoEm(agora)
     window.dispatchEvent(new CustomEvent('crm:relatorio-enviado', { detail: { dealId: deal.id } }))
@@ -942,7 +954,7 @@ function MeetingFiles({ deal, contato, firstName, modo }) {
     if (!relatorioPronto) return null
     return (
       <div className={'passo relatorio-box' + (enviadoEm ? ' passo-off' : '')}>
-        <div className="passo-tit">{enviadoEm ? '✓ Relatório da consultoria enviado' : '📝 Relatório da consultoria pronto: enviar ao lead'}</div>
+        <div className="passo-tit">{enviadoEm ? '✓ Relatório da consultoria enviado' : '📝 Relatório pronto: o Murilo envia ao lead (já com a pesquisa)'}</div>
         <div className="small muted">{enviadoEm
           ? <>Enviado em {new Date(enviadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}.</>
           : <>1. Toque em <b>⬇️ Baixar PDF</b>. 2. Toque em <b>Enviar relatório ao lead</b> e abra no WhatsApp. 3. Na conversa, anexe o PDF e envie junto com a mensagem.</>}</div>
