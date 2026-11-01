@@ -397,3 +397,5 @@ input[type=color] { width: 40px; height: 32px; padding: 2px; border: 1px solid v
   .placar-val { color: #8bd68f; }
   .placar-pessoa { background: #2a2a2a; border-color: #444; }
 }
+
+.doc-pendente { border: 2px solid #c9973f; background: #fff8ea; }

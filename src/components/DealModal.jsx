@@ -9,6 +9,35 @@ import SessaoRegistro from './SessaoRegistro'
 import Secao from './Secao'
 import { daysIn } from '../lib/wa'
 
+/** Documentos pendentes do card (tarefas abertas com link do Google Docs/Drive): ficam à vista, com botão para abrir. */
+function DocsPendentes({ dealId }) {
+  const [itens, setItens] = useState([])
+  useEffect(() => {
+    if (!dealId) return
+    supabase.from('activities').select('id, title, description').eq('deal_id', dealId).eq('done', false)
+      .or('description.ilike.%docs.google.com%,description.ilike.%drive.google.com%')
+      .then(({ data }) => setItens(data || []))
+  }, [dealId])
+  const feito = async (a) => {
+    setItens((l) => l.filter((x) => x.id !== a.id))
+    await supabase.from('activities').update({ done: true, done_at: new Date().toISOString() }).eq('id', a.id)
+  }
+  if (!itens.length) return null
+  return itens.map((a) => {
+    const link = (a.description.match(/https:\/\/(?:docs|drive)\.google\.com\/\S+/) || [])[0]
+    return (
+      <div key={a.id} className="passo doc-pendente">
+        <div className="passo-tit">{a.title}</div>
+        <div className="small" style={{ whiteSpace: 'pre-wrap' }}>{a.description.replace(link, '').replace(/^[^\n]*:\s*\n+/, '').trim()}</div>
+        <div className="passo-acoes">
+          {link && <a className="btn primary" href={link} target="_blank" rel="noreferrer">📄 Abrir documento</a>}
+          <button type="button" className="btn ghost sm" onClick={() => feito(a)}>✓ Feito</button>
+        </div>
+      </div>
+    )
+  })
+}
+
 /**
  * Modal de criação/edição de negócio.
  * props: deal (null para novo), defaults { pipeline_id, stage_id, contact_id }, onClose, onSaved,
@@ -117,6 +146,7 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved, onMar
       )}
       {deal?.id ? (
         <div className="stack" style={{ gap: 8, marginTop: 10 }}>
+          <DocsPendentes dealId={deal.id} />
           <Secao id="sec-sessao" icone="📝" titulo="Registro da sessão" resumo={deal.sessao_salva_em ? `✓ salvo em ${fmtDate(deal.sessao_salva_em)}` : 'depois da consultoria'} abrir={abrirSessao}>
             <SessaoRegistro deal={deal} contato={contato} onSaved={onSaved} stageId={f.stage_id} onStageChanged={(id) => set('stage_id', id)} />
           </Secao>
