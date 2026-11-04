@@ -162,6 +162,23 @@ Deno.serve(async (req) => {
     return gcal(tk, `/${encodeURIComponent(id)}?conferenceDataVersion=1&sendUpdates=none`, { method: 'PATCH', body: JSON.stringify(body) })
   }
 
+  // Reunião que já começou NÃO volta a ficar disponível: o Meet anexa a gravação e as anotações no próprio evento
+  // (às vezes horas depois). O evento fica como está na agenda e entra no histórico do card (reunioes_anteriores),
+  // para o CRM continuar juntando os arquivos de todas as partes da consultoria. Só horário futuro é liberado.
+  const jaComecou = (ev: any) => !!ev?.start?.dateTime && Date.now() >= new Date(ev.start.dateTime).getTime() - 5 * 60_000
+  const guardarOuLiberar = async (tk: string, dealId: string, sellerId: string | null, eventId: string, extra: Record<string, unknown> = {}) => {
+    const ev = await gcal(tk, `/${encodeURIComponent(eventId)}`).catch(() => null)
+    if (ev && jaComecou(ev)) {
+      const { data } = await admin.from('deals').select('reunioes_anteriores').eq('id', dealId).single()
+      const lista: any[] = Array.isArray(data?.reunioes_anteriores) ? data.reunioes_anteriores : []
+      if (!lista.some((r) => r?.event_id === eventId)) lista.push({ event_id: eventId, seller_id: sellerId, ...spParts(ev.start.dateTime), guardado_em: new Date().toISOString() })
+      await admin.from('deals').update({ reunioes_anteriores: lista }).eq('id', dealId)
+      return { guardado: true }
+    }
+    await liberar(tk, eventId, extra)
+    return { guardado: false }
+  }
+
   const seller = async (id: string) => {
     const { data } = await admin.from('calendar_sellers').select('id, name, email, active').eq('id', id).maybeSingle()
     if (!data?.active) throw new Error('Vendedora não encontrada ou inativa.')
@@ -169,7 +186,7 @@ Deno.serve(async (req) => {
   }
   // O negócio precisa ser visível para quem pede (regras de acesso do banco).
   const dealFor = async (id: string) => {
-    const { data } = await userClient.from('deals').select('id, title, seller_id, calendar_event_id, meeting_date, meeting_time, contact:contacts(name, phone, wa_id)').eq('id', id).maybeSingle()
+    const { data } = await userClient.from('deals').select('id, title, seller_id, calendar_event_id, meeting_date, meeting_time, reunioes_anteriores, contact:contacts(name, phone, wa_id)').eq('id', id).maybeSingle()
     if (!data) throw new Error('Negócio não encontrado.')
     return data as any
   }
@@ -229,7 +246,7 @@ Deno.serve(async (req) => {
         try {
           const old = await seller(deal.seller_id)
           const tkOld = old.email === s.email ? tk : await googleToken(sa, old.email)
-          await liberar(tkOld, deal.calendar_event_id)
+          await guardarOuLiberar(tkOld, deal.id, deal.seller_id, deal.calendar_event_id)
         } catch { /* o anterior pode ter sido apagado na agenda; segue */ }
       }
       const ev = await gcal(tk, `/${encodeURIComponent(b.event_id)}`)
@@ -262,7 +279,7 @@ Deno.serve(async (req) => {
       if (deal.calendar_event_id && deal.seller_id) {
         const s = await seller(deal.seller_id)
         const tk = await googleToken(sa, s.email)
-        await liberar(tk, deal.calendar_event_id)
+        await guardarOuLiberar(tk, deal.id, deal.seller_id, deal.calendar_event_id)
       }
       await admin.from('deals').update({ calendar_event_id: null, meeting_date: null, meeting_time: null, meeting_link: null }).eq('id', deal.id)
       return json({ ok: true })
@@ -291,14 +308,25 @@ Deno.serve(async (req) => {
           if (ev) break
         }
       }
-      if (!ev) {
-        await admin.from('deals').update({ meeting_files_checked_at: new Date().toISOString() }).eq('id', deal.id)
-        return json({ ok: true, files: [], found_event: false })
-      }
       const tipo = (a: any) => /^video\//.test(a.mimeType || '') ? 'gravacao'
         : /transcri/i.test(a.title || '') ? 'transcricao'
         : /anota|notes|gemini/i.test(a.title || '') ? 'anotacoes' : 'arquivo'
-      const files = (ev.attachments ?? []).map((a: any) => ({ kind: tipo(a), title: a.title || 'Arquivo', url: a.fileUrl, mime: a.mimeType || null }))
+      const mapa = (e: any) => (e?.attachments ?? []).map((a: any) => ({ kind: tipo(a), title: a.title || 'Arquivo', url: a.fileUrl, mime: a.mimeType || null, ...(e?.start?.dateTime ? { reuniao: spParts(e.start.dateTime).date } : {}) }))
+      // partes anteriores da consultoria (reunião que começou e foi remarcada): os arquivos delas ficam no card também
+      const antigos: any[] = []
+      for (const r of Array.isArray(deal.reunioes_anteriores) ? deal.reunioes_anteriores : []) {
+        if (!r?.event_id || r.event_id === ev?.id) continue
+        const s = r.seller_id ? await seller(r.seller_id).catch(() => null) : null
+        if (!s) continue
+        const e = await gcal(await googleToken(sa, s.email), `/${encodeURIComponent(r.event_id)}`).catch(() => null)
+        if (e) antigos.push(...mapa(e))
+      }
+      if (!ev && !antigos.length) {
+        await admin.from('deals').update({ meeting_files_checked_at: new Date().toISOString() }).eq('id', deal.id)
+        return json({ ok: true, files: [], found_event: false })
+      }
+      const vistos = new Set<string>()
+      const files = [...antigos, ...mapa(ev)].filter((f: any) => f.url && !vistos.has(f.url) && vistos.add(f.url))
       await admin.from('deals').update({ meeting_files: files, meeting_files_checked_at: new Date().toISOString() }).eq('id', deal.id)
       // gravação e transcrição entram também no registro da sessão 1:1 (e no Essência Plat, se já registrada)
       const sessao = await levarArquivosParaSessao(admin, deal.id, files)
@@ -349,7 +377,7 @@ Deno.serve(async (req) => {
         : await gcal(tkTo, `?conferenceDataVersion=1&sendUpdates=none`, { method: 'POST', body: JSON.stringify({ ...body, ...extra, start: ev.start, end: ev.end, conferenceData: conf }) })
 
       // a agenda antiga: o horário volta a ficar disponível
-      await liberar(tkFrom, ev.id, guests.length ? { attendees: [] } : {})
+      await guardarOuLiberar(tkFrom, deal.id, from.id, ev.id, guests.length ? { attendees: [] } : {})
 
       const link = created.hangoutLink || created.conferenceData?.entryPoints?.find((p: any) => p.entryPointType === 'video')?.uri || null
       await admin.from('deals').update({ seller_id: to.id, calendar_event_id: created.id, meeting_date: when.date, meeting_time: when.time, meeting_link: link }).eq('id', deal.id)

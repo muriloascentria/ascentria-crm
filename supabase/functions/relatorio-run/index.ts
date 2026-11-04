@@ -74,8 +74,19 @@ async function buscarArquivos(admin: any, sa: SA, d: any, titulo: string): Promi
       if (ev) break
     }
   }
-  if (!ev) return null
-  return (ev.attachments ?? []).map((a: any) => ({ kind: tipo(a), title: a.title || 'Arquivo', url: a.fileUrl, mime: a.mimeType || null }))
+  const mapa = (e: any) => (e?.attachments ?? []).map((a: any) => ({ kind: tipo(a), title: a.title || 'Arquivo', url: a.fileUrl, mime: a.mimeType || null, ...(e?.start?.dateTime ? { reuniao: String(e.start.dateTime).slice(0, 10) } : {}) }))
+  // partes anteriores da consultoria (começou e foi remarcada): os arquivos delas continuam no card
+  const antigos: any[] = []
+  for (const r of Array.isArray(d.reunioes_anteriores) ? d.reunioes_anteriores : []) {
+    if (!r?.event_id || r.event_id === ev?.id || !r.seller_id) continue
+    const { data: s } = await admin.from('calendar_sellers').select('email').eq('id', r.seller_id).maybeSingle()
+    if (!s?.email) continue
+    const e = await gcal(await googleToken(sa, s.email, CAL_SCOPE), `/${encodeURIComponent(r.event_id)}`).catch(() => null)
+    if (e) antigos.push(...mapa(e))
+  }
+  if (!ev && !antigos.length) return null
+  const vistos = new Set<string>()
+  return [...antigos, ...mapa(ev)].filter((f: any) => f.url && !vistos.has(f.url) && vistos.add(f.url))
 }
 
 /** Lê as Anotações do Gemini: seções Resumo e Próximas etapas, já no formato do WhatsApp. */
@@ -191,7 +202,7 @@ Deno.serve(async (req) => {
   const agora = Date.now()
   const desde = new Date(agora - 3 * 86_400_000).toISOString().slice(0, 10)
   const { data: deals } = await admin.from('deals')
-    .select('id, title, contact_id, owner_id, meeting_date, meeting_time, calendar_event_id, meeting_files, relatorio_checado_em, plat_sessao_id, seller:calendar_sellers(name, email), contact:contacts(name)')
+    .select('id, title, contact_id, owner_id, meeting_date, meeting_time, calendar_event_id, meeting_files, reunioes_anteriores, relatorio_checado_em, plat_sessao_id, seller:calendar_sellers(name, email), contact:contacts(name)')
     .gte('meeting_date', desde).is('relatorio_pronto_em', null).is('relatorio_fonte', null).not('meeting_time', 'is', null).not('seller_id', 'is', null)
     .order('meeting_date', { ascending: false }).limit(40)
 

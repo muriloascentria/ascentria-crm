@@ -982,7 +982,8 @@ function MeetingFiles({ deal, contato, firstName, modo }) {
       </div>
     )
   }
-  if (!passou) return null
+  // arquivos de partes anteriores (reunião remarcada) aparecem mesmo antes da nova reunião
+  if (!passou && !files.length) return null
   return (
     <div className="card" style={{ padding: 10, background: 'var(--surface-2, #f6f5f1)' }}>
       <div className="between" style={{ gap: 8 }}>
@@ -991,7 +992,7 @@ function MeetingFiles({ deal, contato, firstName, modo }) {
       </div>
       {files.length > 0 ? (
         <div className="stack" style={{ gap: 4, marginTop: 6 }}>
-          {files.map((f, i) => <a key={i} className="small" href={f.url} target="_blank" rel="noreferrer">{FILE_LABEL[f.kind] || FILE_LABEL.arquivo}: {f.title}</a>)}
+          {files.map((f, i) => <a key={i} className="small" href={f.url} target="_blank" rel="noreferrer">{FILE_LABEL[f.kind] || FILE_LABEL.arquivo}{f.reuniao ? ` (${f.reuniao.split('-').reverse().slice(0, 2).join('/')})` : ''}: {f.title}</a>)}
         </div>
       ) : (
         <div className="small muted" style={{ marginTop: 4 }}>
