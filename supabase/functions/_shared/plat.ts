@@ -12,7 +12,10 @@ export function platClient() {
 /** Links da reunião: gravação e transcrição (sem a transcrição do Meet, vale o documento de anotações do Gemini,
  *  que traz o resumo e a transcrição da conversa). */
 export function linksReuniao(files: any[]): { video: string; transcricao: string } {
-  const url = (k: string) => (files ?? []).find((f: any) => f?.kind === k && f?.url)?.url ?? ''
+  // reunião remarcada (várias partes): vale a da parte mais recente, que é onde a venda acontece
+  const lista = (files ?? []).map((x: any, i: number) => ({ x, i }))
+    .sort((a: any, b: any) => String(b.x?.reuniao || '').localeCompare(String(a.x?.reuniao || '')) || b.i - a.i).map((o: any) => o.x)
+  const url = (k: string) => lista.find((f: any) => f?.kind === k && f?.url)?.url ?? ''
   return { video: url('gravacao'), transcricao: url('transcricao') || url('anotacoes') }
 }
 
