@@ -52,7 +52,7 @@ export default function MetasVendas({ atualizar }) {
                     <td>{i === 0 && p.vendas > 0 ? '🥇' : i === 1 && p.vendas > 0 ? '🥈' : i === 2 && p.vendas > 0 ? '🥉' : i + 1}</td>
                     <td><b>{p.nome}</b>{p.upsells ? <span className="small muted"> · +{p.upsells} upsell{p.upsells > 1 ? 's' : ''}</span> : null}</td>
                     <td>{p.vendas}</td>
-                    <td>{fmtMoney(p.valor)}</td>
+                    <td>{fmtMoney(p.valor)}{p.valor_upsell ? <div className="small muted">+ {fmtMoney(p.valor_upsell)} de upsell</div> : null}</td>
                     <td>{fmtMoney(p.cash || 0)}{p.cash_upsell ? <div className="small muted">{fmtMoney(p.cash_upsell)} de upsell</div> : null}</td>
                     <td>{p.sessoes}</td>
                     <td>{p.noshow}</td>

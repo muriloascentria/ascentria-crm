@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
     }
     // Cash collect do mês (caixa_lancamentos): Pix na hora + cartão por link (D+1, já sem a taxa da InfinitePay), inclui upsell.
     // Upsell/renovação lançado no caixa também tira a sessão das vendas novas (pelo nome do lead), se o Plat ainda não marcou.
-    const { data: cx } = await admin.from('caixa_lancamentos').select('vendedor, tipo, liquido, lead').gte('data', mesIni).lt('data', mesFim)
+    const { data: cx } = await admin.from('caixa_lancamentos').select('vendedor, tipo, liquido, lead, valor_contrato').gte('data', mesIni).lt('data', mesFim)
     const sem = (t: string) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().split(/\s+/).slice(0, 2).join(' ')
     const upsellNome = new Set((cx ?? []).filter((l: any) => l.tipo === 'upsell' && l.lead).map((l: any) => sem(l.lead)))
     const quem = (v: string) => { const t = String(v || '').trim(); return /^carmem e diego$/i.test(t) ? 'Diego' : t }
@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
         if (show) mes.realizadas++
         if (venda) { mes.vendas++; mes.valor += Number(r.valor_numerico) || 0 }
         const n = quem(r.vendedor); if (!n || /viviane/i.test(n)) continue
-        const p = por[n] ??= { nome: n, sessoes: 0, noshow: 0, vendas: 0, upsells: 0, valor: 0, cash: 0, cash_upsell: 0 }
+        const p = por[n] ??= { nome: n, sessoes: 0, noshow: 0, vendas: 0, upsells: 0, valor: 0, cash: 0, cash_upsell: 0, valor_upsell: 0 }
         if (show) p.sessoes++; else if (r.presenca === 'No-show') p.noshow++
         if (venda) { p.vendas++; p.valor += Number(r.valor_numerico) || 0 }
         else if (r.resultado === 'Vendido' && up) p.upsells++
@@ -89,10 +89,10 @@ Deno.serve(async (req) => {
     }
     for (const l of cx ?? []) {
       const n = quem((l as any).vendedor); if (!n || /viviane/i.test(n)) continue
-      const p = por[n] ??= { nome: n, sessoes: 0, noshow: 0, vendas: 0, upsells: 0, valor: 0, cash: 0, cash_upsell: 0 }
+      const p = por[n] ??= { nome: n, sessoes: 0, noshow: 0, vendas: 0, upsells: 0, valor: 0, cash: 0, cash_upsell: 0, valor_upsell: 0 }
       const v = Number((l as any).liquido) || 0
       p.cash += v; mes.cash += v
-      if ((l as any).tipo === 'upsell') p.cash_upsell += v
+      if ((l as any).tipo === 'upsell') { p.cash_upsell += v; p.valor_upsell += Number((l as any).valor_contrato) || 0 }
     }
     ranking = Object.values(por).map((p: any) => ({ ...p, conversao: p.sessoes ? Math.round(p.vendas / p.sessoes * 1000) / 10 : 0 }))
       .sort((a: any, b: any) => b.vendas - a.vendas || b.valor - a.valor || b.conversao - a.conversao || b.sessoes - a.sessoes)
