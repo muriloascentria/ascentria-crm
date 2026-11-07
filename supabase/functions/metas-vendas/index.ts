@@ -93,12 +93,14 @@ Deno.serve(async (req) => {
     const sem = (t: string) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().split(/\s+/).slice(0, 2).join(' ')
     const upsellNome = new Set((cx ?? []).filter((l: any) => l.tipo === 'upsell' && l.lead).map((l: any) => sem(l.lead)))
     const quem = (v: string) => { const t = String(v || '').trim(); return /^carmem e diego$/i.test(t) ? 'Diego' : t }
-    const novo = (n: string) => ({ nome: n, sessoes: 0, noshow: 0, vendas: 0, valor: 0, cash: 0, upsells: 0, valor_upsell: 0, cash_upsell: 0 })
+    const novo = (n: string) => ({ nome: n, sessoes: 0, noshow: 0, vendas: 0, valor: 0, cash: 0, upsells: 0, valor_upsell: 0, cash_upsell: 0, sessoes_upsell: 0 })
     // os três consultores sempre aparecem (vendas novas e upsell/renovação), mesmo zerados
     const por: Record<string, any> = { Adriana: novo('Adriana'), Carmem: novo('Carmem'), Diego: novo('Diego') }
     for (const r of vs ?? []) {
       const up = !!r.upsell || upsellCRM.has(r.id) || (r.resultado === 'Vendido' && upsellNome.has(sem(r.lead_nome)))
-      const show = r.presenca === 'Show', venda = r.resultado === 'Vendido' && !up
+      // Sessão de upsell/renovação (quem já é mentorada) não entra nas sessões das vendas novas:
+      // nem na meta de sessões realizadas, nem no denominador da conversão.
+      const show = r.presenca === 'Show' && !up, venda = r.resultado === 'Vendido' && !up
       if (r.data_sessao >= wIni && r.data_sessao < wFim) { if (show) semana.realizadas++; if (venda) semana.vendas++ }
       if (r.data_sessao >= mesIni && r.data_sessao < wIni && show) realizadasAntes++
       if (r.data_sessao >= mesIni && r.data_sessao < mesFim) {
@@ -106,6 +108,7 @@ Deno.serve(async (req) => {
         if (venda) { mes.vendas++; mes.valor += Number(r.valor_numerico) || 0 }
         const n = quem(r.vendedor); if (!n || /viviane/i.test(n)) continue
         const p = por[n] ??= novo(n)
+        if (up) { if (r.presenca === 'Show') p.sessoes_upsell++; continue }
         if (show) p.sessoes++; else if (r.presenca === 'No-show') p.noshow++
         if (venda) { p.vendas++; p.valor += Number(r.valor_numerico) || 0 }
       }
@@ -121,7 +124,7 @@ Deno.serve(async (req) => {
     }
     ranking = Object.values(por).map((p: any) => ({ ...p, conversao: p.sessoes ? Math.round(p.vendas / p.sessoes * 1000) / 10 : 0 }))
       .sort((a: any, b: any) => b.vendas - a.vendas || b.valor - a.valor || b.conversao - a.conversao || b.sessoes - a.sessoes)
-    ranking_upsell = Object.values(por).map((p: any) => ({ nome: p.nome, upsells: p.upsells, valor: p.valor_upsell, cash: p.cash_upsell }))
+    ranking_upsell = Object.values(por).map((p: any) => ({ nome: p.nome, sessoes: p.sessoes_upsell, upsells: p.upsells, valor: p.valor_upsell, cash: p.cash_upsell }))
       .sort((a: any, b: any) => b.valor - a.valor || b.cash - a.cash || b.upsells - a.upsells)
   }
   const metas = {
