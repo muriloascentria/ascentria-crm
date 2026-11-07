@@ -56,6 +56,16 @@ function useWheelToHorizontal() {
 
 const isUnread = (d) => !!d.last_inbound_at && (!d.seen_at || new Date(d.last_inbound_at) > new Date(d.seen_at))
 
+// Busca por nome (sem acento) ou pelo telefone (só os dígitos)
+const semAcento = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+function bateBusca(d, q) {
+  const t = semAcento(q).trim()
+  if (!t) return true
+  const dig = t.replace(/\D/g, '')
+  if (dig.length >= 4 && String((d.contact?.phone || '') + ' ' + (d.contact?.wa_id || '')).replace(/\D/g, '').includes(dig)) return true
+  return semAcento(d.title + ' ' + (d.contact?.name || '')).includes(t)
+}
+
 export default function Pipeline() {
   const { pipelines, stages, users, settings, toast, label, profile, isManager } = useApp()
   const boardRef = useWheelToHorizontal()
@@ -137,7 +147,7 @@ export default function Pipeline() {
   }
   const filtered = useMemo(() => deals.filter((d) =>
     (!onlyMine || d.owner_id === profile.id) &&
-    (!q || (d.title + ' ' + (d.contact?.name || '')).toLowerCase().includes(q.toLowerCase()))
+    (!q.trim() || bateBusca(d, q))
   ), [deals, q, onlyMine, profile.id])
 
   const moveTo = async (dealId, stageId) => {
@@ -197,8 +207,27 @@ export default function Pipeline() {
         </div>
       </div>
 
+      {q.trim() ? (
+        <div className="busca-resultados" role="status">
+          <div className="busca-tit">🔎 {filtered.length === 0 ? `Nenhum card encontrado para "${q.trim()}"` : `${filtered.length} ${filtered.length === 1 ? 'card encontrado' : 'cards encontrados'} para "${q.trim()}"`}
+            <button type="button" className="btn ghost sm" onClick={() => setQ('')}>Limpar busca</button></div>
+          <div className="busca-lista">
+            {filtered.slice(0, 30).map((d) => {
+              const st = pipeStages.find((x) => x.id === d.stage_id)
+              return (
+                <button key={d.id} type="button" className="busca-item" onClick={() => openDeal(d)} style={{ '--stage-color': st?.color }}>
+                  <b>{d.contact?.name || d.title}</b>
+                  <span className="busca-col">{st?.name || '—'}</span>
+                  <span className="small muted">{[d.contact?.phone, d.seller?.name].filter(Boolean).join(' · ')}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ) : (<>
       <PlacarVendas atualizar={deals.filter((d) => d.status === 'won').length} />
       {!DEMO && <MetasVendas atualizar={deals.length} />}
+      </>)}
 
       {emReuniao.length > 0 && (
         <div className="alert-reuniao" role="status">
@@ -235,7 +264,7 @@ export default function Pipeline() {
       )}
       {pipeStages.length === 0 ? <Empty title="Nenhuma etapa" text="Configure as etapas deste funil em Configurações → Funis." /> : (
         <div className={'kanban' + (mobile ? ' one' : '')} ref={boardRef}>
-          {(mobile ? pipeStages.filter((s) => s.id === colAtiva?.id) : pipeStages).map((s) => {
+          {(mobile ? pipeStages.filter((s) => s.id === colAtiva?.id) : q.trim() ? pipeStages.filter((s) => filtered.some((d) => d.stage_id === s.id)) : pipeStages).map((s) => {
             // Ordem: respostas não lidas primeiro. Nas etapas de fechamento (Ganho/Perdido, ex.: "Fechou mentoria"),
             // depois vem quem fechou por último (closed_at); nas demais, quem respondeu por último no topo.
             const fechamento = s.kind === 'won' || s.kind === 'lost'
