@@ -72,6 +72,9 @@ function Objecoes({ titulo, mes, d90 }) {
 /** Metas da semana (leads, sessões agendadas e realizadas), vendas do mês e ranking dos consultores. */
 export default function MetasVendas({ atualizar }) {
   const [d, setD] = useState(null)
+  // recolher os indicadores para usar só o funil (fica lembrado neste navegador)
+  const [recolhido, setRecolhido] = useState(() => { try { return localStorage.getItem('indicadoresRecolhidos') === '1' } catch { return false } })
+  const alternar = () => setRecolhido((v) => { try { localStorage.setItem('indicadoresRecolhidos', v ? '0' : '1') } catch { /* sem armazenamento */ } return !v })
   useEffect(() => {
     let vivo = true
     const carregar = () => invokeFn('metas-vendas', { body: {} }).then(({ data, error }) => { if (vivo && !error && data && !data.error) setD(data) })
@@ -84,9 +87,27 @@ export default function MetasVendas({ atualizar }) {
   const M = d.metas ? { leadsSemana: d.metas.leads, agendadasSemana: d.metas.agendadas, realizadasSemana: d.metas.realizadas, vendasMes: d.metas.vendas_mes } : META
   const mm = d.metas?.mes, fm = d.metas?.feito_mes
   const tudoOk = d.leads >= M.leadsSemana && d.agendadas >= M.agendadasSemana && d.semana.realizadas >= M.realizadasSemana
+  const botao = (
+    <button type="button" className="mv-recolher" onClick={alternar} aria-expanded={!recolhido}>
+      {recolhido ? '▾ Mostrar indicadores' : '▴ Recolher indicadores'}
+    </button>
+  )
+  if (recolhido) {
+    return (
+      <div className="metas-vendas mv-fechado" role="status">
+        <div className="mv-cab">
+          <div className="mv-titulo">📊 Indicadores <span>metas da semana, ranking, objeções e upsell · {d.leads} de {M.leadsSemana} leads · {d.mes.vendas} de {M.vendasMes} vendas no mês</span></div>
+          {botao}
+        </div>
+      </div>
+    )
+  }
   return (
     <div className={'metas-vendas' + (tudoOk ? ' ok' : '')} role="status">
-      <div className="mv-titulo">🎯 Metas da semana <span>desde {ini} · o que faltou nas semanas anteriores já está somado</span></div>
+      <div className="mv-cab">
+        <div className="mv-titulo">🎯 Metas da semana <span>desde {ini} · o que faltou nas semanas anteriores já está somado</span></div>
+        {botao}
+      </div>
       <div className="mv-grid">
         <Bloco rot="Leads novos" valor={d.leads} meta={M.leadsSemana} mes={mm && fm ? `${fm.leads} de ${mm.leads} no mês` : null} />
         <Bloco rot="Sessões agendadas" valor={d.agendadas} meta={M.agendadasSemana} mes={mm && fm ? `${fm.agendadas} de ${mm.agendadas} no mês` : null} />
