@@ -89,6 +89,8 @@ export default function MetasVendas({ atualizar, mes: mesSel, onMes }) {
     return () => { vivo = false; clearInterval(iv) }
   }, [atualizar, chaveMes])
   if (!d) return null
+  // servidor ainda sem suporte ao mês escolhido: não mostra números de outro mês com o nome errado
+  if (chaveMes && (d.mes_ref || d.mes_ini?.slice(0, 7)) !== chaveMes) return null
   const ini = d.semana_ini ? `${d.semana_ini.slice(8, 10)}/${d.semana_ini.slice(5, 7)}` : ''
   const M = d.metas ? { leadsSemana: d.metas.leads, agendadasSemana: d.metas.agendadas, realizadasSemana: d.metas.realizadas, vendasMes: d.metas.vendas_mes } : META
   const mm = d.metas?.mes, fm = d.metas?.feito_mes
