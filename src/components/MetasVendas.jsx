@@ -7,6 +7,9 @@ import PlacarVendas from './PlacarVendas'
    29% dos leads agendam, 87% comparecem e 27,5% das sessões realizadas viram venda. */
 const META = { leadsSemana: 57, agendadasSemana: 17, realizadasSemana: 14, vendasMes: 17 }
 
+// Ordem do ranking de vendas novas: nº de vendas, depois taxa de conversão, cash collect e valor do contrato
+const ordemRanking = (a, b) => b.vendas - a.vendas || b.conversao - a.conversao || (b.cash || 0) - (a.cash || 0) || b.valor - a.valor
+
 const medalha = (i, tem) => (tem && i === 0 ? '🥇' : tem && i === 1 ? '🥈' : tem && i === 2 ? '🥉' : i + 1)
 
 function Bloco({ rot, valor, meta, sufixo, mes }) {
@@ -128,7 +131,7 @@ export default function MetasVendas({ atualizar }) {
             <table>
               <thead><tr><th>#</th><th>Consultor</th><th>Vendas</th><th>Valor do contrato</th><th title="Pix na hora + cartão por link (entra no dia seguinte, já sem a taxa da InfinitePay)">Cash collect</th><th>Sessões</th><th>No-show</th><th>Conversão</th></tr></thead>
               <tbody>
-                {d.ranking.map((p, i) => (
+                {[...d.ranking].sort(ordemRanking).map((p, i) => (
                   <tr key={p.nome} className={i === 0 && p.vendas > 0 ? 'lider' : ''}>
                     <td>{medalha(i, p.vendas > 0)}</td>
                     <td><b>{p.nome}</b></td>
