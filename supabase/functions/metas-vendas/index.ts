@@ -22,6 +22,16 @@ const spHoje = () => new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 
 const addDias = (iso: string, n: number) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
 const inicioSemana = (iso: string) => { const d = new Date(iso + 'T12:00:00Z'); const w = (d.getUTCDay() + 6) % 7; return addDias(iso, -w) }
 const meiaNoiteSP = (iso: string) => new Date(iso + 'T03:00:00Z').toISOString()
+const dias = (a: string, b: string) => Math.max(0, Math.round((Date.parse(b + 'T12:00:00Z') - Date.parse(a + 'T12:00:00Z')) / 86_400_000))
+const maxD = (a: string, b: string) => (a > b ? a : b), minD = (a: string, b: string) => (a < b ? a : b)
+
+// Metas do MÊS para chegar às 17 vendas novas: 29% dos leads agendam, 87% comparecem, 27,5% das sessões viram venda.
+// 17 vendas ÷ 27,5% = 62 sessões realizadas ÷ 87% = 71 agendadas ÷ 29% = 245 leads.
+const META_MES = { leads: 245, agendadas: 71, realizadas: 62, vendas: 17 }
+// Meta da semana = o que falta da meta do mês × (dias desta semana ÷ dias que restam do mês a partir desta semana).
+// O que faltou numa semana passa para as seguintes, para fechar a meta no fim do mês.
+const metaSemana = (metaMes: number, feitoAntes: number, diasSemana: number, diasRestantes: number) =>
+  Math.max(0, Math.ceil(Math.max(0, metaMes - feitoAntes) * (diasRestantes ? diasSemana / diasRestantes : 1)))
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -39,23 +49,34 @@ Deno.serve(async (req) => {
   const prox = new Date(mesIni + 'T12:00:00Z'); prox.setUTCMonth(prox.getUTCMonth() + 1)
   const mesFim = prox.toISOString().slice(0, 10)
 
-  // Leads novos da semana (funil da Mentoria, sem os importados do CRM antigo e sem testes)
+  // A semana conta só os dias dentro do mês (a primeira e a última semana podem ser parciais)
+  const wIni = maxD(semIni, mesIni), wFim = minD(semFim, mesFim)
+  const diasSemana = dias(wIni, wFim), diasRestantes = dias(wIni, mesFim)
+  const spDia = (iso: string) => new Date(new Date(iso).getTime() - 3 * 3600_000).toISOString().slice(0, 10)
+
+  // Leads novos (funil da Mentoria, sem os importados do CRM antigo e sem testes): no mês antes desta semana e nesta semana
   const { data: pipe } = await admin.from('pipelines').select('id').eq('name', 'Mentoria').maybeSingle()
-  let qLeads = admin.from('deals').select('id, title, contact:contacts(source)').gte('created_at', meiaNoiteSP(semIni)).lt('created_at', meiaNoiteSP(semFim))
+  let qLeads = admin.from('deals').select('id, title, created_at, contact:contacts(source)').gte('created_at', meiaNoiteSP(mesIni)).lt('created_at', meiaNoiteSP(wFim))
   if (pipe?.id) qLeads = qLeads.eq('pipeline_id', pipe.id)
   const { data: leadsRows } = await qLeads
-  const leads = (leadsRows ?? []).filter((d: any) => !/teste/i.test(d.title || '') && d.contact?.source !== 'CRM antigo').length
+  const leadsOk = (leadsRows ?? []).filter((d: any) => !/teste/i.test(d.title || '') && d.contact?.source !== 'CRM antigo')
+  const leads = leadsOk.filter((d: any) => spDia(d.created_at) >= wIni).length
+  const leadsAntes = leadsOk.length - leads
 
-  // Sessões agendadas na semana: cards que entraram em "Reunião agendada" nesta semana
+  // Sessões agendadas: cards que entraram em "Reunião agendada" (conta a primeira vez no mês)
   const { data: stAg } = await admin.from('stages').select('id').eq('name', 'Reunião agendada')
-  const { data: hist } = await admin.from('deal_stage_history').select('deal_id').in('to_stage_id', (stAg ?? []).map((s: any) => s.id))
-    .gte('changed_at', meiaNoiteSP(semIni)).lt('changed_at', meiaNoiteSP(semFim))
-  const agendadas = new Set((hist ?? []).map((h: any) => h.deal_id)).size
+  const { data: hist } = await admin.from('deal_stage_history').select('deal_id, changed_at').in('to_stage_id', (stAg ?? []).map((s: any) => s.id))
+    .gte('changed_at', meiaNoiteSP(mesIni)).lt('changed_at', meiaNoiteSP(wFim))
+  const primeiraAg: Record<string, string> = {}
+  for (const h of hist ?? []) { const d = spDia((h as any).changed_at); const k = (h as any).deal_id; if (!primeiraAg[k] || d < primeiraAg[k]) primeiraAg[k] = d }
+  const agendadas = Object.values(primeiraAg).filter((d) => d >= wIni).length
+  const agendadasAntes = Object.values(primeiraAg).length - agendadas
 
   // Registro de Sessões 1:1 (Plat): realizadas e vendas da semana e do mês, e ranking do mês
   const plat = platClient()
   let semana = { realizadas: 0, vendas: 0 }, mes = { realizadas: 0, vendas: 0, valor: 0, cash: 0, upsells: 0, valor_upsell: 0, cash_upsell: 0 }
   let ranking: any[] = [], ranking_upsell: any[] = []
+  let realizadasAntes = 0
   if (plat) {
     const { data: vs } = await plat.from('venda_sessoes').select('id, data_sessao, vendedor, presenca, resultado, upsell, valor_numerico, lead_nome')
       .gte('data_sessao', mesIni < semIni ? mesIni : semIni).lt('data_sessao', mesFim > semFim ? mesFim : semFim)
@@ -78,7 +99,8 @@ Deno.serve(async (req) => {
     for (const r of vs ?? []) {
       const up = !!r.upsell || upsellCRM.has(r.id) || (r.resultado === 'Vendido' && upsellNome.has(sem(r.lead_nome)))
       const show = r.presenca === 'Show', venda = r.resultado === 'Vendido' && !up
-      if (r.data_sessao >= semIni && r.data_sessao < semFim) { if (show) semana.realizadas++; if (venda) semana.vendas++ }
+      if (r.data_sessao >= wIni && r.data_sessao < wFim) { if (show) semana.realizadas++; if (venda) semana.vendas++ }
+      if (r.data_sessao >= mesIni && r.data_sessao < wIni && show) realizadasAntes++
       if (r.data_sessao >= mesIni && r.data_sessao < mesFim) {
         if (show) mes.realizadas++
         if (venda) { mes.vendas++; mes.valor += Number(r.valor_numerico) || 0 }
@@ -102,5 +124,14 @@ Deno.serve(async (req) => {
     ranking_upsell = Object.values(por).map((p: any) => ({ nome: p.nome, upsells: p.upsells, valor: p.valor_upsell, cash: p.cash_upsell }))
       .sort((a: any, b: any) => b.valor - a.valor || b.cash - a.cash || b.upsells - a.upsells)
   }
-  return json({ hoje, semana_ini: semIni, mes_ini: mesIni, leads, agendadas, semana, mes, ranking, ranking_upsell, plat: !!plat })
+  const metas = {
+    leads: metaSemana(META_MES.leads, leadsAntes, diasSemana, diasRestantes),
+    agendadas: metaSemana(META_MES.agendadas, agendadasAntes, diasSemana, diasRestantes),
+    realizadas: metaSemana(META_MES.realizadas, realizadasAntes, diasSemana, diasRestantes),
+    vendas_mes: META_MES.vendas,
+    mes: META_MES,
+    feito_mes: { leads: leadsAntes + leads, agendadas: agendadasAntes + agendadas, realizadas: realizadasAntes + semana.realizadas },
+    dias_semana: diasSemana, dias_restantes: diasRestantes,
+  }
+  return json({ hoje, semana_ini: wIni, metas, mes_ini: mesIni, leads, agendadas, semana, mes, ranking, ranking_upsell, plat: !!plat })
 })

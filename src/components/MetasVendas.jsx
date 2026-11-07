@@ -8,7 +8,7 @@ const META = { leadsSemana: 57, agendadasSemana: 17, realizadasSemana: 14, venda
 
 const medalha = (i, tem) => (tem && i === 0 ? '🥇' : tem && i === 1 ? '🥈' : tem && i === 2 ? '🥉' : i + 1)
 
-function Bloco({ rot, valor, meta, sufixo }) {
+function Bloco({ rot, valor, meta, sufixo, mes }) {
   const pct = meta ? Math.min(100, Math.round((valor / meta) * 100)) : 0
   const ok = valor >= meta
   const falta = Math.max(0, meta - valor)
@@ -18,6 +18,7 @@ function Bloco({ rot, valor, meta, sufixo }) {
       <div className="mv-num"><b>{valor}</b> de {meta}{sufixo ? ` ${sufixo}` : ''}</div>
       <div className="mv-barra"><i style={{ width: `${Math.max(3, pct)}%` }} /></div>
       <div className="mv-falta">{ok ? 'Meta batida' : <>Faltam <b>{falta}</b></>}</div>
+      {mes && <div className="mv-mes">{mes}</div>}
     </div>
   )
 }
@@ -32,15 +33,17 @@ export default function MetasVendas({ atualizar }) {
   }, [atualizar])
   if (!d) return null
   const ini = d.semana_ini ? `${d.semana_ini.slice(8, 10)}/${d.semana_ini.slice(5, 7)}` : ''
-  const tudoOk = d.leads >= META.leadsSemana && d.agendadas >= META.agendadasSemana && d.semana.realizadas >= META.realizadasSemana
+  const M = d.metas ? { leadsSemana: d.metas.leads, agendadasSemana: d.metas.agendadas, realizadasSemana: d.metas.realizadas, vendasMes: d.metas.vendas_mes } : META
+  const mm = d.metas?.mes, fm = d.metas?.feito_mes
+  const tudoOk = d.leads >= M.leadsSemana && d.agendadas >= M.agendadasSemana && d.semana.realizadas >= M.realizadasSemana
   return (
     <div className={'metas-vendas' + (tudoOk ? ' ok' : '')} role="status">
-      <div className="mv-titulo">🎯 Metas da semana <span>desde segunda, {ini}</span></div>
+      <div className="mv-titulo">🎯 Metas da semana <span>desde {ini} · o que faltou nas semanas anteriores já está somado</span></div>
       <div className="mv-grid">
-        <Bloco rot="Leads novos" valor={d.leads} meta={META.leadsSemana} />
-        <Bloco rot="Sessões agendadas" valor={d.agendadas} meta={META.agendadasSemana} />
-        <Bloco rot="Sessões realizadas" valor={d.semana.realizadas} meta={META.realizadasSemana} />
-        <Bloco rot="Vendas do mês" valor={d.mes.vendas} meta={META.vendasMes} />
+        <Bloco rot="Leads novos" valor={d.leads} meta={M.leadsSemana} mes={mm && fm ? `${fm.leads} de ${mm.leads} no mês` : null} />
+        <Bloco rot="Sessões agendadas" valor={d.agendadas} meta={M.agendadasSemana} mes={mm && fm ? `${fm.agendadas} de ${mm.agendadas} no mês` : null} />
+        <Bloco rot="Sessões realizadas" valor={d.semana.realizadas} meta={M.realizadasSemana} mes={mm && fm ? `${fm.realizadas} de ${mm.realizadas} no mês` : null} />
+        <Bloco rot="Vendas do mês" valor={d.mes.vendas} meta={M.vendasMes} />
       </div>
       {d.ranking?.length > 0 && (
         <div className="mv-ranking">
