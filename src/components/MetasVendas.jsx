@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { invokeFn } from '../lib/supabase'
 import { fmtMoney } from '../lib/utils'
+import PlacarVendas from './PlacarVendas'
 
 /* Metas combinadas para chegar às 17 vendas novas no mês (conta de novembro/2026):
    29% dos leads agendam, 87% comparecem e 27,5% das sessões realizadas viram venda. */
@@ -72,11 +73,7 @@ export default function MetasVendas({ atualizar }) {
       {d.ranking_upsell?.length > 0 && (
         <div className="mv-ranking mv-upsell">
           <div className="mv-titulo">🔁 Upsell e renovação <span>do mês · quem já é mentorada</span></div>
-          <div className="mv-resumo">
-            <span><b>{d.mes?.upsells || 0}</b> {d.mes?.upsells === 1 ? 'upsell/renovação' : 'upsells/renovações'}</span>
-            <span>Valor dos novos contratos: <b>{fmtMoney(d.mes?.valor_upsell || 0)}</b></span>
-            <span>Cash collect: <b>{fmtMoney(d.mes?.cash_upsell || 0)}</b></span>
-          </div>
+          <PlacarVendas tipo="upsell" atualizar={atualizar} />
           <div className="mv-tabela">
             <table>
               <thead><tr><th>#</th><th>Consultor</th><th>Upsells</th><th>Valor do novo contrato</th><th>Cash collect</th></tr></thead>

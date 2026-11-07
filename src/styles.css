@@ -384,7 +384,12 @@ input[type=color] { width: 40px; height: 32px; padding: 2px; border: 1px solid v
 /* Placar de vendas do mês (funil) */
 .placar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; padding: 12px 16px; margin: 0 0 12px; border-radius: 12px;
   background: linear-gradient(90deg, #fff8e1, #e8f5e9); border: 1px solid #f0d78c; color: #2b2b2b; }
-.placar-mes { display: flex; align-items: center; gap: 4px; font-size: 16px; }
+.placar-mes { display: flex; align-items: center; gap: 8px; font-size: 16px; }
+.placar-seta { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #c9a227; background: #fff; color: #8a6d00; font-size: 15px;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.placar-seta:hover:not(:disabled) { background: #fff3c4; transform: scale(1.06); }
+.placar-seta:disabled { opacity: .3; cursor: default; box-shadow: none; }
+.mv-upsell .placar { margin: 6px 0 10px; }
 .placar-num { display: flex; flex-direction: column; line-height: 1.15; }
 .placar-rot { font-size: 12px; color: #6b6b6b; font-weight: 600; }
 .placar-val { font-size: 22px; font-weight: 800; color: #1b5e20; }
@@ -395,6 +400,8 @@ input[type=color] { width: 40px; height: 32px; padding: 2px; border: 1px solid v
 @media (prefers-color-scheme: dark) {
   .placar { background: linear-gradient(90deg, #3a3220, #1f3324); border-color: #6b5a24; color: #eee; }
   .placar-val { color: #8bd68f; }
+  .placar-seta { background: #2a2a2a; color: #f0d36b; border-color: #a8891f; }
+  .placar-seta:hover:not(:disabled) { background: #3a3220; }
   .placar-pessoa { background: #2a2a2a; border-color: #444; }
 }
 
