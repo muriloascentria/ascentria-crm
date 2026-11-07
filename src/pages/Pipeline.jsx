@@ -8,6 +8,7 @@ import { daysIn, runCadenceNow, simulateInstagramDM, moveInboxToDay1, sentLast24
 import { DEMO } from '../lib/supabase'
 import ContatarHoje from '../components/ContatarHoje'
 import PlacarVendas from '../components/PlacarVendas'
+import MetasVendas from '../components/MetasVendas'
 import { isManual, devidos } from '../lib/manual'
 import { useMobile } from '../lib/useMobile'
 import { leadAssinouEm } from '../lib/contrato'
@@ -197,6 +198,7 @@ export default function Pipeline() {
       </div>
 
       <PlacarVendas atualizar={deals.filter((d) => d.status === 'won').length} />
+      {!DEMO && <MetasVendas atualizar={deals.length} />}
 
       {emReuniao.length > 0 && (
         <div className="alert-reuniao" role="status">
