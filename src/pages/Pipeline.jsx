@@ -71,6 +71,8 @@ export default function Pipeline() {
   const boardRef = useWheelToHorizontal()
   const [pipelineId, setPipelineId] = useState(null)
   const [deals, setDeals] = useState([])
+  // mês dos indicadores (placar, metas, ranking, objeções e upsell mudam juntos)
+  const [mesInd, setMesInd] = useState(() => { const h = new Date(); return { y: h.getFullYear(), m: h.getMonth() } })
   const [q, setQ] = useState('')
   const [onlyMine, setOnlyMine] = useState(false)
   const [modal, setModal] = useState(null) // { deal, defaults }
@@ -225,8 +227,8 @@ export default function Pipeline() {
           </div>
         </div>
       ) : (<>
-      <PlacarVendas atualizar={deals.filter((d) => d.status === 'won').length} />
-      {!DEMO && <MetasVendas atualizar={deals.length} />}
+      <PlacarVendas atualizar={deals.filter((d) => d.status === 'won').length} mes={mesInd} onMes={setMesInd} />
+      {!DEMO && <MetasVendas atualizar={deals.length} mes={mesInd} onMes={setMesInd} />}
       </>)}
 
       {emReuniao.length > 0 && (

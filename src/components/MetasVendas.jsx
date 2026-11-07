@@ -39,7 +39,7 @@ function Objecoes({ titulo, mes, d90 }) {
       <div className="mv-obj-cab">
         <div className="mv-titulo">🧱 {titulo} <span>pelo que os consultores registram depois da sessão</span></div>
         <div className="mv-obj-periodo">
-          <button type="button" className={periodo === 'mes' ? 'on' : ''} onClick={() => setPeriodo('mes')}>Este mês</button>
+          <button type="button" className={periodo === 'mes' ? 'on' : ''} onClick={() => setPeriodo('mes')}>No mês</button>
           <button type="button" className={periodo === 'd90' ? 'on' : ''} onClick={() => setPeriodo('d90')}>Últimos 90 dias</button>
         </div>
       </div>
@@ -73,22 +73,27 @@ function Objecoes({ titulo, mes, d90 }) {
 }
 
 /** Metas da semana (leads, sessões agendadas e realizadas), vendas do mês e ranking dos consultores. */
-export default function MetasVendas({ atualizar }) {
+const NOMES_MES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+
+export default function MetasVendas({ atualizar, mes: mesSel, onMes }) {
+  const chaveMes = mesSel ? `${mesSel.y}-${String(mesSel.m + 1).padStart(2, '0')}` : null
   const [d, setD] = useState(null)
   // recolher os indicadores para usar só o funil (fica lembrado neste navegador)
   const [recolhido, setRecolhido] = useState(() => { try { return localStorage.getItem('indicadoresRecolhidos') === '1' } catch { return false } })
   const alternar = () => setRecolhido((v) => { try { localStorage.setItem('indicadoresRecolhidos', v ? '0' : '1') } catch { /* sem armazenamento */ } return !v })
   useEffect(() => {
     let vivo = true
-    const carregar = () => invokeFn('metas-vendas', { body: {} }).then(({ data, error }) => { if (vivo && !error && data && !data.error) setD(data) })
+    const carregar = () => invokeFn('metas-vendas', { body: chaveMes ? { mes: chaveMes } : {} }).then(({ data, error }) => { if (vivo && !error && data && !data.error) setD(data) })
     carregar()
     const iv = setInterval(carregar, 120_000) // registros novos de sessão entram sozinhos
     return () => { vivo = false; clearInterval(iv) }
-  }, [atualizar])
+  }, [atualizar, chaveMes])
   if (!d) return null
   const ini = d.semana_ini ? `${d.semana_ini.slice(8, 10)}/${d.semana_ini.slice(5, 7)}` : ''
   const M = d.metas ? { leadsSemana: d.metas.leads, agendadasSemana: d.metas.agendadas, realizadasSemana: d.metas.realizadas, vendasMes: d.metas.vendas_mes } : META
   const mm = d.metas?.mes, fm = d.metas?.feito_mes
+  const fechado = d.atual === false // mês que já terminou: mostra o resultado do mês inteiro contra a meta do mês
+  const nomeMes = d.mes_ini ? NOMES_MES[Number(d.mes_ini.slice(5, 7)) - 1] : ''
   const tudoOk = d.leads >= M.leadsSemana && d.agendadas >= M.agendadasSemana && d.semana.realizadas >= M.realizadasSemana
   const botao = (
     <button type="button" className="mv-recolher" onClick={alternar} aria-expanded={!recolhido}>
@@ -99,7 +104,7 @@ export default function MetasVendas({ atualizar }) {
     return (
       <div className="metas-vendas mv-fechado" role="status">
         <div className="mv-cab">
-          <div className="mv-titulo">📊 Indicadores <span>metas da semana, ranking, objeções e upsell · {d.leads} de {M.leadsSemana} leads · {d.mes.vendas} de {M.vendasMes} vendas no mês</span></div>
+          <div className="mv-titulo">📊 Indicadores <span>{fechado ? `resultado de ${nomeMes}` : 'metas da semana'}, ranking, objeções e upsell · {d.leads} de {M.leadsSemana} leads · {d.mes.vendas} de {M.vendasMes} vendas no mês</span></div>
           {botao}
         </div>
       </div>
@@ -108,19 +113,21 @@ export default function MetasVendas({ atualizar }) {
   return (
     <div className={'metas-vendas' + (tudoOk ? ' ok' : '')} role="status">
       <div className="mv-cab">
-        <div className="mv-titulo">🎯 Metas da semana <span>desde {ini} · o que faltou nas semanas anteriores já está somado</span></div>
+        {fechado
+          ? <div className="mv-titulo">📅 Resultado de {nomeMes} <span>mês inteiro, comparado com a meta do mês</span></div>
+          : <div className="mv-titulo">🎯 Metas da semana <span>desde {ini} · o que faltou nas semanas anteriores já está somado</span></div>}
         {botao}
       </div>
       <div className="mv-grid">
-        <Bloco rot="Leads novos" valor={d.leads} meta={M.leadsSemana} mes={mm && fm ? `${fm.leads} de ${mm.leads} no mês` : null} />
-        <Bloco rot="Sessões agendadas" valor={d.agendadas} meta={M.agendadasSemana} mes={mm && fm ? `${fm.agendadas} de ${mm.agendadas} no mês` : null} />
-        <Bloco rot="Sessões realizadas" valor={d.semana.realizadas} meta={M.realizadasSemana} mes={mm && fm ? `${fm.realizadas} de ${mm.realizadas} no mês` : null} />
+        <Bloco rot="Leads novos" valor={d.leads} meta={M.leadsSemana} mes={!fechado && mm && fm ? `${fm.leads} de ${mm.leads} no mês` : null} />
+        <Bloco rot="Sessões agendadas" valor={d.agendadas} meta={M.agendadasSemana} mes={!fechado && mm && fm ? `${fm.agendadas} de ${mm.agendadas} no mês` : null} />
+        <Bloco rot="Sessões realizadas" valor={d.semana.realizadas} meta={M.realizadasSemana} mes={!fechado && mm && fm ? `${fm.realizadas} de ${mm.realizadas} no mês` : null} />
         <Bloco rot="Vendas do mês" valor={d.mes.vendas} meta={M.vendasMes} />
       </div>
       {d.comparecimento && (
         <div className="mv-compar">
           <span>📅 <b>Taxa de comparecimento</b></span>
-          <span>Semana: <b>{d.comparecimento.semana.pct == null ? '—' : String(d.comparecimento.semana.pct).replace('.', ',') + '%'}</b> ({d.comparecimento.semana.show} vieram · {d.comparecimento.semana.noshow} no-show)</span>
+          {!fechado && <span>Semana: <b>{d.comparecimento.semana.pct == null ? '—' : String(d.comparecimento.semana.pct).replace('.', ',') + '%'}</b> ({d.comparecimento.semana.show} vieram · {d.comparecimento.semana.noshow} no-show)</span>}
           <span>Mês: <b>{d.comparecimento.mes.pct == null ? '—' : String(d.comparecimento.mes.pct).replace('.', ',') + '%'}</b> ({d.comparecimento.mes.show} vieram · {d.comparecimento.mes.noshow} no-show)</span>
         </div>
       )}
@@ -152,7 +159,7 @@ export default function MetasVendas({ atualizar }) {
       {d.ranking_upsell?.length > 0 && (
         <div className="mv-ranking mv-upsell">
           <div className="mv-titulo">🔁 Upsell e renovação <span>do mês · quem já é mentorada</span></div>
-          <PlacarVendas tipo="upsell" atualizar={atualizar} />
+          <PlacarVendas tipo="upsell" atualizar={atualizar} mes={mesSel} onMes={onMes} />
           <div className="mv-tabela">
             <table>
               <thead><tr><th>#</th><th>Consultor</th><th>Upsells</th><th>Valor do novo contrato</th><th>Cash collect</th></tr></thead>

@@ -98,14 +98,22 @@ Deno.serve(async (req) => {
   const { data: me } = await admin.from('profiles').select('active').eq('id', user.id).single()
   if (!me?.active) return json({ error: 'Usuário inativo' }, 403)
 
-  const hoje = spHoje()
-  const semIni = inicioSemana(hoje), semFim = addDias(semIni, 7)
-  const mesIni = hoje.slice(0, 8) + '01'
+  // Mês pedido pelo funil ("2026-10"); sem mês, ou mês futuro, vale o mês atual.
+  let body: any = {}
+  try { body = await req.json() } catch { /* sem corpo */ }
+  const hojeReal = spHoje()
+  let mesPedido = /^\d{4}-\d{2}$/.test(String(body?.mes || '')) ? String(body.mes) : hojeReal.slice(0, 7)
+  if (mesPedido > hojeReal.slice(0, 7)) mesPedido = hojeReal.slice(0, 7)
+  const atual = mesPedido === hojeReal.slice(0, 7)
+  const mesIni = mesPedido + '-01'
   const prox = new Date(mesIni + 'T12:00:00Z'); prox.setUTCMonth(prox.getUTCMonth() + 1)
   const mesFim = prox.toISOString().slice(0, 10)
+  // num mês que já terminou, "hoje" é o último dia dele e a "semana" é o mês inteiro (resultado do mês contra a meta do mês)
+  const hoje = atual ? hojeReal : addDias(mesFim, -1)
+  const semIni = inicioSemana(hoje), semFim = addDias(semIni, 7)
 
   // A semana conta só os dias dentro do mês (a primeira e a última semana podem ser parciais)
-  const wIni = maxD(semIni, mesIni), wFim = minD(semFim, mesFim)
+  const wIni = atual ? maxD(semIni, mesIni) : mesIni, wFim = atual ? minD(semFim, mesFim) : mesFim
   const diasSemana = dias(wIni, wFim), diasRestantes = dias(wIni, mesFim)
   const spDia = (iso: string) => new Date(new Date(iso).getTime() - 3 * 3600_000).toISOString().slice(0, 10)
 
@@ -210,6 +218,6 @@ Deno.serve(async (req) => {
     dias_semana: diasSemana, dias_restantes: diasRestantes,
   }
   const taxa = (c: { show: number; noshow: number }) => ({ ...c, pct: c.show + c.noshow ? Math.round(c.show / (c.show + c.noshow) * 1000) / 10 : null })
-  return json({ hoje, semana_ini: wIni, metas, mes_ini: mesIni, leads, agendadas, semana, mes, ranking, ranking_upsell,
+  return json({ hoje, atual, mes_ref: mesPedido, semana_ini: wIni, metas, mes_ini: mesIni, leads, agendadas, semana, mes, ranking, ranking_upsell,
     comparecimento: { semana: taxa(comparecimento.semana), mes: taxa(comparecimento.mes) }, objecoes, plat: !!plat })
 })

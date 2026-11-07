@@ -6,10 +6,13 @@ const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julh
 
 /** Placar do mês da equipe. tipo 'novas': vendas novas (valor do contrato e cash collect).
  *  tipo 'upsell': upsell e renovação de quem já é mentorada (valor do novo contrato e cash collect). */
-export default function PlacarVendas({ atualizar, tipo = 'novas' }) {
+export default function PlacarVendas({ atualizar, tipo = 'novas', mes: mesFora, onMes }) {
   const up = tipo === 'upsell'
   const hoje = new Date()
-  const [mes, setMes] = useState({ y: hoje.getFullYear(), m: hoje.getMonth() })
+  const [mesDentro, setMesDentro] = useState({ y: hoje.getFullYear(), m: hoje.getMonth() })
+  // o mês pode vir de fora (funil): aí as setas trocam o mês de todos os indicadores juntos
+  const mes = mesFora || mesDentro
+  const setMes = (f) => (onMes ? onMes(f(mes)) : setMesDentro(f))
   const [linhas, setLinhas] = useState(null)
   useEffect(() => {
     const ini = new Date(Date.UTC(mes.y, mes.m, 1, 3)) // 00:00 em Brasília
