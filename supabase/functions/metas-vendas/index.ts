@@ -210,7 +210,9 @@ Deno.serve(async (req) => {
       for (const h of hw ?? []) { const k = (h as any).deal_id; if (!ultimoGanho[k] || (h as any).changed_at > ultimoGanho[k]) ultimoGanho[k] = (h as any).changed_at }
     }
     for (const d of candidatos) {
-      const quando = spDia(ultimoGanho[(d as any).id] || (d as any).closed_at)
+      const ganhou = ultimoGanho[(d as any).id] || (d as any).closed_at
+      if (!ganhou) continue
+      const quando = spDia(ganhou)
       if (!(quando >= mesIni && quando < mesFim)) continue
       const nomes = [(d as any).title, (d as any).contact?.name].map(sem)
       if (nomes.some((n: string) => n && vendidosPlat.has(n)) || nomes.some((n: string) => n && upsellNome.has(n))) continue
