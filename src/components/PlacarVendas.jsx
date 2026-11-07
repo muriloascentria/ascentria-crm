@@ -33,9 +33,9 @@ export default function PlacarVendas({ atualizar }) {
         <span className="placar-sub">{vendas} {vendas === 1 ? 'venda' : 'vendas'}</span>
       </div>
       <div className="placar-num">
-        <span className="placar-rot">💵 Recebido na call</span>
+        <span className="placar-rot">💵 Cash collect</span>
         <span className="placar-val">{fmtMoney(entradas)}</span>
-        <span className="placar-sub">entradas pagas</span>
+        <span className="placar-sub">Pix + cartão (já sem a taxa), inclui upsell</span>
       </div>
       {vendas === 0 && <span className="small muted">{atual ? 'A primeira venda do mês vem aí! 🚀' : 'Nenhuma venda neste mês.'}</span>}
     </div>

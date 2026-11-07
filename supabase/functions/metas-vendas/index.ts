@@ -59,18 +59,12 @@ Deno.serve(async (req) => {
   if (plat) {
     const { data: vs } = await plat.from('venda_sessoes').select('id, data_sessao, vendedor, presenca, resultado, upsell, valor_numerico')
       .gte('data_sessao', mesIni < semIni ? mesIni : semIni).lt('data_sessao', mesFim > semFim ? mesFim : semFim)
-    // Cash collect: entrada paga na call, tirada do contrato do card no CRM ligado à sessão (deals.plat_sessao_id).
     // Upsell marcado no card do CRM também conta como upsell, mesmo que o Plat ainda não tenha sido atualizado.
     const idsVenda = (vs ?? []).filter((r: any) => r.resultado === 'Vendido' && r.data_sessao >= mesIni && r.data_sessao < mesFim).map((r: any) => r.id)
-    const entradaDe: Record<string, number> = {}
     const upsellCRM = new Set<string>()
     if (idsVenda.length) {
-      const { data: ds } = await admin.from('deals').select('plat_sessao_id, contrato, sessao_registro').in('plat_sessao_id', idsVenda)
-      const brl = (v: unknown) => { const t = String(v ?? '').replace(/[^\d,.-]/g, ''); if (!t) return 0; const n = Number(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t); return Number.isFinite(n) ? n : 0 }
-      for (const d of ds ?? []) {
-        entradaDe[(d as any).plat_sessao_id] = brl((d as any).contrato?.entrada)
-        if ((d as any).sessao_registro?.upsell === true) upsellCRM.add((d as any).plat_sessao_id)
-      }
+      const { data: ds } = await admin.from('deals').select('plat_sessao_id, sessao_registro').in('plat_sessao_id', idsVenda)
+      for (const d of ds ?? []) if ((d as any).sessao_registro?.upsell === true) upsellCRM.add((d as any).plat_sessao_id)
     }
     const quem = (v: string) => { const t = String(v || '').trim(); return /^carmem e diego$/i.test(t) ? 'Diego' : t }
     const por: Record<string, any> = {}
@@ -80,13 +74,22 @@ Deno.serve(async (req) => {
       if (r.data_sessao >= semIni && r.data_sessao < semFim) { if (show) semana.realizadas++; if (venda) semana.vendas++ }
       if (r.data_sessao >= mesIni && r.data_sessao < mesFim) {
         if (show) mes.realizadas++
-        if (venda) { mes.vendas++; mes.valor += Number(r.valor_numerico) || 0; mes.cash += entradaDe[r.id] || 0 }
+        if (venda) { mes.vendas++; mes.valor += Number(r.valor_numerico) || 0 }
         const n = quem(r.vendedor); if (!n || /viviane/i.test(n)) continue
-        const p = por[n] ??= { nome: n, sessoes: 0, noshow: 0, vendas: 0, upsells: 0, valor: 0, cash: 0 }
+        const p = por[n] ??= { nome: n, sessoes: 0, noshow: 0, vendas: 0, upsells: 0, valor: 0, cash: 0, cash_upsell: 0 }
         if (show) p.sessoes++; else if (r.presenca === 'No-show') p.noshow++
-        if (venda) { p.vendas++; p.valor += Number(r.valor_numerico) || 0; p.cash += entradaDe[r.id] || 0 }
+        if (venda) { p.vendas++; p.valor += Number(r.valor_numerico) || 0 }
         else if (r.resultado === 'Vendido' && up) p.upsells++
       }
+    }
+    // Cash collect do mês (caixa_lancamentos): Pix na hora + cartão por link (D+1, já sem a taxa da InfinitePay), inclui upsell
+    const { data: cx } = await admin.from('caixa_lancamentos').select('vendedor, tipo, liquido').gte('data', mesIni).lt('data', mesFim)
+    for (const l of cx ?? []) {
+      const n = quem((l as any).vendedor); if (!n || /viviane/i.test(n)) continue
+      const p = por[n] ??= { nome: n, sessoes: 0, noshow: 0, vendas: 0, upsells: 0, valor: 0, cash: 0, cash_upsell: 0 }
+      const v = Number((l as any).liquido) || 0
+      p.cash += v; mes.cash += v
+      if ((l as any).tipo === 'upsell') p.cash_upsell += v
     }
     ranking = Object.values(por).map((p: any) => ({ ...p, conversao: p.sessoes ? Math.round(p.vendas / p.sessoes * 1000) / 10 : 0 }))
       .sort((a: any, b: any) => b.vendas - a.vendas || b.valor - a.valor || b.conversao - a.conversao || b.sessoes - a.sessoes)

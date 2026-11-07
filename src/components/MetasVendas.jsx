@@ -45,7 +45,7 @@ export default function MetasVendas({ atualizar }) {
           <div className="mv-titulo">🏅 Ranking dos consultores <span>vendas novas do mês, pelo Registro de Sessões 1:1</span></div>
           <div className="mv-tabela">
             <table>
-              <thead><tr><th>#</th><th>Consultor</th><th>Vendas</th><th>Valor vendido</th><th title="Entradas recebidas na call">Cash collect</th><th>Sessões</th><th>No-show</th><th>Conversão</th></tr></thead>
+              <thead><tr><th>#</th><th>Consultor</th><th>Vendas</th><th>Valor vendido</th><th title="Pix na hora + cartão por link (entra no dia seguinte, já sem a taxa da InfinitePay). Inclui upsell.">Cash collect</th><th>Sessões</th><th>No-show</th><th>Conversão</th></tr></thead>
               <tbody>
                 {d.ranking.map((p, i) => (
                   <tr key={p.nome} className={i === 0 && p.vendas > 0 ? 'lider' : ''}>
@@ -53,7 +53,7 @@ export default function MetasVendas({ atualizar }) {
                     <td><b>{p.nome}</b>{p.upsells ? <span className="small muted"> · +{p.upsells} upsell{p.upsells > 1 ? 's' : ''}</span> : null}</td>
                     <td>{p.vendas}</td>
                     <td>{fmtMoney(p.valor)}</td>
-                    <td>{fmtMoney(p.cash || 0)}</td>
+                    <td>{fmtMoney(p.cash || 0)}{p.cash_upsell ? <div className="small muted">{fmtMoney(p.cash_upsell)} de upsell</div> : null}</td>
                     <td>{p.sessoes}</td>
                     <td>{p.noshow}</td>
                     <td>{String(p.conversao).replace('.', ',')}%</td>
