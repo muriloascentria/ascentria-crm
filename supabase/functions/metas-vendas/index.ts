@@ -194,6 +194,33 @@ Deno.serve(async (req) => {
         if (venda) { p.vendas++; p.valor += Number(r.valor_numerico) || 0 }
       }
     }
+    // Venda fechada no CRM sem sessão no Registro do Plat (ex.: fechou depois, no follow-up): conta a venda para o consultor do card.
+    const vendidosPlat = new Set((vs ?? []).filter((r: any) => r.resultado === 'Vendido').map((r: any) => sem(r.lead_nome)))
+    let qWon = admin.from('deals').select('id, title, value, closed_at, plat_sessao_id, sessao_registro, contact:contacts(name, source), seller:calendar_sellers(name)')
+      .eq('status', 'won').is('plat_sessao_id', null)
+    if (pipe?.id) qWon = qWon.eq('pipeline_id', pipe.id)
+    const { data: wonRows, error: wonErr } = await qWon
+    if (wonErr) console.log('vendas sem sessão:', wonErr.message)
+    const candidatos = (wonRows ?? []).filter((d: any) => !/teste/i.test(d.title || '') && d.contact?.source !== 'CRM antigo' && d.sessao_registro?.upsell !== true)
+    const ultimoGanho: Record<string, string> = {}
+    if (candidatos.length) {
+      const { data: stWon } = await admin.from('stages').select('id').eq('kind', 'won')
+      const { data: hw } = await admin.from('deal_stage_history').select('deal_id, changed_at')
+        .in('deal_id', candidatos.map((d: any) => d.id)).in('to_stage_id', (stWon ?? []).map((x: any) => x.id))
+      for (const h of hw ?? []) { const k = (h as any).deal_id; if (!ultimoGanho[k] || (h as any).changed_at > ultimoGanho[k]) ultimoGanho[k] = (h as any).changed_at }
+    }
+    for (const d of candidatos) {
+      const quando = spDia(ultimoGanho[(d as any).id] || (d as any).closed_at)
+      if (!(quando >= mesIni && quando < mesFim)) continue
+      const nomes = [(d as any).title, (d as any).contact?.name].map(sem)
+      if (nomes.some((n: string) => n && vendidosPlat.has(n)) || nomes.some((n: string) => n && upsellNome.has(n))) continue
+      const valor = Number((d as any).value) || 0
+      mes.vendas++; mes.valor += valor
+      if (quando >= wIni && quando < wFim) semana.vendas++
+      const n = quem(String((d as any).seller?.name || '').split(/\s+/)[0]); if (!n || /viviane/i.test(n)) continue
+      const p = por[n] ??= novo(n)
+      p.vendas++; p.valor += valor; p.sem_sessao = (p.sem_sessao || 0) + 1
+    }
     for (const l of cx ?? []) {
       const n = quem((l as any).vendedor); if (!n || /viviane/i.test(n)) continue
       const p = por[n] ??= novo(n)
