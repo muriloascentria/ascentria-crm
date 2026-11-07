@@ -95,7 +95,7 @@ export default function MetasVendas({ atualizar }) {
       </div>
       {d.comparecimento && (
         <div className="mv-compar">
-          <span>📅 <b>Comparecimento do time</b> (sessões de vendas novas)</span>
+          <span>📅 <b>Taxa de comparecimento</b></span>
           <span>Semana: <b>{d.comparecimento.semana.pct == null ? '—' : String(d.comparecimento.semana.pct).replace('.', ',') + '%'}</b> ({d.comparecimento.semana.show} vieram · {d.comparecimento.semana.noshow} no-show)</span>
           <span>Mês: <b>{d.comparecimento.mes.pct == null ? '—' : String(d.comparecimento.mes.pct).replace('.', ',') + '%'}</b> ({d.comparecimento.mes.show} vieram · {d.comparecimento.mes.noshow} no-show)</span>
         </div>
