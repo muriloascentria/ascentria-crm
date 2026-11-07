@@ -37,39 +37,52 @@ const metaSemana = (metaMes: number, feitoAntes: number, diasSemana: number, dia
 // Objeções registradas pelos consultores (Objeção 1 e 2 do Registro de Sessões), agrupadas por tipo.
 // Cada objeção escrita vai para um tipo: primeiro pelo rótulo do começo ("Financeira: ..."), depois pelas palavras do texto.
 const TIPOS_OBJECAO: [string, RegExp][] = [
+  ['Interrompeu ou saiu da sessão', /pediu (pra|para) parar|saiu antes|saindo antes|sem bateria|pediu (pra|para) remarcar|precisava atender|horário agendado|iria continuar|n[aã]o retornou/],
+  ['Chegou sem saber do que era a sessão', /sem saber|n[aã]o sabia (direito )?(que|o que|do que)|de gra[cç]a|gratuit|enganad|n[aã]o (foi )?informad/],
+  ['Formato da mentoria não se encaixa', /1:1|grande escala|atender empresas|formato|n[aã]o deseja realizar atendimentos/],
+  ['Lead sem perfil / só curiosidade', /curiosidade|n[aã]o se engajou|n[aã]o quer atuar|desempregad|n[aã]o concluiu|leiga|(pra|para) conhecer a mentoria|conhecer .{0,20}valores/],
+  // o consultor escreveu a dor do lead no lugar da objeção: ponto de treino do registro
+  ['Registrou a dor, não a objeção', /^enf[.:]|\bdor(es)?\b|dores|quer aprender|precisa de ajuda|quer ter tempo/],
   ['Precisa consultar outra pessoa', /marido|esposo|esposa|fam[ií]lia|colegas|s[oó]cio|conversar com|falar com/],
-  ['Experiência ruim com outra mentoria', /outra (mentoria|institui)|mentoria atual|j[aá] investiu|descren|entrega insatisf|enganad/],
-  ['Não vê valor / não é o que precisa', /n[aã]o vale|n[aã]o [eé] o que (ela )?precisa|de gra[cç]a|caro demais|n[aã]o acredita na (mentoria|proposta)/],
-  ['Financeira', /financ|dinheiro|contas|valor|parcela|entrada|or[cç]amento|reserva|invest|pagar|pagamento|gast|renda|despesa|margem|caro/],
-  ['Insegurança com o resultado', /medo|insegur|receio|resultado|retorno|n[aã]o acredita|n[aã]o se acha|capaz|conseguir/],
+  ['Experiência ruim com outra mentoria', /outra (mentoria|institui)|mentoria atual|j[aá] investiu|descren|entrega insatisf/],
+  ['Não vê valor / não é o que precisa', /n[aã]o vale|n[aã]o [eé] o que (ela )?precisa|caro demais|n[aã]o acredita na (mentoria|proposta)/],
+  ['Financeira', /financ|dinheiro|contas|(^|[^a-z])valor|parcela|entrada|or[cç]amento|reserva|invest|pagar|pagamento|gast|renda|despesa|margem|caro/],
+  ['Não sabe por onde começar', /n[aã]o sabe (por onde|como) (come[cç]ar|iniciar)|n[aã]o tem no[cç][aã]o|n[aã]o tem ideia|passo a passo/],
+  ['Insegurança com o resultado', /medo|insegur|receio|resultado|retorno (financeiro|do investimento)|n[aã]o acredita|n[aã]o se acha|capaz|conseguir/],
   ['Tempo / rotina', /tempo|rotina|sobrecarga|trabalhando demais|agenda|disponibilidade/],
-  ['Momento / prioridade', /momento|depois|janeiro|fevereiro|mar[cç]o|forma(tura|da|r)|(^|\s)p[oó]s(\s|-|\.|,|$)|pressa|urg[eê]ncia|prioridade|daqui a|resid[eê]ncia|futuramente|mudan[cç]a|obra/],
+  ['Momento / prioridade', /momento|depois|janeiro|fevereiro|mar[cç]o|forma(tura|da|r)|(^|\s)p[oó]s(\s|-|\.|,|$)|pressa|urg[eê]ncia|prioridade|daqui a|resid[eê]ncia|futuramente|mudan[cç]a|obra|remarcar/],
+  // o consultor não chegou a descobrir a objeção real: ponto de treino de condução
+  ['Não disse o motivo (objeção não descoberta)', /n[aã]o (quis|avancei|avan[cç]ou)|n[aã]o trouxe|registrei|desqualificad|sem motivo|n[aã]o explicou/],
 ]
 const semObjecao = (t: string) => !t || /^\s*(n[aã]o foram registradas obje[cç][oõ]es|nenhuma|-|n\/a)\.?\s*$/i.test(t)
 function tipoObjecao(texto: string) {
   const t = texto.normalize('NFC').toLowerCase()
+  const fala = /obje[cç]/.test(t) // texto que cita a objeção não cai em "dor"
   // rótulo no começo ("Financeira: ...", "Momento — ..."): vale o tipo que aparece primeiro nele
   const m = t.match(/^([^:\n—–]{1,100})[:—–]/)
   if (m) {
     let melhor = '', pos = 1e9
-    for (const [nome, re] of TIPOS_OBJECAO) { const i = m[1].search(re); if (i >= 0 && i < pos) { pos = i; melhor = nome } }
+    for (const [nome, re] of TIPOS_OBJECAO) { if (fala && nome.startsWith('Registrou')) continue; const i = m[1].search(re); if (i >= 0 && i < pos) { pos = i; melhor = nome } }
     if (melhor) return melhor
   }
-  for (const [nome, re] of TIPOS_OBJECAO) if (re.test(t)) return nome
-  return 'Outras'
+  for (const [nome, re] of TIPOS_OBJECAO) if (!(fala && nome.startsWith('Registrou')) && re.test(t)) return nome
+  return 'Sem tipo identificado'
 }
 function resumoObjecoes(linhas: any[]) {
-  const cont: Record<string, { total: number; contornadas: number }> = {}
+  const cont: Record<string, { total: number; contornadas: number; exemplos: any[] }> = {}
   let total = 0, sessoes = 0
   for (const r of linhas) {
     const textos = [r.objecoes, r.objecoes2].filter((t: string) => !semObjecao(t))
     if (!textos.length) continue
     sessoes++
     for (const t of textos) {
-      const k = tipoObjecao(t); const c = cont[k] ??= { total: 0, contornadas: 0 }
+      const k = tipoObjecao(t); const c = cont[k] ??= { total: 0, contornadas: 0, exemplos: [] }
       c.total++; total++; if (r.resultado === 'Vendido') c.contornadas++
+      // o que foi escrito, para treinar em cima dos casos reais
+      c.exemplos.push({ lead: String(r.lead_nome || '').replace(/[,\s]+$/, ''), vendedor: r.vendedor, data: r.data_sessao, resultado: r.resultado, texto: String(t).trim().slice(0, 400) })
     }
   }
+  for (const c of Object.values(cont)) c.exemplos.sort((a, b) => (a.data < b.data ? 1 : -1))
   const tipos = Object.entries(cont).map(([tipo, c]) => ({ tipo, ...c, pct: total ? Math.round(c.total / total * 1000) / 10 : 0 }))
     .sort((a, b) => b.total - a.total || a.tipo.localeCompare(b.tipo))
   return { total, sessoes, tipos }

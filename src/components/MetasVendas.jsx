@@ -27,7 +27,9 @@ function Bloco({ rot, valor, meta, sufixo, mes }) {
 /** Objeções registradas pelos consultores, por tipo (atualiza sozinho a cada registro de sessão). */
 function Objecoes({ titulo, mes, d90 }) {
   const [periodo, setPeriodo] = useState('mes')
+  const [aberto, setAberto] = useState(null)
   const o = periodo === 'mes' ? mes : d90
+  const dt = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '')
   if (!mes && !d90) return null
   return (
     <div className="mv-objecoes">
@@ -42,13 +44,25 @@ function Objecoes({ titulo, mes, d90 }) {
         <>
           <div className="mv-obj-lista">
             {o.tipos.map((t) => (
-              <div key={t.tipo} className="mv-obj">
-                <div className="mv-obj-linha"><b>{t.tipo}</b><span><b>{String(t.pct).replace('.', ',')}%</b> · {t.total}{t.contornadas ? ` · ${t.contornadas} contornada${t.contornadas > 1 ? 's' : ''} (vendeu)` : ''}</span></div>
-                <div className="mv-barra"><i style={{ width: `${Math.max(3, t.pct)}%` }} /></div>
+              <div key={t.tipo} className={'mv-obj' + (aberto === t.tipo ? ' aberto' : '')}>
+                <button type="button" className="mv-obj-btn" onClick={() => setAberto(aberto === t.tipo ? null : t.tipo)} title="Ver o que os consultores escreveram">
+                  <div className="mv-obj-linha"><b>{aberto === t.tipo ? '▾' : '▸'} {t.tipo}</b><span><b>{String(t.pct).replace('.', ',')}%</b> · {t.total}{t.contornadas ? ` · ${t.contornadas} contornada${t.contornadas > 1 ? 's' : ''} (vendeu)` : ''}</span></div>
+                  <div className="mv-barra"><i style={{ width: `${Math.max(3, t.pct)}%` }} /></div>
+                </button>
+                {aberto === t.tipo && (
+                  <div className="mv-obj-exemplos">
+                    {(t.exemplos || []).map((e, i) => (
+                      <div key={i} className="mv-obj-ex">
+                        <div className="mv-obj-ex-cab"><b>{e.lead}</b> · {e.vendedor} · {dt(e.data)}{e.resultado ? ` · ${e.resultado}` : ''}</div>
+                        <div>{e.texto}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
-          <div className="mv-mes">{o.total} {o.total === 1 ? 'objeção' : 'objeções'} em {o.sessoes} {o.sessoes === 1 ? 'sessão' : 'sessões'} realizadas</div>
+          <div className="mv-mes">{o.total} {o.total === 1 ? 'objeção' : 'objeções'} em {o.sessoes} {o.sessoes === 1 ? 'sessão' : 'sessões'} realizadas · clique num tipo para ver o que foi dito em cada sessão</div>
         </>
       )}
     </div>

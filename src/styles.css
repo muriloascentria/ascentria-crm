@@ -467,3 +467,11 @@ input[type=color] { width: 40px; height: 32px; padding: 2px; border: 1px solid v
   .mv-compar, .mv-obj-linha { color: #c9c9c9; } .mv-compar b, .mv-obj-linha b { color: #f2f2f2; }
   .mv-obj-periodo button { color: #e0c08a; }
 }
+
+.mv-obj-btn { all: unset; display: block; width: 100%; cursor: pointer; box-sizing: border-box; }
+.mv-obj-btn:focus-visible { outline: 2px solid #ab6f30; outline-offset: 2px; border-radius: 4px; }
+.mv-obj.aberto { grid-column: 1 / -1; }
+.mv-obj-exemplos { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; max-height: 320px; overflow-y: auto; }
+.mv-obj-ex { font-size: 12.5px; color: #444; background: rgba(255,255,255,.6); border: 1px solid rgba(171,111,48,.2); border-radius: 8px; padding: 6px 9px; white-space: pre-line; }
+.mv-obj-ex-cab { font-size: 11.5px; color: #7a7a7a; margin-bottom: 2px; }
+@media (prefers-color-scheme: dark) { .mv-obj-ex { background: rgba(255,255,255,.05); color: #ddd; } .mv-obj-ex-cab { color: #aaa; } }
