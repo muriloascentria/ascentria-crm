@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
   let semana = { realizadas: 0, vendas: 0 }, mes = { realizadas: 0, vendas: 0, valor: 0, cash: 0 }
   let ranking: any[] = []
   if (plat) {
-    const { data: vs } = await plat.from('venda_sessoes').select('id, data_sessao, vendedor, presenca, resultado, upsell, valor_numerico')
+    const { data: vs } = await plat.from('venda_sessoes').select('id, data_sessao, vendedor, presenca, resultado, upsell, valor_numerico, lead_nome')
       .gte('data_sessao', mesIni < semIni ? mesIni : semIni).lt('data_sessao', mesFim > semFim ? mesFim : semFim)
     // Upsell marcado no card do CRM também conta como upsell, mesmo que o Plat ainda não tenha sido atualizado.
     const idsVenda = (vs ?? []).filter((r: any) => r.resultado === 'Vendido' && r.data_sessao >= mesIni && r.data_sessao < mesFim).map((r: any) => r.id)
@@ -66,10 +66,15 @@ Deno.serve(async (req) => {
       const { data: ds } = await admin.from('deals').select('plat_sessao_id, sessao_registro').in('plat_sessao_id', idsVenda)
       for (const d of ds ?? []) if ((d as any).sessao_registro?.upsell === true) upsellCRM.add((d as any).plat_sessao_id)
     }
+    // Cash collect do mês (caixa_lancamentos): Pix na hora + cartão por link (D+1, já sem a taxa da InfinitePay), inclui upsell.
+    // Upsell/renovação lançado no caixa também tira a sessão das vendas novas (pelo nome do lead), se o Plat ainda não marcou.
+    const { data: cx } = await admin.from('caixa_lancamentos').select('vendedor, tipo, liquido, lead').gte('data', mesIni).lt('data', mesFim)
+    const sem = (t: string) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().split(/\s+/).slice(0, 2).join(' ')
+    const upsellNome = new Set((cx ?? []).filter((l: any) => l.tipo === 'upsell' && l.lead).map((l: any) => sem(l.lead)))
     const quem = (v: string) => { const t = String(v || '').trim(); return /^carmem e diego$/i.test(t) ? 'Diego' : t }
     const por: Record<string, any> = {}
     for (const r of vs ?? []) {
-      const up = !!r.upsell || upsellCRM.has(r.id)
+      const up = !!r.upsell || upsellCRM.has(r.id) || (r.resultado === 'Vendido' && upsellNome.has(sem(r.lead_nome)))
       const show = r.presenca === 'Show', venda = r.resultado === 'Vendido' && !up
       if (r.data_sessao >= semIni && r.data_sessao < semFim) { if (show) semana.realizadas++; if (venda) semana.vendas++ }
       if (r.data_sessao >= mesIni && r.data_sessao < mesFim) {
@@ -82,8 +87,6 @@ Deno.serve(async (req) => {
         else if (r.resultado === 'Vendido' && up) p.upsells++
       }
     }
-    // Cash collect do mês (caixa_lancamentos): Pix na hora + cartão por link (D+1, já sem a taxa da InfinitePay), inclui upsell
-    const { data: cx } = await admin.from('caixa_lancamentos').select('vendedor, tipo, liquido').gte('data', mesIni).lt('data', mesFim)
     for (const l of cx ?? []) {
       const n = quem((l as any).vendedor); if (!n || /viviane/i.test(n)) continue
       const p = por[n] ??= { nome: n, sessoes: 0, noshow: 0, vendas: 0, upsells: 0, valor: 0, cash: 0, cash_upsell: 0 }
