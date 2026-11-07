@@ -54,24 +54,38 @@ Deno.serve(async (req) => {
 
   // Registro de Sessões 1:1 (Plat): realizadas e vendas da semana e do mês, e ranking do mês
   const plat = platClient()
-  let semana = { realizadas: 0, vendas: 0 }, mes = { realizadas: 0, vendas: 0, valor: 0 }
+  let semana = { realizadas: 0, vendas: 0 }, mes = { realizadas: 0, vendas: 0, valor: 0, cash: 0 }
   let ranking: any[] = []
   if (plat) {
-    const { data: vs } = await plat.from('venda_sessoes').select('data_sessao, vendedor, presenca, resultado, upsell, valor_numerico')
+    const { data: vs } = await plat.from('venda_sessoes').select('id, data_sessao, vendedor, presenca, resultado, upsell, valor_numerico')
       .gte('data_sessao', mesIni < semIni ? mesIni : semIni).lt('data_sessao', mesFim > semFim ? mesFim : semFim)
+    // Cash collect: entrada paga na call, tirada do contrato do card no CRM ligado à sessão (deals.plat_sessao_id).
+    // Upsell marcado no card do CRM também conta como upsell, mesmo que o Plat ainda não tenha sido atualizado.
+    const idsVenda = (vs ?? []).filter((r: any) => r.resultado === 'Vendido' && r.data_sessao >= mesIni && r.data_sessao < mesFim).map((r: any) => r.id)
+    const entradaDe: Record<string, number> = {}
+    const upsellCRM = new Set<string>()
+    if (idsVenda.length) {
+      const { data: ds } = await admin.from('deals').select('plat_sessao_id, contrato, sessao_registro').in('plat_sessao_id', idsVenda)
+      const brl = (v: unknown) => { const t = String(v ?? '').replace(/[^\d,.-]/g, ''); if (!t) return 0; const n = Number(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t); return Number.isFinite(n) ? n : 0 }
+      for (const d of ds ?? []) {
+        entradaDe[(d as any).plat_sessao_id] = brl((d as any).contrato?.entrada)
+        if ((d as any).sessao_registro?.upsell === true) upsellCRM.add((d as any).plat_sessao_id)
+      }
+    }
     const quem = (v: string) => { const t = String(v || '').trim(); return /^carmem e diego$/i.test(t) ? 'Diego' : t }
     const por: Record<string, any> = {}
     for (const r of vs ?? []) {
-      const show = r.presenca === 'Show', venda = r.resultado === 'Vendido' && !r.upsell
+      const up = !!r.upsell || upsellCRM.has(r.id)
+      const show = r.presenca === 'Show', venda = r.resultado === 'Vendido' && !up
       if (r.data_sessao >= semIni && r.data_sessao < semFim) { if (show) semana.realizadas++; if (venda) semana.vendas++ }
       if (r.data_sessao >= mesIni && r.data_sessao < mesFim) {
         if (show) mes.realizadas++
-        if (venda) { mes.vendas++; mes.valor += Number(r.valor_numerico) || 0 }
+        if (venda) { mes.vendas++; mes.valor += Number(r.valor_numerico) || 0; mes.cash += entradaDe[r.id] || 0 }
         const n = quem(r.vendedor); if (!n || /viviane/i.test(n)) continue
-        const p = por[n] ??= { nome: n, sessoes: 0, noshow: 0, vendas: 0, upsells: 0, valor: 0 }
+        const p = por[n] ??= { nome: n, sessoes: 0, noshow: 0, vendas: 0, upsells: 0, valor: 0, cash: 0 }
         if (show) p.sessoes++; else if (r.presenca === 'No-show') p.noshow++
-        if (venda) { p.vendas++; p.valor += Number(r.valor_numerico) || 0 }
-        else if (r.resultado === 'Vendido' && r.upsell) p.upsells++
+        if (venda) { p.vendas++; p.valor += Number(r.valor_numerico) || 0; p.cash += entradaDe[r.id] || 0 }
+        else if (r.resultado === 'Vendido' && up) p.upsells++
       }
     }
     ranking = Object.values(por).map((p: any) => ({ ...p, conversao: p.sessoes ? Math.round(p.vendas / p.sessoes * 1000) / 10 : 0 }))
