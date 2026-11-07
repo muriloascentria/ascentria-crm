@@ -54,8 +54,8 @@ Deno.serve(async (req) => {
 
   // Registro de Sessões 1:1 (Plat): realizadas e vendas da semana e do mês, e ranking do mês
   const plat = platClient()
-  let semana = { realizadas: 0, vendas: 0 }, mes = { realizadas: 0, vendas: 0, valor: 0, cash: 0 }
-  let ranking: any[] = []
+  let semana = { realizadas: 0, vendas: 0 }, mes = { realizadas: 0, vendas: 0, valor: 0, cash: 0, upsells: 0, valor_upsell: 0, cash_upsell: 0 }
+  let ranking: any[] = [], ranking_upsell: any[] = []
   if (plat) {
     const { data: vs } = await plat.from('venda_sessoes').select('id, data_sessao, vendedor, presenca, resultado, upsell, valor_numerico, lead_nome')
       .gte('data_sessao', mesIni < semIni ? mesIni : semIni).lt('data_sessao', mesFim > semFim ? mesFim : semFim)
@@ -72,7 +72,9 @@ Deno.serve(async (req) => {
     const sem = (t: string) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().split(/\s+/).slice(0, 2).join(' ')
     const upsellNome = new Set((cx ?? []).filter((l: any) => l.tipo === 'upsell' && l.lead).map((l: any) => sem(l.lead)))
     const quem = (v: string) => { const t = String(v || '').trim(); return /^carmem e diego$/i.test(t) ? 'Diego' : t }
-    const por: Record<string, any> = {}
+    const novo = (n: string) => ({ nome: n, sessoes: 0, noshow: 0, vendas: 0, valor: 0, cash: 0, upsells: 0, valor_upsell: 0, cash_upsell: 0 })
+    // os três consultores sempre aparecem (vendas novas e upsell/renovação), mesmo zerados
+    const por: Record<string, any> = { Adriana: novo('Adriana'), Carmem: novo('Carmem'), Diego: novo('Diego') }
     for (const r of vs ?? []) {
       const up = !!r.upsell || upsellCRM.has(r.id) || (r.resultado === 'Vendido' && upsellNome.has(sem(r.lead_nome)))
       const show = r.presenca === 'Show', venda = r.resultado === 'Vendido' && !up
@@ -81,21 +83,24 @@ Deno.serve(async (req) => {
         if (show) mes.realizadas++
         if (venda) { mes.vendas++; mes.valor += Number(r.valor_numerico) || 0 }
         const n = quem(r.vendedor); if (!n || /viviane/i.test(n)) continue
-        const p = por[n] ??= { nome: n, sessoes: 0, noshow: 0, vendas: 0, upsells: 0, valor: 0, cash: 0, cash_upsell: 0, valor_upsell: 0 }
+        const p = por[n] ??= novo(n)
         if (show) p.sessoes++; else if (r.presenca === 'No-show') p.noshow++
         if (venda) { p.vendas++; p.valor += Number(r.valor_numerico) || 0 }
-        else if (r.resultado === 'Vendido' && up) p.upsells++
       }
     }
     for (const l of cx ?? []) {
       const n = quem((l as any).vendedor); if (!n || /viviane/i.test(n)) continue
-      const p = por[n] ??= { nome: n, sessoes: 0, noshow: 0, vendas: 0, upsells: 0, valor: 0, cash: 0, cash_upsell: 0, valor_upsell: 0 }
+      const p = por[n] ??= novo(n)
       const v = Number((l as any).liquido) || 0
-      p.cash += v; mes.cash += v
-      if ((l as any).tipo === 'upsell') { p.cash_upsell += v; p.valor_upsell += Number((l as any).valor_contrato) || 0 }
+      if ((l as any).tipo === 'upsell') {
+        p.cash_upsell += v; mes.cash_upsell += v
+        if ((l as any).valor_contrato != null) { p.upsells++; p.valor_upsell += Number((l as any).valor_contrato) || 0; mes.upsells++; mes.valor_upsell += Number((l as any).valor_contrato) || 0 }
+      } else { p.cash += v; mes.cash += v }
     }
     ranking = Object.values(por).map((p: any) => ({ ...p, conversao: p.sessoes ? Math.round(p.vendas / p.sessoes * 1000) / 10 : 0 }))
       .sort((a: any, b: any) => b.vendas - a.vendas || b.valor - a.valor || b.conversao - a.conversao || b.sessoes - a.sessoes)
+    ranking_upsell = Object.values(por).map((p: any) => ({ nome: p.nome, upsells: p.upsells, valor: p.valor_upsell, cash: p.cash_upsell }))
+      .sort((a: any, b: any) => b.valor - a.valor || b.cash - a.cash || b.upsells - a.upsells)
   }
-  return json({ hoje, semana_ini: semIni, mes_ini: mesIni, leads, agendadas, semana, mes, ranking, plat: !!plat })
+  return json({ hoje, semana_ini: semIni, mes_ini: mesIni, leads, agendadas, semana, mes, ranking, ranking_upsell, plat: !!plat })
 })

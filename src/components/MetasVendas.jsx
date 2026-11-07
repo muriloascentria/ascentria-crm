@@ -6,6 +6,8 @@ import { fmtMoney } from '../lib/utils'
    29% dos leads agendam, 87% comparecem e 27,5% das sessões realizadas viram venda. */
 const META = { leadsSemana: 57, agendadasSemana: 17, realizadasSemana: 14, vendasMes: 17 }
 
+const medalha = (i, tem) => (tem && i === 0 ? '🥇' : tem && i === 1 ? '🥈' : tem && i === 2 ? '🥉' : i + 1)
+
 function Bloco({ rot, valor, meta, sufixo }) {
   const pct = meta ? Math.min(100, Math.round((valor / meta) * 100)) : 0
   const ok = valor >= meta
@@ -42,21 +44,47 @@ export default function MetasVendas({ atualizar }) {
       </div>
       {d.ranking?.length > 0 && (
         <div className="mv-ranking">
-          <div className="mv-titulo">🏅 Ranking dos consultores <span>vendas novas do mês, pelo Registro de Sessões 1:1</span></div>
+          <div className="mv-titulo">🏅 Ranking de vendas novas <span>do mês, pelo Registro de Sessões 1:1</span></div>
           <div className="mv-tabela">
             <table>
-              <thead><tr><th>#</th><th>Consultor</th><th>Vendas</th><th>Valor vendido</th><th title="Pix na hora + cartão por link (entra no dia seguinte, já sem a taxa da InfinitePay). Inclui upsell.">Cash collect</th><th>Sessões</th><th>No-show</th><th>Conversão</th></tr></thead>
+              <thead><tr><th>#</th><th>Consultor</th><th>Vendas</th><th>Valor do contrato</th><th title="Pix na hora + cartão por link (entra no dia seguinte, já sem a taxa da InfinitePay)">Cash collect</th><th>Sessões</th><th>No-show</th><th>Conversão</th></tr></thead>
               <tbody>
                 {d.ranking.map((p, i) => (
                   <tr key={p.nome} className={i === 0 && p.vendas > 0 ? 'lider' : ''}>
-                    <td>{i === 0 && p.vendas > 0 ? '🥇' : i === 1 && p.vendas > 0 ? '🥈' : i === 2 && p.vendas > 0 ? '🥉' : i + 1}</td>
-                    <td><b>{p.nome}</b>{p.upsells ? <span className="small muted"> · +{p.upsells} upsell{p.upsells > 1 ? 's' : ''}</span> : null}</td>
+                    <td>{medalha(i, p.vendas > 0)}</td>
+                    <td><b>{p.nome}</b></td>
                     <td>{p.vendas}</td>
-                    <td>{fmtMoney(p.valor)}{p.valor_upsell ? <div className="small muted">+ {fmtMoney(p.valor_upsell)} de upsell</div> : null}</td>
-                    <td>{fmtMoney(p.cash || 0)}{p.cash_upsell ? <div className="small muted">{fmtMoney(p.cash_upsell)} de upsell</div> : null}</td>
+                    <td>{fmtMoney(p.valor)}</td>
+                    <td>{fmtMoney(p.cash || 0)}</td>
                     <td>{p.sessoes}</td>
                     <td>{p.noshow}</td>
                     <td>{String(p.conversao).replace('.', ',')}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      {d.ranking_upsell?.length > 0 && (
+        <div className="mv-ranking mv-upsell">
+          <div className="mv-titulo">🔁 Upsell e renovação <span>do mês · quem já é mentorada</span></div>
+          <div className="mv-resumo">
+            <span><b>{d.mes?.upsells || 0}</b> {d.mes?.upsells === 1 ? 'upsell/renovação' : 'upsells/renovações'}</span>
+            <span>Valor dos novos contratos: <b>{fmtMoney(d.mes?.valor_upsell || 0)}</b></span>
+            <span>Cash collect: <b>{fmtMoney(d.mes?.cash_upsell || 0)}</b></span>
+          </div>
+          <div className="mv-tabela">
+            <table>
+              <thead><tr><th>#</th><th>Consultor</th><th>Upsells</th><th>Valor do novo contrato</th><th>Cash collect</th></tr></thead>
+              <tbody>
+                {d.ranking_upsell.map((p, i) => (
+                  <tr key={p.nome} className={i === 0 && p.valor > 0 ? 'lider' : ''}>
+                    <td>{medalha(i, p.valor > 0)}</td>
+                    <td><b>{p.nome}</b></td>
+                    <td>{p.upsells}</td>
+                    <td>{fmtMoney(p.valor)}</td>
+                    <td>{fmtMoney(p.cash || 0)}</td>
                   </tr>
                 ))}
               </tbody>

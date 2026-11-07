@@ -119,3 +119,4 @@ $function$;
 -- Valor do contrato do upsell no caixa, para o placar e o ranking mostrarem o valor vendido em upsell
 alter table public.caixa_lancamentos add column if not exists valor_contrato numeric;
 -- (caixa_do_contrato e vendas_resumo atualizados no banco: entrada leva valor_contrato; vendas_resumo devolve upsells e upsell_total)
+-- vendas_resumo: entradas = cash collect só das vendas novas (tipo venda); upsell separado (atualizado no banco)

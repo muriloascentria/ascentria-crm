@@ -18,7 +18,6 @@ export default function PlacarVendas({ atualizar }) {
   if (linhas === null) return null
   const r = linhas[0] || {}
   const total = Number(r.total || 0), vendas = Number(r.vendas || 0), entradas = Number(r.entradas || 0)
-  const ups = Number(r.upsells || 0), upTotal = Number(r.upsell_total || 0)
   const atual = mes.y === hoje.getFullYear() && mes.m === hoje.getMonth()
   const mudar = (d) => setMes(({ y, m }) => { const n = new Date(y, m + d, 1); return { y: n.getFullYear(), m: n.getMonth() } })
   return (
@@ -29,14 +28,14 @@ export default function PlacarVendas({ atualizar }) {
         <button type="button" className="btn ghost sm" onClick={() => mudar(1)} disabled={atual} aria-label="Próximo mês">›</button>
       </div>
       <div className="placar-num">
-        <span className="placar-rot">💰 Vendido em contrato</span>
+        <span className="placar-rot">💰 Vendas novas · valor do contrato</span>
         <span className="placar-val">{fmtMoney(total)}</span>
-        <span className="placar-sub">{vendas} {vendas === 1 ? 'venda nova' : 'vendas novas'}{ups ? ` · + ${fmtMoney(upTotal)} em ${ups} upsell${ups > 1 ? 's' : ''}` : ''}</span>
+        <span className="placar-sub">{vendas} {vendas === 1 ? 'venda nova' : 'vendas novas'}</span>
       </div>
       <div className="placar-num">
-        <span className="placar-rot">💵 Cash collect</span>
+        <span className="placar-rot">💵 Vendas novas · cash collect</span>
         <span className="placar-val">{fmtMoney(entradas)}</span>
-        <span className="placar-sub">Pix + cartão (já sem a taxa), inclui upsell</span>
+        <span className="placar-sub">Pix + cartão (já sem a taxa)</span>
       </div>
       {vendas === 0 && <span className="small muted">{atual ? 'A primeira venda do mês vem aí! 🚀' : 'Nenhuma venda neste mês.'}</span>}
     </div>
