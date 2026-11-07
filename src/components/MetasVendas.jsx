@@ -129,7 +129,7 @@ export default function MetasVendas({ atualizar }) {
           <div className="mv-titulo">🏅 Ranking de vendas novas <span>do mês, pelo Registro de Sessões 1:1</span></div>
           <div className="mv-tabela">
             <table>
-              <thead><tr><th>#</th><th>Consultor</th><th>Vendas</th><th>Valor do contrato</th><th title="Pix na hora + cartão por link (entra no dia seguinte, já sem a taxa da InfinitePay)">Cash collect</th><th>Sessões</th><th>No-show</th><th>Conversão</th></tr></thead>
+              <thead><tr><th>#</th><th>Consultor</th><th>Vendas</th><th>Valor do contrato</th><th title="Pix na hora + cartão por link (entra no dia seguinte, já sem a taxa da InfinitePay)">Cash collect</th><th>Sessões realizadas</th><th>No-show</th><th>Conversão</th></tr></thead>
               <tbody>
                 {[...d.ranking].sort(ordemRanking).map((p, i) => (
                   <tr key={p.nome} className={i === 0 && p.vendas > 0 ? 'lider' : ''}>
