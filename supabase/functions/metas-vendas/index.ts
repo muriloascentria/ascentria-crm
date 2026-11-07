@@ -33,6 +33,48 @@ const META_MES = { leads: 245, agendadas: 71, realizadas: 62, vendas: 17 }
 const metaSemana = (metaMes: number, feitoAntes: number, diasSemana: number, diasRestantes: number) =>
   Math.max(0, Math.ceil(Math.max(0, metaMes - feitoAntes) * (diasRestantes ? diasSemana / diasRestantes : 1)))
 
+
+// Objeções registradas pelos consultores (Objeção 1 e 2 do Registro de Sessões), agrupadas por tipo.
+// Cada objeção escrita vai para um tipo: primeiro pelo rótulo do começo ("Financeira: ..."), depois pelas palavras do texto.
+const TIPOS_OBJECAO: [string, RegExp][] = [
+  ['Precisa consultar outra pessoa', /marido|esposo|esposa|fam[ií]lia|colegas|s[oó]cio|conversar com|falar com/],
+  ['Experiência ruim com outra mentoria', /outra (mentoria|institui)|mentoria atual|j[aá] investiu|descren|entrega insatisf|enganad/],
+  ['Não vê valor / não é o que precisa', /n[aã]o vale|n[aã]o [eé] o que (ela )?precisa|de gra[cç]a|caro demais|n[aã]o acredita na (mentoria|proposta)/],
+  ['Financeira', /financ|dinheiro|contas|valor|parcela|entrada|or[cç]amento|reserva|invest|pagar|pagamento|gast|renda|despesa|margem|caro/],
+  ['Insegurança com o resultado', /medo|insegur|receio|resultado|retorno|n[aã]o acredita|n[aã]o se acha|capaz|conseguir/],
+  ['Tempo / rotina', /tempo|rotina|sobrecarga|trabalhando demais|agenda|disponibilidade/],
+  ['Momento / prioridade', /momento|depois|janeiro|fevereiro|mar[cç]o|forma(tura|da|r)|(^|\s)p[oó]s(\s|-|\.|,|$)|pressa|urg[eê]ncia|prioridade|daqui a|resid[eê]ncia|futuramente|mudan[cç]a|obra/],
+]
+const semObjecao = (t: string) => !t || /^\s*(n[aã]o foram registradas obje[cç][oõ]es|nenhuma|-|n\/a)\.?\s*$/i.test(t)
+function tipoObjecao(texto: string) {
+  const t = texto.normalize('NFC').toLowerCase()
+  // rótulo no começo ("Financeira: ...", "Momento — ..."): vale o tipo que aparece primeiro nele
+  const m = t.match(/^([^:\n—–]{1,100})[:—–]/)
+  if (m) {
+    let melhor = '', pos = 1e9
+    for (const [nome, re] of TIPOS_OBJECAO) { const i = m[1].search(re); if (i >= 0 && i < pos) { pos = i; melhor = nome } }
+    if (melhor) return melhor
+  }
+  for (const [nome, re] of TIPOS_OBJECAO) if (re.test(t)) return nome
+  return 'Outras'
+}
+function resumoObjecoes(linhas: any[]) {
+  const cont: Record<string, { total: number; contornadas: number }> = {}
+  let total = 0, sessoes = 0
+  for (const r of linhas) {
+    const textos = [r.objecoes, r.objecoes2].filter((t: string) => !semObjecao(t))
+    if (!textos.length) continue
+    sessoes++
+    for (const t of textos) {
+      const k = tipoObjecao(t); const c = cont[k] ??= { total: 0, contornadas: 0 }
+      c.total++; total++; if (r.resultado === 'Vendido') c.contornadas++
+    }
+  }
+  const tipos = Object.entries(cont).map(([tipo, c]) => ({ tipo, ...c, pct: total ? Math.round(c.total / total * 1000) / 10 : 0 }))
+    .sort((a, b) => b.total - a.total || a.tipo.localeCompare(b.tipo))
+  return { total, sessoes, tipos }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   const auth = req.headers.get('Authorization') ?? ''
@@ -77,11 +119,15 @@ Deno.serve(async (req) => {
   let semana = { realizadas: 0, vendas: 0 }, mes = { realizadas: 0, vendas: 0, valor: 0, cash: 0, upsells: 0, valor_upsell: 0, cash_upsell: 0 }
   let ranking: any[] = [], ranking_upsell: any[] = []
   let realizadasAntes = 0
+  const comparecimento = { semana: { show: 0, noshow: 0 }, mes: { show: 0, noshow: 0 } }
+  const objecoes: any = { mes: null, mes_upsell: null, d90: null, d90_upsell: null }
   if (plat) {
-    const { data: vs } = await plat.from('venda_sessoes').select('id, data_sessao, vendedor, presenca, resultado, upsell, valor_numerico, lead_nome')
-      .gte('data_sessao', mesIni < semIni ? mesIni : semIni).lt('data_sessao', mesFim > semFim ? mesFim : semFim)
+    const d90 = addDias(hoje, -90)
+    const desde = [mesIni, semIni, d90].sort()[0]
+    const { data: vs } = await plat.from('venda_sessoes').select('id, data_sessao, vendedor, presenca, resultado, upsell, valor_numerico, lead_nome, objecoes, objecoes2')
+      .gte('data_sessao', desde).lt('data_sessao', mesFim > semFim ? mesFim : semFim)
     // Upsell marcado no card do CRM também conta como upsell, mesmo que o Plat ainda não tenha sido atualizado.
-    const idsVenda = (vs ?? []).filter((r: any) => r.resultado === 'Vendido' && r.data_sessao >= mesIni && r.data_sessao < mesFim).map((r: any) => r.id)
+    const idsVenda = (vs ?? []).filter((r: any) => r.resultado === 'Vendido').map((r: any) => r.id)
     const upsellCRM = new Set<string>()
     if (idsVenda.length) {
       const { data: ds } = await admin.from('deals').select('plat_sessao_id, sessao_registro').in('plat_sessao_id', idsVenda)
@@ -96,8 +142,22 @@ Deno.serve(async (req) => {
     const novo = (n: string) => ({ nome: n, sessoes: 0, noshow: 0, vendas: 0, valor: 0, cash: 0, upsells: 0, valor_upsell: 0, cash_upsell: 0, sessoes_upsell: 0 })
     // os três consultores sempre aparecem (vendas novas e upsell/renovação), mesmo zerados
     const por: Record<string, any> = { Adriana: novo('Adriana'), Carmem: novo('Carmem'), Diego: novo('Diego') }
+    const ehUpsell = (r: any) => !!r.upsell || upsellCRM.has(r.id) || (r.resultado === 'Vendido' && upsellNome.has(sem(r.lead_nome)))
+    const doMes = (vs ?? []).filter((r: any) => r.data_sessao >= mesIni && r.data_sessao < mesFim && r.presenca === 'Show')
+    const de90 = (vs ?? []).filter((r: any) => r.data_sessao >= d90 && r.data_sessao <= hoje && r.presenca === 'Show')
+    objecoes.mes = resumoObjecoes(doMes.filter((r: any) => !ehUpsell(r)))
+    objecoes.mes_upsell = resumoObjecoes(doMes.filter(ehUpsell))
+    objecoes.d90 = resumoObjecoes(de90.filter((r: any) => !ehUpsell(r)))
+    objecoes.d90_upsell = resumoObjecoes(de90.filter(ehUpsell))
     for (const r of vs ?? []) {
-      const up = !!r.upsell || upsellCRM.has(r.id) || (r.resultado === 'Vendido' && upsellNome.has(sem(r.lead_nome)))
+      if (r.data_sessao < mesIni && r.data_sessao < wIni) continue
+      const up = ehUpsell(r)
+      // Comparecimento do time (o SDR confirma as sessões): só sessões de vendas novas
+      if (!up && (r.presenca === 'Show' || r.presenca === 'No-show')) {
+        const k = r.presenca === 'Show' ? 'show' : 'noshow'
+        if (r.data_sessao >= wIni && r.data_sessao < wFim) comparecimento.semana[k]++
+        if (r.data_sessao >= mesIni && r.data_sessao < mesFim) comparecimento.mes[k]++
+      }
       // Sessão de upsell/renovação (quem já é mentorada) não entra nas sessões das vendas novas:
       // nem na meta de sessões realizadas, nem no denominador da conversão.
       const show = r.presenca === 'Show' && !up, venda = r.resultado === 'Vendido' && !up
@@ -136,5 +196,7 @@ Deno.serve(async (req) => {
     feito_mes: { leads: leadsAntes + leads, agendadas: agendadasAntes + agendadas, realizadas: realizadasAntes + semana.realizadas },
     dias_semana: diasSemana, dias_restantes: diasRestantes,
   }
-  return json({ hoje, semana_ini: wIni, metas, mes_ini: mesIni, leads, agendadas, semana, mes, ranking, ranking_upsell, plat: !!plat })
+  const taxa = (c: { show: number; noshow: number }) => ({ ...c, pct: c.show + c.noshow ? Math.round(c.show / (c.show + c.noshow) * 1000) / 10 : null })
+  return json({ hoje, semana_ini: wIni, metas, mes_ini: mesIni, leads, agendadas, semana, mes, ranking, ranking_upsell,
+    comparecimento: { semana: taxa(comparecimento.semana), mes: taxa(comparecimento.mes) }, objecoes, plat: !!plat })
 })
