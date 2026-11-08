@@ -241,7 +241,7 @@ Deno.serve(async (req) => {
         if ((l as any).valor_contrato != null) { p.upsells++; p.valor_upsell += Number((l as any).valor_contrato) || 0; mes.upsells++; mes.valor_upsell += Number((l as any).valor_contrato) || 0 }
       } else { p.cash += v; mes.cash += v }
     }
-    ranking = Object.values(por).map((p: any) => ({ ...p, conversao: p.sessoes ? Math.round(p.vendas / p.sessoes * 1000) / 10 : 0 }))
+    ranking = Object.values(por).map((p: any) => ({ ...p, conversao: p.sessoes ? Math.round((p.vendas - (p.sem_sessao || 0)) / p.sessoes * 1000) / 10 : 0 }))
       .sort((a: any, b: any) => b.vendas - a.vendas || b.conversao - a.conversao || b.cash - a.cash || b.valor - a.valor)
     ranking_upsell = Object.values(por).map((p: any) => ({ nome: p.nome, sessoes: p.sessoes_upsell, upsells: p.upsells, valor: p.valor_upsell, cash: p.cash_upsell }))
       .sort((a: any, b: any) => b.valor - a.valor || b.cash - a.cash || b.upsells - a.upsells)
