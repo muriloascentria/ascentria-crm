@@ -10,6 +10,9 @@ const META = { leadsSemana: 57, agendadasSemana: 17, realizadasSemana: 14, venda
 // Ordem do ranking de vendas novas: nº de vendas, depois taxa de conversão, cash collect e valor do contrato
 const ordemRanking = (a, b) => b.vendas - a.vendas || b.conversao - a.conversao || (b.cash || 0) - (a.cash || 0) || b.valor - a.valor
 
+// Conversão = vendas feitas em sessão ÷ sessões realizadas (venda fechada depois, sem sessão no Plat, não entra na conta)
+const convSessoes = (p) => ({ ...p, conversao: p.sessoes ? Math.round((p.vendas - (p.sem_sessao || 0)) / p.sessoes * 1000) / 10 : 0 })
+
 const medalha = (i, tem) => (tem && i === 0 ? '🥇' : tem && i === 1 ? '🥈' : tem && i === 2 ? '🥉' : i + 1)
 
 function Bloco({ rot, valor, meta, sufixo, mes }) {
@@ -140,7 +143,7 @@ export default function MetasVendas({ atualizar, mes: mesSel, onMes, onDados }) 
             <table>
               <thead><tr><th>#</th><th>Consultor</th><th>Vendas</th><th>Valor do contrato</th><th title="Pix na hora + cartão por link (entra no dia seguinte, já sem a taxa da InfinitePay)">Cash collect</th><th>Sessões realizadas</th><th>No-show</th><th>Conversão</th></tr></thead>
               <tbody>
-                {[...d.ranking].sort(ordemRanking).map((p, i) => (
+                {[...d.ranking].map(convSessoes).sort(ordemRanking).map((p, i) => (
                   <tr key={p.nome} className={i === 0 && p.vendas > 0 ? 'lider' : ''}>
                     <td>{medalha(i, p.vendas > 0)}</td>
                     <td><b>{p.nome}</b></td>
