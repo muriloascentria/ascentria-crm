@@ -72,6 +72,7 @@ export default function Pipeline() {
   const [pipelineId, setPipelineId] = useState(null)
   const [deals, setDeals] = useState([])
   // mês dos indicadores (placar, metas, ranking, objeções e upsell mudam juntos)
+  const [dadosInd, setDadosInd] = useState(null) // números do mês (placar e indicadores usam a mesma fonte)
   const [mesInd, setMesInd] = useState(() => { const h = new Date(); return { y: h.getFullYear(), m: h.getMonth() } })
   const [q, setQ] = useState('')
   const [onlyMine, setOnlyMine] = useState(false)
@@ -227,8 +228,10 @@ export default function Pipeline() {
           </div>
         </div>
       ) : (<>
-      <PlacarVendas atualizar={deals.filter((d) => d.status === 'won').length} mes={mesInd} onMes={setMesInd} />
-      {!DEMO && <MetasVendas atualizar={deals.length} mes={mesInd} onMes={setMesInd} />}
+      <PlacarVendas atualizar={deals.filter((d) => d.status === 'won').length} mes={mesInd} onMes={setMesInd}
+        resumo={DEMO ? undefined : (dadosInd && dadosInd.mes_ref === `${mesInd.y}-${String(mesInd.m + 1).padStart(2, '0')}`
+          ? { vendas: dadosInd.mes.vendas, total: dadosInd.mes.valor, entradas: dadosInd.mes.cash } : null)} />
+      {!DEMO && <MetasVendas atualizar={deals.length} mes={mesInd} onMes={setMesInd} onDados={setDadosInd} />}
       </>)}
 
       {emReuniao.length > 0 && (

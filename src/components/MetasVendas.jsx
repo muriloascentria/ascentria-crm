@@ -75,7 +75,7 @@ function Objecoes({ titulo, mes, d90 }) {
 /** Metas da semana (leads, sessões agendadas e realizadas), vendas do mês e ranking dos consultores. */
 const NOMES_MES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
 
-export default function MetasVendas({ atualizar, mes: mesSel, onMes }) {
+export default function MetasVendas({ atualizar, mes: mesSel, onMes, onDados }) {
   const chaveMes = mesSel ? `${mesSel.y}-${String(mesSel.m + 1).padStart(2, '0')}` : null
   const [d, setD] = useState(null)
   // recolher os indicadores para usar só o funil (fica lembrado neste navegador)
@@ -83,7 +83,7 @@ export default function MetasVendas({ atualizar, mes: mesSel, onMes }) {
   const alternar = () => setRecolhido((v) => { try { localStorage.setItem('indicadoresRecolhidos', v ? '0' : '1') } catch { /* sem armazenamento */ } return !v })
   useEffect(() => {
     let vivo = true
-    const carregar = () => invokeFn('metas-vendas', { body: chaveMes ? { mes: chaveMes } : {} }).then(({ data, error }) => { if (vivo && !error && data && !data.error) setD(data) })
+    const carregar = () => invokeFn('metas-vendas', { body: chaveMes ? { mes: chaveMes } : {} }).then(({ data, error }) => { if (vivo && !error && data && !data.error) { setD(data); onDados?.(data) } })
     carregar()
     const iv = setInterval(carregar, 120_000) // registros novos de sessão entram sozinhos
     return () => { vivo = false; clearInterval(iv) }
