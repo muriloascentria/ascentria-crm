@@ -6,6 +6,12 @@ import { Field } from './ui'
 
 // Mesmas opções da tela "Registro de Sessões 1:1" do Essência Plat (os relatórios de lá agrupam por esses textos)
 const VENDEDORES = ['Adriana', 'Carmem', 'Carmem e Diego', 'Diego', 'Viviane']
+// Quem fez a sessão e quem fechou depois (ex.: no WhatsApp) ficam juntos no campo vendedor: "Carmem → Diego".
+// No ranking, a sessão conta para quem conduziu e a venda para quem fechou.
+const FECHADORES = ['Adriana', 'Carmem', 'Diego']
+const sessaoDe = (v) => String(v || '').split('→')[0].trim()
+const fechouCom = (v) => (String(v || '').split('→')[1] || '').trim()
+const juntar = (sessao, fechou) => (fechou && fechou !== sessao ? `${sessao} → ${fechou}` : sessao)
 const PRODUTOS = ['Mentoria Essência', 'Pós-Graduação']
 const FORMATOS = ['Videochamada', 'Videochamada e WhatsApp', 'WhatsApp']
 const PRESENCAS = ['Show', 'No-show']
@@ -114,10 +120,18 @@ export default function SessaoRegistro({ deal, contato, onSaved, onStageChanged,
       </div>
       <div className="grid2">
         <Field label="Data da sessão"><input className="input" type="date" value={f.data || ''} onChange={(e) => set('data', e.target.value)} required /></Field>
-        <Field label="Vendedora">
-          <select className="select" value={f.vendedor || ''} onChange={(e) => set('vendedor', e.target.value)} required>{opts(VENDEDORES, f.vendedor)}</select>
+        <Field label="Vendedora (fez a sessão)">
+          <select className="select" value={sessaoDe(f.vendedor)} onChange={(e) => set('vendedor', juntar(e.target.value, fechouCom(f.vendedor)))} required>{opts(VENDEDORES, sessaoDe(f.vendedor))}</select>
         </Field>
       </div>
+      {f.resultado === 'Vendido' && (
+        <Field label="Fechou a venda depois (se foi outro consultor)">
+          <select className="select" value={fechouCom(f.vendedor)} onChange={(e) => set('vendedor', juntar(sessaoDe(f.vendedor), e.target.value))}>
+            <option value="">A mesma pessoa que fez a sessão</option>
+            {FECHADORES.filter((v) => v !== sessaoDe(f.vendedor)).map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </Field>
+      )}
       <div className="grid2">
         <Field label="Lead"><input className="input" value={f.lead || ''} onChange={(e) => set('lead', e.target.value)} required /></Field>
         <Field label="WhatsApp"><input className="input" value={f.whatsapp || ''} onChange={(e) => set('whatsapp', e.target.value)} /></Field>

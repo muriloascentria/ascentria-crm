@@ -187,11 +187,19 @@ Deno.serve(async (req) => {
       if (r.data_sessao >= mesIni && r.data_sessao < mesFim) {
         if (show) mes.realizadas++
         if (venda) { mes.vendas++; mes.valor += Number(r.valor_numerico) || 0 }
-        const n = quem(r.vendedor); if (!n || /viviane/i.test(n)) continue
+        // "Carmem → Diego" = a Carmem fez a sessão e o Diego fechou depois (ex.: no WhatsApp):
+        // a sessão conta para quem conduziu e a venda para quem fechou (como venda sem sessão).
+        const [deSessao, fechou] = String(r.vendedor || '').split('→').map((x: string) => x.trim())
+        const n = quem(deSessao), nv = fechou ? quem(fechou) : n
+        if (!n || /viviane/i.test(n)) continue
         const p = por[n] ??= novo(n)
         if (up) { if (r.presenca === 'Show') p.sessoes_upsell++; continue }
         if (show) p.sessoes++; else if (r.presenca === 'No-show') p.noshow++
-        if (venda) { p.vendas++; p.valor += Number(r.valor_numerico) || 0 }
+        if (venda && nv && !/viviane/i.test(nv)) {
+          const pv = por[nv] ??= novo(nv)
+          pv.vendas++; pv.valor += Number(r.valor_numerico) || 0
+          if (nv !== n) pv.sem_sessao = (pv.sem_sessao || 0) + 1
+        }
       }
     }
     // Venda fechada no CRM sem sessão no Registro do Plat (ex.: fechou depois, no follow-up): conta a venda para o consultor do card.
@@ -224,7 +232,8 @@ Deno.serve(async (req) => {
       p.vendas++; p.valor += valor; p.sem_sessao = (p.sem_sessao || 0) + 1
     }
     for (const l of cx ?? []) {
-      const n = quem((l as any).vendedor); if (!n || /viviane/i.test(n)) continue
+      const vv = String((l as any).vendedor || '').split('→').map((x: string) => x.trim())
+      const n = quem(vv.at(-1) || ''); if (!n || /viviane/i.test(n)) continue
       const p = por[n] ??= novo(n)
       const v = Number((l as any).liquido) || 0
       if ((l as any).tipo === 'upsell') {
