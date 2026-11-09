@@ -261,7 +261,8 @@ Deno.serve(async (req) => {
     let textoParcelas = ''
     if (cron.length) {
       const soma = cron.reduce((a: number, c: any) => a + c.qtd * c.valor, 0)
-      if (Math.abs(entrada + soma - total) > 0.05) return json({ ok: false, error: `As parcelas (${brl(soma)}) mais a entrada (${brl(entrada)}) não fecham o total de ${brl(total)}. Recalcule as parcelas.` })
+      // diferença de centavos (arredondamento) não trava; acima de R$ 1,00 a conta está errada
+      if (Math.abs(entrada + soma - total) >= 1) return json({ ok: false, error: `As parcelas (${brl(soma)}) mais a entrada (${brl(entrada)}) não fecham o total de ${brl(total)}. Recalcule as parcelas.` })
       nParc = cron.reduce((a: number, c: any) => a + c.qtd, 0)
       if (cron.length > 1) {
         let i = 1

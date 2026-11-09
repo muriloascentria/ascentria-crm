@@ -122,6 +122,9 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
   const nDeduzido = !nParc && vParc && restante > 0 && Math.abs(restante / vParc - Math.round(restante / vParc)) < 0.01 ? Math.round(restante / vParc) : null
   const cron = personalizado ? (cronPers.length ? cronPers : null) : (f.cronograma?.length ? f.cronograma : null)
   const cronFecha = cron && total != null && Math.abs(entrada + somaCron(cron) - total) < 0.02
+  // diferença de centavos (arredondamento): só avisa, não trava a emissão
+  const cronDif = cron && total != null ? r2(total - entrada - somaCron(cron)) : 0
+  const cronQuase = cron && total != null && Math.abs(cronDif) < 1
   const calcular = () => {
     setErro(''); setOpcoes(null)
     if (total == null) return setErro('Informe o valor total antes de calcular.')
@@ -159,7 +162,7 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
       if (ok.length < 1) return setErro('Entrada dividida: informe o valor de cada pagamento da entrada.')
       if (ok.some((e) => !e.data)) return setErro('Entrada dividida: informe a data de cada pagamento da entrada.')
     }
-    if (cron && !cronFecha) return setErro(personalizado
+    if (cron && !cronFecha && !cronQuase) return setErro(personalizado
       ? `As parcelas não fecham o total: entrada ${brl(entrada)} + parcelas ${brl(somaCron(cron))} = ${brl(r2(entrada + somaCron(cron)))}, mas o total é ${brl(total)} (diferença de ${brl(r2(total - entrada - somaCron(cron)))}).`
       : `As parcelas calculadas não fecham mais o total (entrada ${brl(entrada)} + parcelas ${brl(somaCron(cron))} ≠ ${brl(total)}). Clique em "Calcular" de novo.`)
     const n = cron ? nCron(cron) : (nParc || nDeduzido || 0)
@@ -171,6 +174,7 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
     if (f.entrada_dividida) dados.entradas = entradas.filter((e) => num(e.valor) > 0).map((e) => ({ valor: num(e.valor), data: e.data }))
     else delete dados.entradas
     const avisos = []
+    if (cron && !cronFecha && cronQuase) avisos.push(`Entrada + parcelas dão ${brl(r2(entrada + somaCron(cron)))}: ${cronDif > 0 ? 'faltam' : 'sobram'} ${brl(Math.abs(cronDif))} em relação ao total de ${brl(total)}. O contrato pode ser emitido assim.`)
     const cpf = String(f.cpf || '').replace(/\D/g, '')
     if (cpf.length !== 11) avisos.push(`O CPF tem ${cpf.length} números (o certo são 11).`)
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(f.email || '').trim())) avisos.push('O e-mail parece incompleto: é para ele que vai o pedido de assinatura.')
@@ -445,7 +449,7 @@ export default function ContratoModal({ deal, contato, onClose, onSaved }) { // 
           <div className="card stack" style={{ gap: 4, background: cronFecha ? 'var(--surface-2)' : '#fff4e5' }}>
             <b className="small">{nCron(cron)} parcelas, sem juros{escalonado ? ' (escalonadas)' : personalizado ? ' (personalizadas)' : ''}</b>
             {(() => { let i = 1; return cron.map((x, k) => { const de = i, ate = i + x.qtd - 1; i += x.qtd; return <div key={k} className="small">{de === ate ? `${de}ª parcela` : `${de}ª a ${ate}ª parcela`}: <b>{x.qtd} × {brl(x.valor)}</b> <span className="muted">= {brl(r2(x.qtd * x.valor))}</span></div> }) })()}
-            <div className="small">Entrada {brl(entrada)} + parcelas {brl(somaCron(cron))} = <b>{brl(r2(entrada + somaCron(cron)))}</b> {cronFecha ? '✓ fecha o total' : <span className="late">⚠ não fecha o total de {brl(total)} (diferença de {brl(r2((total ?? 0) - entrada - somaCron(cron)))}){personalizado ? '' : ': clique em Calcular de novo'}</span>}</div>
+            <div className="small">Entrada {brl(entrada)} + parcelas {brl(somaCron(cron))} = <b>{brl(r2(entrada + somaCron(cron)))}</b> {cronFecha ? '✓ fecha o total' : cronQuase ? <span className="muted">⚠ diferença de {brl(Math.abs(cronDif))} (centavos de arredondamento): pode emitir assim</span> : <span className="late">⚠ não fecha o total de {brl(total)} (diferença de {brl(r2((total ?? 0) - entrada - somaCron(cron)))}){personalizado ? '' : ': clique em Calcular de novo'}</span>}</div>
           </div>
         )}
         <Field label="Vencimentos"><input className="input" value={f.vencimentos} onChange={(e) => set('vencimentos', e.target.value)} placeholder="Todo dia 10, de 10/11/2026 a 10/08/2027" /></Field>
