@@ -234,7 +234,17 @@ Deno.serve(async (req) => {
     const x = b.dados ?? {}
     const nome = txt(x.nome, 200)
     if (!nome) return json({ ok: false, error: 'Informe o nome completo do lead.' })
-    const total = valorNum(x.valor_total), entrada = valorNum(x.entrada) ?? 0, parcela = valorNum(x.valor_parcela) ?? 0
+    // entrada dividida em pagamentos com data (ex.: R$ 1.000 até 11/11 e R$ 1.500 até 30/11): a entrada é a soma
+    const entradas = Array.isArray(x.entradas)
+      ? x.entradas.map((e: any) => ({ valor: Math.round((valorNum(e?.valor) ?? 0) * 100) / 100, data: /^\d{4}-\d{2}-\d{2}$/.test(txt(e?.data)) ? txt(e?.data) : '' })).filter((e: any) => e.valor > 0)
+      : []
+    if (entradas.some((e: any) => !e.data)) return json({ ok: false, error: 'Entrada dividida: informe a data de cada pagamento da entrada.' })
+    const total = valorNum(x.valor_total), parcela = valorNum(x.valor_parcela) ?? 0
+    const entrada = entradas.length ? Math.round(entradas.reduce((a: number, e: any) => a + e.valor, 0) * 100) / 100 : (valorNum(x.entrada) ?? 0)
+    const dataBR = (iso: string) => iso.split('-').reverse().join('/')
+    const textoEntrada = entradas.length
+      ? `${entradas.map((e: any) => `${brl(e.valor)} (${reaisExtenso(e.valor)}) até ${dataBR(e.data)}`).join(entradas.length > 2 ? '; ' : ' e ')}${entradas.length > 1 ? `, totalizando ${brl(entrada)} (${reaisExtenso(entrada)})` : ''}, via Pix`
+      : ''
     let nParc = Math.max(0, Math.floor(Number(String(x.num_parcelas ?? '').replace(/\D/g, '')) || 0))
     if (total == null) return json({ ok: false, error: 'Informe o valor total.' })
     // número de parcelas em branco: deduz pela conta (total − entrada) ÷ parcela; sem como deduzir, não gera
@@ -314,6 +324,8 @@ Deno.serve(async (req) => {
       body: JSON.stringify({ requests: [
         // parcelas diferentes: o texto completo entra no lugar de "valor (extenso)"
         ...(textoParcelas ? [{ replaceAllText: { containsText: { text: '{{VALOR_PARCELA}} ({{VALOR_PARCELA_EXTENSO}})', matchCase: true }, replaceText: `${textoParcelas}, sem juros` } }] : []),
+        // entrada dividida: os pagamentos com as datas entram no lugar de "valor (extenso) - via pix na data de hoje"
+        ...(textoEntrada ? [{ replaceAllText: { containsText: { text: '\\{\\{ENTRADA\\}\\} \\(\\{\\{ENTRADA_EXTENSO\\}\\}\\)\\s*[-–—]?\\s*via pix na data de hoje', matchCase: false, searchByRegex: true }, replaceText: textoEntrada } }] : []),
         // sem entrada: não escreve "R$ 0,00 (zero reais) - via pix na data de hoje"
         ...(entrada <= 0 ? [{ replaceAllText: { containsText: { text: '\\{\\{ENTRADA\\}\\} \\(\\{\\{ENTRADA_EXTENSO\\}\\}\\)\\s*[-–—]?\\s*via pix na data de hoje', matchCase: false, searchByRegex: true }, replaceText: 'sem entrada' } }] : []),
         // à vista (sem parcelas): não escreve "0 (zero vezes)" nem "R$ 0,00 (zero reais)"
@@ -346,7 +358,7 @@ Deno.serve(async (req) => {
 
     const url = doc.webViewLink || `https://docs.google.com/document/d/${doc.id}/edit`
     const agora = new Date().toISOString()
-    const dados = { ...x, nome, cronograma: cron.length ? cron : null, num_parcelas: nParc ? String(nParc) : (aVista ? '0' : ''), data: dataIso, vigencia_inicio: ini, vigencia_fim: fim, dono }
+    const dados = { ...x, nome, entrada: brl(entrada), entradas: entradas.length ? entradas : null, cronograma: cron.length ? cron : null, num_parcelas: nParc ? String(nParc) : (aVista ? '0' : ''), data: dataIso, vigencia_inicio: ini, vigencia_fim: fim, dono }
     const signatario = String(st?.contract_signer_email || 'murilo@ascentria.com.br')
     const patch: Record<string, unknown> = {
       contrato: dados, contrato_doc_id: doc.id, contrato_url: url, contrato_status: 'gerado', contrato_gerado_em: agora, contrato_assinado_em: null,
