@@ -34,7 +34,8 @@ export default function PesquisaPendente() {
     if (!cand.length) { setItens([]); return }
     const { data: feitas } = await supabase.from('activities').select('deal_id').eq('title', TITULO_PESQUISA).in('deal_id', cand.map((d) => d.id))
     const ja = new Set((feitas || []).map((a) => a.deal_id))
-    setItens(cand.filter((d) => !ja.has(d.id)).sort((a, b) => a.ini - b.ini))
+    // sem pesquisa de satisfação (10/11/2026): o aviso é só do relatório e some quando ele é enviado
+    setItens(cand.filter((d) => !ja.has(d.id) && !d.relatorio_enviado_em).sort((a, b) => a.ini - b.ini))
   }, [isManager])
 
   useEffect(() => {
@@ -62,7 +63,7 @@ export default function PesquisaPendente() {
 
   return (
     <div className="alert-pesquisa" role="alert">
-      <div className="alert-pesquisa-titulo">🤓 {pendentes.length === 1 ? 'Hora de enviar o relatório + pesquisa' : `${pendentes.length} leads esperando o relatório + pesquisa`}</div>
+      <div className="alert-pesquisa-titulo">🤓 {pendentes.length === 1 ? 'Hora de enviar o relatório' : `${pendentes.length} leads esperando o relatório`}</div>
       <div className="stack" style={{ gap: 6, marginTop: 8 }}>
         {pendentes.map((d) => (
           <div key={d.id} className="alert-pesquisa-item">
@@ -71,7 +72,7 @@ export default function PesquisaPendente() {
               {d.seller?.name && <> · reunião com <b>{d.seller.name}</b></>}
               <span> · {quando(d.ini)}</span>
               {d.stage?.name && <span> · {d.stage.name}</span>}
-              <span> · {d.relatorio_enviado_em ? 'relatório já foi; falta a pesquisa' : d.relatorio_texto ? '📄 relatório pronto: enviar com a pesquisa' : '⏳ relatório ainda sendo gerado'}</span>
+              <span> · {d.relatorio_texto ? '📄 relatório pronto para enviar' : '⏳ relatório ainda sendo gerado'}</span>
             </div>
             <button type="button" className="btn sm alert-pesquisa-btn" onClick={() => navigate(`/funil?negocio=${d.id}`)}>Abrir card</button>
             <button type="button" className="btn sm" onClick={() => jaEnviei(d)}>✓ Já enviei</button>

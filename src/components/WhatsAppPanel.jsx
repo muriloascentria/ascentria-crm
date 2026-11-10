@@ -11,7 +11,6 @@ import { Field } from './ui'
 import { callCalendar, fillSlots, slotLabel } from '../lib/calendar'
 import { leadAssinouEm } from '../lib/contrato'
 import { isManual, waLink, abrirWhatsApp, stageText, messageStage, podeReceber, marcarEnviado, desfazerEnviado, marcarRespondeu } from '../lib/manual'
-import { TITULO_PESQUISA } from './PesquisaPendente'
 
 /** Conversa de WhatsApp de um contato (com envio). deal opcional para vincular e calcular a janela de 24h. */
 const TODOS = '__todos'
@@ -292,23 +291,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
       toast('Chave Pix copiada e colocada na mensagem')
     } else toast('Chave Pix copiada')
   }
-  // pesquisa pós-consultoria do Murilo: copia (para mandar do WhatsApp dele) e deixa pronta na caixa de mensagem
-  // (a pesquisa vem em 2 mensagens: cada uma tem seu botão "Enviar esta"; a 1ª já fica copiada)
-  const pesquisaMurilo = async (q) => {
-    if (!q) return
-    const partes = splitParts(q.body).map(fill)
-    try { await navigator.clipboard?.writeText(partes[0] || '') } catch { /* sem área de transferência */ }
-    pick(q)
-    setSecMsg((n) => n + 1)
-    // 1ª mensagem da pesquisa: registra no card para o aviso "hora da pesquisa" sumir
-    const primeira = quick.filter((x) => x.stage === 'pos')[0]
-    if (deal?.id && primeira && q.id === primeira.id) {
-      supabase.from('activities').insert({ type: 'whatsapp', title: TITULO_PESQUISA, deal_id: deal.id, contact_id: deal.contact_id || null, done: true, done_at: new Date().toISOString() })
-        .then(() => window.dispatchEvent(new Event('pesquisa-enviada')))
-    }
-    setTimeout(() => document.querySelector('.card-guiado textarea')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80)
-    toast(partes.length > 1 ? `Pronto: ${partes.length} mensagens, envie uma de cada vez (a 1ª já está copiada)` : 'Mensagem copiada e colocada na caixa de mensagem')
-  }
+  // (pesquisa de satisfação pós-consultoria desativada a pedido do Murilo em 10/11/2026)
   const abrirMensagens = () => {
     // Ao abrir, a lista já vai para a etapa da próxima mensagem.
     // Card na coluna "Remarcar": abre direto nas mensagens de Remarcação.
@@ -652,12 +635,6 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
           <div className="small muted">Envie o relatório, registre a sessão e, se ela fechar, gere o contrato.</div>
           <MeetingFiles deal={deal} contato={contato} firstName={firstName} />
           <div className="passo-acoes">
-            {quick.filter((q) => q.stage === 'pos').map((q, i) => (
-              <button key={q.id} type="button" className={i === 0 ? 'btn' : 'btn ghost sm'} onClick={() => pesquisaMurilo(q)}
-                title={i === 0 ? 'Mensagem do Murilo perguntando como foi a reunião' : 'Resposta do Murilo depois que o lead der a nota'}>
-                {i === 0 ? `🤓 ${q.title}` : `↳ ${q.title}`}
-              </button>
-            ))}
             {onAbrirSessao && <button type="button" className="btn" onClick={onAbrirSessao}>📝 Registrar a sessão</button>}
             <button type="button" className="btn" onClick={() => setContratoAberto(true)}>📄 Contrato{deal.contrato_status === 'assinado' ? ' ✓' : deal.contrato_url ? ' •' : ''}</button>
             {podeCancelar && <button type="button" className="btn ghost sm" onClick={leadCancelou} disabled={calBusy === 'cancel'}>↺ Não aconteceu → Remarcar</button>}
@@ -867,18 +844,13 @@ function MeetingFiles({ deal, contato, firstName, modo }) {
   const [err, setErr] = useState('')
   const [enviadoEm, setEnviadoEm] = useState(deal.relatorio_enviado_em || null)
   // a mensagem diz "PDF (anexo)": a consultora baixa o PDF e anexa na conversa do WhatsApp
-  // Padrão: o relatório sai na voz do Enfermeiro Murilo (a autoridade) e já termina com a pergunta da pesquisa.
-  // Uma mensagem só, uma pergunta só: o lead responde a nota e a conversa segue com o Murilo.
+  // Mensagem padrão do relatório (definida pelo Murilo em 10/11/2026), sem pesquisa de satisfação.
   const abrirMensagemRelatorio = () => {
-    const base = deal.relatorio_texto || ''
-    const consultora = (base.match(/Aqui é (?:a|o) ([^\s,]+)/) || [])[1] || ''
-    const art = /^(diego|murilo)$/i.test(consultora) ? 'O' : 'A'
     const nome = String(contato?.name || deal.title || '').trim().split(/\s+/)[0]
     setResumo([
-      `Oi${nome ? `, ${nome}` : ''}! Aqui é o Enfermeiro Murilo 🤓`,
-      `${consultora ? `${art} ${consultora} me passou como foi a conversa de vocês, e` : 'Eu'} fiz questão de te enviar pessoalmente o seu *Relatório de Diagnóstico Profissional*: tudo o que você trouxe, organizado em forças, fraquezas, oportunidades e ameaças.`,
+      `Oi${nome ? `, ${nome}` : ''}!`,
+      'Segue o seu *Relatório de Diagnóstico Profissional*: tudo o que você trouxe, organizado em forças, fraquezas, oportunidades e ameaças.',
       '📄 Segue em PDF (anexo). Vale ler com calma, principalmente a parte das oportunidades.',
-      'E me conta uma coisa: de 0 a 10, o quanto essa conversa te ajudou a enxergar o próximo passo do seu consultório? Pode responder só com o número 🙂',
     ].join('\n\n'))
   }
   const relatorioPronto = !!deal.relatorio_texto
@@ -942,8 +914,8 @@ function MeetingFiles({ deal, contato, firstName, modo }) {
     // relatório automático: sai do aviso do funil e a tarefa "📝 Relatório… pronto" fica concluída
     supabase.from('deals').update({ relatorio_enviado_em: agora }).eq('id', deal.id).then(() => {})
     supabase.from('activities').update({ done: true, done_at: agora }).eq('deal_id', deal.id).eq('done', false).like('title', '📝 Relatório da consultoria pronto%').then(() => {})
-    // a mensagem do relatório já leva a pesquisa do Murilo: o aviso "hora da pesquisa" some
-    if (/de 0 a 10/.test(resumo || '')) supabase.from('activities').insert({ type: 'whatsapp', title: TITULO_PESQUISA, deal_id: deal.id, contact_id: deal.contact_id || null, done: true, done_at: agora }).then(() => window.dispatchEvent(new Event('pesquisa-enviada')))
+    // o aviso azul "hora de enviar o relatório" some
+    window.dispatchEvent(new Event('pesquisa-enviada'))
     deal.relatorio_enviado_em = agora
     setEnviadoEm(agora)
     window.dispatchEvent(new CustomEvent('crm:relatorio-enviado', { detail: { dealId: deal.id } }))
@@ -954,7 +926,7 @@ function MeetingFiles({ deal, contato, firstName, modo }) {
     if (!relatorioPronto) return null
     return (
       <div className={'passo relatorio-box' + (enviadoEm ? ' passo-off' : '')}>
-        <div className="passo-tit">{enviadoEm ? '✓ Relatório da consultoria enviado' : '📝 Relatório pronto: o Murilo envia ao lead (já com a pesquisa)'}</div>
+        <div className="passo-tit">{enviadoEm ? '✓ Relatório da consultoria enviado' : '📝 Relatório pronto: enviar ao lead'}</div>
         <div className="small muted">{enviadoEm
           ? <>Enviado em {new Date(enviadoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}.</>
           : <>1. Toque em <b>⬇️ Baixar PDF</b>. 2. Toque em <b>Enviar relatório ao lead</b> e abra no WhatsApp. 3. Na conversa, anexe o PDF e envie junto com a mensagem.</>}</div>
