@@ -143,7 +143,10 @@ Deno.serve(async (req) => {
   const priv = (e: any) => e?.extendedProperties?.private ?? {}
   const ehDupla = (e: any) => priv(e).ecrm_slot === 'tag' && !!priv(e).ecrm_titulo
   const etiqueta = (e: any) => priv(e).ecrm_etiqueta || priv(e).ecrm_titulo
-  const livre = (e: any) => norm(e?.summary) === norm(TITLE) || (ehDupla(e) && norm(e?.summary) === norm(priv(e).ecrm_titulo))
+  // Desde 12/11/2026 as consultorias são individuais (pedido do Murilo): ninguém mais entra como convidado ao reservar.
+  // Bloco livre = título de disponibilidade, com ou sem o nome da consultora entre parênteses, ou bloco com etiqueta.
+  const livre = (e: any) => norm(e?.summary) === norm(TITLE) || norm(e?.summary).startsWith(norm(TITLE) + ' (')
+    || (ehDupla(e) && norm(e?.summary) === norm(priv(e).ecrm_titulo))
   // devolve o bloco à agenda como disponível (o de etiqueta mantém os convidados e volta ao título da etiqueta)
   // convidados do evento com quem acompanha (ecrm_convidar) incluído ou retirado
   const comConvidado = (ev: any, incluir: boolean) => {
@@ -153,11 +156,11 @@ Deno.serve(async (req) => {
     if (!quem) return null
     return incluir ? [...outros, { email: quem, responseStatus: 'accepted' }] : outros
   }
-  const liberar = async (tk: string, id: string, extra: Record<string, unknown> = {}) => {
+  const liberar = async (tk: string, id: string, extra: Record<string, unknown> = {}, nomeVendedora = '') => {
     const ev = await gcal(tk, `/${encodeURIComponent(id)}`).catch(() => null)
     const sem = ev && ehDupla(ev) ? comConvidado(ev, false) : null
     const body = ev && ehDupla(ev)
-      ? { summary: priv(ev).ecrm_titulo, description: '', conferenceData: null, ...(sem ? { attendees: sem } : {}) }
+      ? { summary: nomeVendedora ? `Disponível para agendamento (${nomeVendedora})` : priv(ev).ecrm_titulo, description: '', conferenceData: null, ...(sem ? { attendees: sem } : {}) }
       : { summary: TITLE, description: '', conferenceData: null, ...extra }
     return gcal(tk, `/${encodeURIComponent(id)}?conferenceDataVersion=1&sendUpdates=none`, { method: 'PATCH', body: JSON.stringify(body) })
   }
@@ -175,7 +178,8 @@ Deno.serve(async (req) => {
       await admin.from('deals').update({ reunioes_anteriores: lista }).eq('id', dealId)
       return { guardado: true }
     }
-    await liberar(tk, eventId, extra)
+    const { data: dona } = sellerId ? await admin.from('calendar_sellers').select('name').eq('id', sellerId).maybeSingle() : { data: null }
+    await liberar(tk, eventId, extra, String(dona?.name ?? '').trim().split(/\s+/)[0])
     return { guardado: false }
   }
 
@@ -219,7 +223,7 @@ Deno.serve(async (req) => {
         .filter((e: any) => livre(e) && e.start?.dateTime && e.status !== 'cancelled')
         .sort((a: any, b: any) => new Date(a.start.dateTime).getTime() - new Date(b.start.dateTime).getTime())
         .slice(0, 8)
-        .map((e: any) => ({ event_id: e.id, seller_id: s.id, start: e.start.dateTime, end: e.end?.dateTime, ...spParts(e.start.dateTime), ...(ehDupla(e) ? { com: etiqueta(e) } : {}) }))
+        .map((e: any) => ({ event_id: e.id, seller_id: s.id, start: e.start.dateTime, end: e.end?.dateTime, ...spParts(e.start.dateTime) }))
       if (b.deal_id && Array.isArray(b.offer)) {
         // grava os horários oferecidos ao lead (para reservar depois com um clique)
         await dealFor(b.deal_id)
@@ -253,12 +257,16 @@ Deno.serve(async (req) => {
       if (!livre(ev) && ev.id !== deal.calendar_event_id) return json({ ok: false, error: 'Esse horário já foi reservado por outra pessoa. Busque os horários de novo.' })
       const nome = deal.contact?.name || deal.title
       const fone = deal.contact?.wa_id ? '+' + deal.contact.wa_id : (deal.contact?.phone || '')
-      const dupla = ehDupla(ev)
-      const convidados = dupla ? comConvidado(ev, true) : null
+      // consultoria individual: tira do convite quem acompanhava (ecrm_convidar) e outras consultoras convidadas no bloco
+      const { data: equipe } = await admin.from('calendar_sellers').select('email')
+      const outras = new Set([...(equipe ?? []).map((x: any) => String(x.email).toLowerCase()), String(priv(ev).ecrm_convidar || '').toLowerCase()].filter((x) => x && x !== s.email.toLowerCase()))
+      const convidados = (ev.attendees ?? []).some((a: any) => outras.has(String(a.email).toLowerCase()))
+        ? (ev.attendees ?? []).filter((a: any) => !outras.has(String(a.email).toLowerCase())).map((a: any) => ({ email: a.email, responseStatus: a.responseStatus }))
+        : null
       const patched = await gcal(tk, `/${encodeURIComponent(b.event_id)}?conferenceDataVersion=1&sendUpdates=none`, {
         method: 'PATCH',
         body: JSON.stringify({
-          summary: dupla ? `${etiqueta(ev)} | ${nome}` : `${s.name} | Consultoria | ${nome}`,
+          summary: `${s.name} | Consultoria | ${nome}`,
           description: `Lead: ${nome}\nWhatsApp: ${fone}\nAgendado pelo eCRM (https://ecrm.digital)`,
           ...(convidados ? { attendees: convidados } : {}),
           // sala do Meet própria para cada lead: só reaproveita a do evento quando é o mesmo encontro deste negócio
@@ -271,7 +279,7 @@ Deno.serve(async (req) => {
       await admin.from('deals').update({ seller_id: s.id, calendar_event_id: patched.id, meeting_date: when.date, meeting_time: when.time, meeting_link: link }).eq('id', deal.id)
       const gravacao = await gravarAutomatico(sa, s.email, link)
       if (!gravacao.ok) console.warn('calendar gravacao', gravacao.error)
-      return json({ ok: true, date: when.date, time: when.time, link, seller: dupla ? `${s.name} · ${etiqueta(ev)}` : s.name, gravacao })
+      return json({ ok: true, date: when.date, time: when.time, link, seller: s.name, gravacao })
     }
 
     if (b.action === 'release') {
