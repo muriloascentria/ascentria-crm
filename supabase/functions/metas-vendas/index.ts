@@ -209,7 +209,7 @@ Deno.serve(async (req) => {
     if (pipe?.id) qWon = qWon.eq('pipeline_id', pipe.id)
     const { data: wonRows, error: wonErr } = await qWon
     if (wonErr) console.log('vendas sem sessão:', wonErr.message)
-    const candidatos = (wonRows ?? []).filter((d: any) => !/teste/i.test(d.title || '') && d.contact?.source !== 'CRM antigo' && d.sessao_registro?.upsell !== true)
+    const candidatos = (wonRows ?? []).filter((d: any) => !/teste/i.test(d.title || '') && d.contact?.source !== 'CRM antigo' && d.sessao_registro?.upsell !== true && d.sessao_registro?.bolsa !== true)
     const ultimoGanho: Record<string, string> = {}
     if (candidatos.length) {
       const { data: stWon } = await admin.from('stages').select('id').eq('kind', 'won')
