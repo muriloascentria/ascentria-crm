@@ -244,7 +244,8 @@ Deno.serve(async (req) => {
     ranking = Object.values(por).map((p: any) => ({ ...p, conversao: p.sessoes ? Math.round((p.vendas - (p.sem_sessao || 0)) / p.sessoes * 1000) / 10 : 0 }))
       .sort((a: any, b: any) => b.vendas - a.vendas || b.conversao - a.conversao || b.cash - a.cash || b.valor - a.valor)
     ranking_upsell = Object.values(por).map((p: any) => ({ nome: p.nome, sessoes: p.sessoes_upsell, upsells: p.upsells, valor: p.valor_upsell, cash: p.cash_upsell }))
-      .sort((a: any, b: any) => b.valor - a.valor || b.cash - a.cash || b.upsells - a.upsells)
+      // renovações/upgrades: ordena pela soma do valor dos contratos com o cash (pedido do Murilo em 13/11/2026)
+      .sort((a: any, b: any) => (b.valor + b.cash) - (a.valor + a.cash) || b.cash - a.cash || b.upsells - a.upsells)
   }
   const metas = {
     leads: metaSemana(META_MES.leads, leadsAntes, diasSemana, diasRestantes),
