@@ -89,11 +89,20 @@ export default function Pipeline() {
 
   const load = useCallback(async () => {
     if (!pipelineId) return
-    const { data, error } = await supabase.from('deals')
-      .select('*, contact:contacts(name, phone, wa_id, source, optin, marketing_opt_out), seller:calendar_sellers(name)')
-      .eq('pipeline_id', pipelineId).order('position').order('created_at', { ascending: false })
+    // o Supabase devolve no máximo 1.000 linhas por consulta: busca em páginas para nenhum card ficar de fora
+    const data = []
+    let error = null
+    for (let de = 0; ; de += 1000) {
+      const r = await supabase.from('deals')
+        .select('*, contact:contacts(name, phone, wa_id, source, optin, marketing_opt_out), seller:calendar_sellers(name)')
+        .eq('pipeline_id', pipelineId).order('position').order('created_at', { ascending: false }).order('id')
+        .range(de, de + 999)
+      if (r.error) { error = r.error; break }
+      data.push(...(r.data || []))
+      if (!r.data || r.data.length < 1000) break
+    }
     if (error) toast(error.message, 'err')
-    setDeals(data || [])
+    setDeals(data)
     const { data: acts } = await supabase.from('activities').select('id, deal_id, title, created_at')
       .eq('done', false).like('title', 'Enviar lembrete à mão%').gte('created_at', new Date(Date.now() - 2 * 86_400_000).toISOString())
     setPendLembretes(acts || [])

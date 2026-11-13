@@ -12,7 +12,15 @@ export default function Dashboard() {
   const [pipelineId, setPipelineId] = useState(null)
 
   useEffect(() => {
-    supabase.from('deals').select('*').then(({ data }) => setDeals(data || []))
+    ;(async () => { // em páginas de 1.000 (limite do Supabase por consulta)
+      const todos = []
+      for (let de = 0; ; de += 1000) {
+        const { data } = await supabase.from('deals').select('*').order('id').range(de, de + 999)
+        todos.push(...(data || []))
+        if (!data || data.length < 1000) break
+      }
+      setDeals(todos)
+    })()
     supabase.from('activities').select('*').eq('done', false).eq('assigned_to', profile.id).order('due_at').limit(8).then(({ data }) => setActs(data || []))
   }, [profile.id])
   useEffect(() => { if (!pipelineId && pipelines.length) setPipelineId(pipelines.find((p) => p.is_default)?.id || pipelines[0].id) }, [pipelines, pipelineId])
