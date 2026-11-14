@@ -14,8 +14,8 @@ function Indicadores() {
   const [mesInd, setMesInd] = useState(() => { const h = new Date(); return { y: h.getFullYear(), m: h.getMonth() } })
   return (
     <div style={{ marginTop: 16 }}>
-      <button type="button" className="btn ghost" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setAberto((v) => !v)} aria-expanded={aberto}>
-        {aberto ? '▴ Recolher indicadores' : '▾ Expandir indicadores (placar, metas, ranking completo e objeções)'}
+      <button type="button" className="btn ghost rk-wrap-btn" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setAberto((v) => !v)} aria-expanded={aberto}>
+        {aberto ? '▴ Recolher indicadores' : '▾ Ver todos os indicadores'}
       </button>
       {aberto && (
         <div style={{ marginTop: 12 }}>

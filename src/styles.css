@@ -513,18 +513,21 @@ input[type=color] { width: 40px; height: 32px; padding: 2px; border: 1px solid v
 }
 .metas-vendas .mv-obj-periodo button.on { color: #fff; }
 
-/* Painel: ranking em linhas (cabe no celular sem rolar para o lado) */
-.rk { display: grid; gap: 16px; }
+/* Painel: ranking compacto, uma linha por consultor (cabe no celular sem rolar para o lado) */
+.rk { display: grid; gap: 14px; }
 @media (min-width: 900px) { .rk { grid-template-columns: 1fr 1fr; } }
-.rk-bloco { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 14px 6px; }
-.rk-bloco h2 { margin: 0 0 2px; font-size: 1.05rem; }
-.rk-resumo { font-size: .82rem; color: var(--muted); margin-bottom: 10px; }
-.rk-linha { border-top: 1px solid var(--border); padding: 10px 2px; }
-.rk-linha.lider { background: rgba(212, 170, 80, .14); border-radius: 10px; border-top-color: transparent; padding: 10px 8px; }
-.rk-topo { display: flex; align-items: center; gap: 10px; }
-.rk-med { font-size: 1.4rem; width: 28px; text-align: center; }
-.rk-nome { font-size: 1.05rem; flex: 1; }
-.rk-destaque { font-weight: 700; font-size: 1rem; white-space: nowrap; }
-.rk-itens { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 4px 0 0 38px; font-size: .9rem; }
-.rk-itens div { display: flex; gap: 6px; align-items: baseline; }
-.rk-itens span { color: var(--muted); font-size: .8rem; }
+.rk-bloco { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px 10px 8px; min-width: 0; }
+.rk-bloco h2 { margin: 0 0 2px; font-size: 1rem; }
+.rk-resumo { font-size: .78rem; color: var(--muted); margin-bottom: 8px; }
+.rk-tab { display: grid; column-gap: 0; align-items: center; font-size: .8rem; }
+.rk-tab > span { padding-left: 4px; padding-right: 4px; }
+.rk-row { display: contents; }
+.rk-row > * { padding: 8px 4px; border-top: 1px solid var(--border); }
+.rk-row.lider > * { background: rgba(212, 170, 80, .16); }
+.rk-row.lider > :first-child { border-radius: 8px 0 0 8px; }
+.rk-row.lider > :last-child { border-radius: 0 8px 8px 0; padding-right: 6px; }
+.rk-h { font-size: .62rem; white-space: nowrap; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); padding-bottom: 4px; }
+.rk-n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rk-med { font-size: 1.05rem; text-align: center; }
+.rk-nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rk-wrap-btn { white-space: normal; text-align: center; }

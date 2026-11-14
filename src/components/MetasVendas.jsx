@@ -77,17 +77,18 @@ function Objecoes({ titulo, mes, d90 }) {
 }
 
 /** Só os dois rankings do mês (vendas novas e upsell/renovação), para o Painel: uma linha por consultor, sem rolar para o lado. */
-function LinhaRanking({ i, tem, nome, destaque, itens }) {
+function TabelaRanking({ cols, linhas }) {
+  // uma linha por consultor, tudo na mesma linha (cabe no celular): medalha, nome e os números
   return (
-    <div className={'rk-linha' + (i === 0 && tem ? ' lider' : '')}>
-      <div className="rk-topo">
-        <span className="rk-med">{medalha(i, tem)}</span>
-        <b className="rk-nome">{nome}</b>
-        <span className="rk-destaque">{destaque}</span>
-      </div>
-      <div className="rk-itens">
-        {itens.map(([rot, val]) => <div key={rot}><span>{rot}</span><b>{val}</b></div>)}
-      </div>
+    <div className="rk-tab" style={{ gridTemplateColumns: `22px minmax(58px, 1fr) ${cols.map(() => 'auto').join(' ')}` }}>
+      <span /><span className="rk-h">Consultor</span>{cols.map((c) => <span key={c} className="rk-h rk-n">{c}</span>)}
+      {linhas.map((l, i) => (
+        <div key={l.nome} className={'rk-row' + (i === 0 && l.tem ? ' lider' : '')}>
+          <span className="rk-med">{medalha(i, l.tem)}</span>
+          <b className="rk-nome">{l.nome}</b>
+          {l.vals.map((v, j) => <span key={j} className="rk-n">{v}</span>)}
+        </div>
+      ))}
     </div>
   )
 }
@@ -104,25 +105,23 @@ export function RankingVendas() {
   if (!d) return <div className="card muted small">Carregando o ranking…</div>
   const nomeMes = d.mes_ini ? NOMES_MES[Number(d.mes_ini.slice(5, 7)) - 1] : ''
   const pct = (n) => String(n).replace('.', ',') + '%'
+  // valores em reais sem o "R$" e sem centavos, para caber na linha (o título da coluna diz que é R$)
+  const num = (v) => Math.round(Number(v) || 0).toLocaleString('pt-BR')
   const novas = [...(d.ranking || [])].map(convSessoes).sort(ordemRanking)
   const ups = d.ranking_upsell || []
   return (
     <div className="rk">
       <div className="rk-bloco">
         <h2>🏅 Vendas novas</h2>
-        <div className="rk-resumo">{nomeMes} · {d.mes.vendas} {d.mes.vendas === 1 ? 'venda' : 'vendas'} · {fmtMoney(d.mes.valor)} em contratos · {fmtMoney(d.mes.cash || 0)} de cash</div>
-        {novas.map((p, i) => (
-          <LinhaRanking key={p.nome} i={i} tem={p.vendas > 0} nome={p.nome} destaque={`${p.vendas} ${p.vendas === 1 ? 'venda' : 'vendas'}`}
-            itens={[['Contrato', fmtMoney(p.valor)], ['Cash', fmtMoney(p.cash || 0)], ['Conversão', pct(p.conversao)]]} />
-        ))}
+        <div className="rk-resumo">{nomeMes} · {d.mes.vendas} {d.mes.vendas === 1 ? 'venda' : 'vendas'} · {fmtMoney(d.mes.valor)} em contratos · {fmtMoney(d.mes.cash || 0)} de cash · valores em R$</div>
+        <TabelaRanking cols={['Vendas', 'Contrato', 'Cash', 'Conv.']}
+          linhas={novas.map((p) => ({ nome: p.nome, tem: p.vendas > 0, vals: [p.vendas, num(p.valor), num(p.cash || 0), pct(p.conversao)] }))} />
       </div>
       <div className="rk-bloco">
         <h2>🔁 Upgrade, upsell e renovação</h2>
-        <div className="rk-resumo">{nomeMes} · {d.mes.upsells || 0} · {fmtMoney(d.mes.valor_upsell || 0)} em contratos · {fmtMoney(d.mes.cash_upsell || 0)} de cash</div>
-        {ups.map((p, i) => (
-          <LinhaRanking key={p.nome} i={i} tem={p.valor + (p.cash || 0) > 0} nome={p.nome} destaque={`${p.upsells} ${p.upsells === 1 ? 'venda' : 'vendas'}`}
-            itens={[['Contrato', fmtMoney(p.valor)], ['Cash', fmtMoney(p.cash || 0)]]} />
-        ))}
+        <div className="rk-resumo">{nomeMes} · {d.mes.upsells || 0} · {fmtMoney(d.mes.valor_upsell || 0)} em contratos · {fmtMoney(d.mes.cash_upsell || 0)} de cash · valores em R$</div>
+        <TabelaRanking cols={['Vendas', 'Contrato', 'Cash']}
+          linhas={ups.map((p) => ({ nome: p.nome, tem: p.valor + (p.cash || 0) > 0, vals: [p.upsells, num(p.valor), num(p.cash || 0)] }))} />
       </div>
     </div>
   )
