@@ -7,8 +7,6 @@ import DealModal from '../components/DealModal'
 import { daysIn, runCadenceNow, simulateInstagramDM, moveInboxToDay1, sentLast24h } from '../lib/wa'
 import { DEMO } from '../lib/supabase'
 import ContatarHoje from '../components/ContatarHoje'
-import PlacarVendas from '../components/PlacarVendas'
-import MetasVendas from '../components/MetasVendas'
 import { isManual, devidos } from '../lib/manual'
 import { useMobile } from '../lib/useMobile'
 import { leadAssinouEm } from '../lib/contrato'
@@ -237,10 +235,7 @@ export default function Pipeline() {
           </div>
         </div>
       ) : (<>
-      <PlacarVendas atualizar={deals.filter((d) => d.status === 'won').length} mes={mesInd} onMes={setMesInd}
-        resumo={DEMO ? undefined : (dadosInd && dadosInd.mes_ref === `${mesInd.y}-${String(mesInd.m + 1).padStart(2, '0')}`
-          ? { vendas: dadosInd.mes.vendas, total: dadosInd.mes.valor, entradas: dadosInd.mes.cash } : null)} />
-      {!DEMO && <MetasVendas atualizar={deals.length} mes={mesInd} onMes={setMesInd} onDados={setDadosInd} />}
+      {/* indicadores (placar, metas, ranking e objeções) foram para o Painel em 14/11/2026: no funil ficam só os cards */}
       </>)}
 
       {emReuniao.length > 0 && (

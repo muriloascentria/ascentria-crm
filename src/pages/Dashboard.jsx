@@ -4,7 +4,30 @@ import { supabase, DEMO } from '../lib/supabase'
 import { useApp } from '../lib/store'
 import { fmtMoney } from '../lib/utils'
 import { ActivityRow } from '../components/ActivityPanel'
-import { RankingVendas } from '../components/MetasVendas'
+import MetasVendas, { RankingVendas } from '../components/MetasVendas'
+import PlacarVendas from '../components/PlacarVendas'
+
+// Indicadores completos (os mesmos que ficavam no funil): recolhidos; só carregam quando a pessoa expande
+function Indicadores() {
+  const [aberto, setAberto] = useState(false)
+  const [dadosInd, setDadosInd] = useState(null)
+  const [mesInd, setMesInd] = useState(() => { const h = new Date(); return { y: h.getFullYear(), m: h.getMonth() } })
+  return (
+    <div style={{ marginTop: 16 }}>
+      <button type="button" className="btn ghost" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setAberto((v) => !v)} aria-expanded={aberto}>
+        {aberto ? '▴ Recolher indicadores' : '▾ Expandir indicadores (placar, metas, ranking completo e objeções)'}
+      </button>
+      {aberto && (
+        <div style={{ marginTop: 12 }}>
+          <PlacarVendas atualizar={0} mes={mesInd} onMes={setMesInd}
+            resumo={dadosInd && dadosInd.mes_ref === `${mesInd.y}-${String(mesInd.m + 1).padStart(2, '0')}`
+              ? { vendas: dadosInd.mes.vendas, total: dadosInd.mes.valor, entradas: dadosInd.mes.cash } : null} />
+          <MetasVendas atualizar={0} mes={mesInd} onMes={setMesInd} onDados={setDadosInd} />
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function Dashboard() {
   const { profile, settings, stages, pipelines, users, label } = useApp()
@@ -54,6 +77,7 @@ export default function Dashboard() {
       </div>
       {/* o Painel mostra o ranking de vendas do mês (pedido do Murilo em 14/11/2026) */}
       {!DEMO && <div style={{ marginBottom: 16 }}><RankingVendas /></div>}
+      {!DEMO && <Indicadores />}
     </>
   )
 }
