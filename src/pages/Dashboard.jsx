@@ -13,15 +13,6 @@ export default function Dashboard() {
   const [pipelineId, setPipelineId] = useState(null)
 
   useEffect(() => {
-    ;(async () => { // em páginas de 1.000 (limite do Supabase por consulta)
-      const todos = []
-      for (let de = 0; ; de += 1000) {
-        const { data } = await supabase.from('deals').select('*').order('id').range(de, de + 999)
-        todos.push(...(data || []))
-        if (!data || data.length < 1000) break
-      }
-      setDeals(todos)
-    })()
     supabase.from('activities').select('*').eq('done', false).eq('assigned_to', profile.id).order('due_at').limit(8).then(({ data }) => setActs(data || []))
   }, [profile.id])
   useEffect(() => { if (!pipelineId && pipelines.length) setPipelineId(pipelines.find((p) => p.is_default)?.id || pipelines[0].id) }, [pipelines, pipelineId])
@@ -63,34 +54,10 @@ export default function Dashboard() {
       </div>
       {/* o Painel mostra o ranking de vendas do mês (pedido do Murilo em 14/11/2026) */}
       {!DEMO && <div style={{ marginBottom: 16 }}><RankingVendas /></div>}
-      <div className="grid2" style={{ alignItems: 'start' }}>
-        <div className="card stack" style={{ gap: 12 }}>
-          <div className="between"><h2>{label('pipeline')}</h2><Link to="/funil" className="small" style={{ color: 'var(--primary)' }}>abrir →</Link></div>
-          {pipeStages.map((s) => {
-            const n = deals.filter((d) => d.stage_id === s.id).length
-            const v = deals.filter((d) => d.stage_id === s.id).reduce((a, d) => a + Number(d.value), 0)
-            return (
-              <div key={s.id}>
-                <div className="between small"><span>{s.name}</span><span className="muted">{n} · {fmtMoney(v, cur)}</span></div>
-                <div className="bar" style={{ '--stage-color': s.color }}><span style={{ width: `${(n / maxStage) * 100}%` }} /></div>
-              </div>
-            )
-          })}
-          {byOwner.length > 1 && (<>
-            <h2 style={{ marginTop: 8 }}>Em aberto por responsável</h2>
-            {byOwner.map((o) => (
-              <div key={o.name}>
-                <div className="between small"><span>{o.name}</span><span className="muted">{fmtMoney(o.v, cur)}</span></div>
-                <div className="bar"><span style={{ width: `${(o.v / maxOwner) * 100}%` }} /></div>
-              </div>
-            ))}
-          </>)}
-        </div>
-        <div className="card stack" style={{ gap: 12 }}>
+      <div className="card stack" style={{ gap: 12 }}>
           <div className="between"><h2>Suas próximas atividades</h2><Link to="/atividades" className="small" style={{ color: 'var(--primary)' }}>ver todas →</Link></div>
           {acts.length === 0 && <div className="muted small">Nenhuma pendência. 🎉</div>}
           <div className="timeline">{acts.map((a) => <ActivityRow key={a.id} a={a} onToggle={toggle} onEdit={() => {}} />)}</div>
-        </div>
       </div>
     </>
   )
