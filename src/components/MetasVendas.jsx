@@ -76,7 +76,22 @@ function Objecoes({ titulo, mes, d90 }) {
   )
 }
 
-/** Só os dois rankings do mês (vendas novas e upsell/renovação), para o Painel. */
+/** Só os dois rankings do mês (vendas novas e upsell/renovação), para o Painel: uma linha por consultor, sem rolar para o lado. */
+function LinhaRanking({ i, tem, nome, destaque, itens }) {
+  return (
+    <div className={'rk-linha' + (i === 0 && tem ? ' lider' : '')}>
+      <div className="rk-topo">
+        <span className="rk-med">{medalha(i, tem)}</span>
+        <b className="rk-nome">{nome}</b>
+        <span className="rk-destaque">{destaque}</span>
+      </div>
+      <div className="rk-itens">
+        {itens.map(([rot, val]) => <div key={rot}><span>{rot}</span><b>{val}</b></div>)}
+      </div>
+    </div>
+  )
+}
+
 export function RankingVendas() {
   const [d, setD] = useState(null)
   useEffect(() => {
@@ -88,47 +103,26 @@ export function RankingVendas() {
   }, [])
   if (!d) return <div className="card muted small">Carregando o ranking…</div>
   const nomeMes = d.mes_ini ? NOMES_MES[Number(d.mes_ini.slice(5, 7)) - 1] : ''
+  const pct = (n) => String(n).replace('.', ',') + '%'
+  const novas = [...(d.ranking || [])].map(convSessoes).sort(ordemRanking)
+  const ups = d.ranking_upsell || []
   return (
-    <div className="metas-vendas" role="status">
-      <div className="mv-ranking" style={{ marginTop: 0 }}>
-        <div className="mv-titulo">🏅 Ranking de vendas novas <span>{nomeMes} · {d.mes.vendas} {d.mes.vendas === 1 ? 'venda' : 'vendas'} · {fmtMoney(d.mes.valor)} em contratos · {fmtMoney(d.mes.cash || 0)} de cash</span></div>
-        <div className="mv-tabela">
-          <table>
-            <thead><tr><th>#</th><th>Consultor</th><th>Vendas</th><th>Valor do contrato</th><th title="Pix na hora + cartão por link (entra no dia seguinte, já sem a taxa da InfinitePay)">Cash collect</th><th>Sessões realizadas</th><th>Conversão</th></tr></thead>
-            <tbody>
-              {[...(d.ranking || [])].map(convSessoes).sort(ordemRanking).map((p, i) => (
-                <tr key={p.nome} className={i === 0 && p.vendas > 0 ? 'lider' : ''}>
-                  <td>{medalha(i, p.vendas > 0)}</td>
-                  <td><b>{p.nome}</b></td>
-                  <td>{p.vendas}</td>
-                  <td>{fmtMoney(p.valor)}</td>
-                  <td>{fmtMoney(p.cash || 0)}</td>
-                  <td>{p.sessoes}</td>
-                  <td>{String(p.conversao).replace('.', ',')}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+    <div className="rk">
+      <div className="rk-bloco">
+        <h2>🏅 Vendas novas</h2>
+        <div className="rk-resumo">{nomeMes} · {d.mes.vendas} {d.mes.vendas === 1 ? 'venda' : 'vendas'} · {fmtMoney(d.mes.valor)} em contratos · {fmtMoney(d.mes.cash || 0)} de cash</div>
+        {novas.map((p, i) => (
+          <LinhaRanking key={p.nome} i={i} tem={p.vendas > 0} nome={p.nome} destaque={`${p.vendas} ${p.vendas === 1 ? 'venda' : 'vendas'}`}
+            itens={[['Contrato', fmtMoney(p.valor)], ['Cash', fmtMoney(p.cash || 0)], ['Conversão', pct(p.conversao)]]} />
+        ))}
       </div>
-      <div className="mv-ranking mv-upsell">
-        <div className="mv-titulo">🔁 Ranking de upgrade, upsell e renovação <span>{nomeMes} · {d.mes.upsells || 0} · {fmtMoney(d.mes.valor_upsell || 0)} em contratos · {fmtMoney(d.mes.cash_upsell || 0)} de cash</span></div>
-        <div className="mv-tabela">
-          <table>
-            <thead><tr><th>#</th><th>Consultor</th><th>Upgrades/renovações</th><th>Valor do novo contrato</th><th>Cash collect</th></tr></thead>
-            <tbody>
-              {(d.ranking_upsell || []).map((p, i) => (
-                <tr key={p.nome} className={i === 0 && p.valor + (p.cash || 0) > 0 ? 'lider' : ''}>
-                  <td>{medalha(i, p.valor + (p.cash || 0) > 0)}</td>
-                  <td><b>{p.nome}</b></td>
-                  <td>{p.upsells}</td>
-                  <td>{fmtMoney(p.valor)}</td>
-                  <td>{fmtMoney(p.cash || 0)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div className="rk-bloco">
+        <h2>🔁 Upgrade, upsell e renovação</h2>
+        <div className="rk-resumo">{nomeMes} · {d.mes.upsells || 0} · {fmtMoney(d.mes.valor_upsell || 0)} em contratos · {fmtMoney(d.mes.cash_upsell || 0)} de cash</div>
+        {ups.map((p, i) => (
+          <LinhaRanking key={p.nome} i={i} tem={p.valor + (p.cash || 0) > 0} nome={p.nome} destaque={`${p.upsells} ${p.upsells === 1 ? 'venda' : 'vendas'}`}
+            itens={[['Contrato', fmtMoney(p.valor)], ['Cash', fmtMoney(p.cash || 0)]]} />
+        ))}
       </div>
     </div>
   )

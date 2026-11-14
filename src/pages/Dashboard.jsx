@@ -54,11 +54,6 @@ export default function Dashboard() {
       </div>
       {/* o Painel mostra o ranking de vendas do mês (pedido do Murilo em 14/11/2026) */}
       {!DEMO && <div style={{ marginBottom: 16 }}><RankingVendas /></div>}
-      <div className="card stack" style={{ gap: 12 }}>
-          <div className="between"><h2>Suas próximas atividades</h2><Link to="/atividades" className="small" style={{ color: 'var(--primary)' }}>ver todas →</Link></div>
-          {acts.length === 0 && <div className="muted small">Nenhuma pendência. 🎉</div>}
-          <div className="timeline">{acts.map((a) => <ActivityRow key={a.id} a={a} onToggle={toggle} onEdit={() => {}} />)}</div>
-      </div>
     </>
   )
 }
