@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { supabase, DEMO } from '../lib/supabase'
 import { useApp } from '../lib/store'
 import { fmtMoney } from '../lib/utils'
 import { ActivityRow } from '../components/ActivityPanel'
+import { RankingVendas } from '../components/MetasVendas'
 
 export default function Dashboard() {
   const { profile, settings, stages, pipelines, users, label } = useApp()
@@ -60,17 +61,8 @@ export default function Dashboard() {
       <div className="page-head">
         <div><h1>Olá, {(profile.full_name || '').split(' ')[0]} 👋</h1><div className="muted small">{new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</div></div>
       </div>
-      <div className="stats">
-        <div className="stat"><div className="k">Negócios em aberto</div><div className="v">{m.openCount}</div><div className="small muted">{fmtMoney(m.openValue, cur)}</div></div>
-        <div className="stat"><div className="k">Previsão ponderada</div><div className="v">{fmtMoney(m.weighted, cur)}</div><div className="small muted">valor × probabilidade da etapa</div></div>
-        <div className="stat"><div className="k">Ganhos no mês</div><div className="v" style={{ color: 'var(--success)' }}>{fmtMoney(m.wonValue, cur)}</div><div className="small muted">{m.wonCount} negócio(s)</div></div>
-        <div className="stat"><div className="k">Conversão no mês</div><div className="v">{m.conv === null ? '—' : m.conv + '%'}</div><div className="small muted">ganhos ÷ fechados</div></div>
-        {stages.some((s) => s.role) && (<>
-          <div className="stat"><div className="k">Em sequência (WhatsApp)</div><div className="v">{m.inSequence}</div><div className="small muted">aguardando resposta</div></div>
-          <div className="stat"><div className="k">Leads para reativar</div><div className="v" style={{ color: m.toReactivate ? 'var(--accent)' : undefined }}>{m.toReactivate}</div><div className="small muted">perdidos há 4+ meses</div></div>
-        </>)}
-        <div className="stat"><div className="k">Atividades atrasadas</div><div className="v" style={{ color: m.overdue ? 'var(--danger)' : undefined }}>{m.overdue}</div><div className="small muted">suas pendências</div></div>
-      </div>
+      {/* o Painel mostra o ranking de vendas do mês (pedido do Murilo em 14/11/2026) */}
+      {!DEMO && <div style={{ marginBottom: 16 }}><RankingVendas /></div>}
       <div className="grid2" style={{ alignItems: 'start' }}>
         <div className="card stack" style={{ gap: 12 }}>
           <div className="between"><h2>{label('pipeline')}</h2><Link to="/funil" className="small" style={{ color: 'var(--primary)' }}>abrir →</Link></div>

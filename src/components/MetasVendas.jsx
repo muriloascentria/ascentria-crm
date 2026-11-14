@@ -76,6 +76,64 @@ function Objecoes({ titulo, mes, d90 }) {
   )
 }
 
+/** Só os dois rankings do mês (vendas novas e upsell/renovação), para o Painel. */
+export function RankingVendas() {
+  const [d, setD] = useState(null)
+  useEffect(() => {
+    let vivo = true
+    const carregar = () => invokeFn('metas-vendas', { body: {} }).then(({ data, error }) => { if (vivo && !error && data && !data.error) setD(data) })
+    carregar()
+    const iv = setInterval(carregar, 120_000)
+    return () => { vivo = false; clearInterval(iv) }
+  }, [])
+  if (!d) return <div className="card muted small">Carregando o ranking…</div>
+  const nomeMes = d.mes_ini ? NOMES_MES[Number(d.mes_ini.slice(5, 7)) - 1] : ''
+  return (
+    <div className="metas-vendas" role="status">
+      <div className="mv-ranking" style={{ marginTop: 0 }}>
+        <div className="mv-titulo">🏅 Ranking de vendas novas <span>{nomeMes} · {d.mes.vendas} {d.mes.vendas === 1 ? 'venda' : 'vendas'} · {fmtMoney(d.mes.valor)} em contratos · {fmtMoney(d.mes.cash || 0)} de cash</span></div>
+        <div className="mv-tabela">
+          <table>
+            <thead><tr><th>#</th><th>Consultor</th><th>Vendas</th><th>Valor do contrato</th><th title="Pix na hora + cartão por link (entra no dia seguinte, já sem a taxa da InfinitePay)">Cash collect</th><th>Sessões realizadas</th><th>Conversão</th></tr></thead>
+            <tbody>
+              {[...(d.ranking || [])].map(convSessoes).sort(ordemRanking).map((p, i) => (
+                <tr key={p.nome} className={i === 0 && p.vendas > 0 ? 'lider' : ''}>
+                  <td>{medalha(i, p.vendas > 0)}</td>
+                  <td><b>{p.nome}</b></td>
+                  <td>{p.vendas}</td>
+                  <td>{fmtMoney(p.valor)}</td>
+                  <td>{fmtMoney(p.cash || 0)}</td>
+                  <td>{p.sessoes}</td>
+                  <td>{String(p.conversao).replace('.', ',')}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="mv-ranking mv-upsell">
+        <div className="mv-titulo">🔁 Ranking de upgrade, upsell e renovação <span>{nomeMes} · {d.mes.upsells || 0} · {fmtMoney(d.mes.valor_upsell || 0)} em contratos · {fmtMoney(d.mes.cash_upsell || 0)} de cash</span></div>
+        <div className="mv-tabela">
+          <table>
+            <thead><tr><th>#</th><th>Consultor</th><th>Upgrades/renovações</th><th>Valor do novo contrato</th><th>Cash collect</th></tr></thead>
+            <tbody>
+              {(d.ranking_upsell || []).map((p, i) => (
+                <tr key={p.nome} className={i === 0 && p.valor + (p.cash || 0) > 0 ? 'lider' : ''}>
+                  <td>{medalha(i, p.valor + (p.cash || 0) > 0)}</td>
+                  <td><b>{p.nome}</b></td>
+                  <td>{p.upsells}</td>
+                  <td>{fmtMoney(p.valor)}</td>
+                  <td>{fmtMoney(p.cash || 0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /** Metas da semana (leads, sessões agendadas e realizadas), vendas do mês e ranking dos consultores. */
 const NOMES_MES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
 
