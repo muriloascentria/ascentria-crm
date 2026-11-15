@@ -93,15 +93,17 @@ function TabelaRanking({ cols, linhas }) {
   )
 }
 
-export function RankingVendas() {
+export function RankingVendas({ mes }) {
   const [d, setD] = useState(null)
+  // mês escolhido no Painel ({ y, m }); sem mês, vale o atual
+  const chaveMes = mes ? `${mes.y}-${String(mes.m + 1).padStart(2, '0')}` : ''
   useEffect(() => {
     let vivo = true
-    const carregar = () => invokeFn('metas-vendas', { body: {} }).then(({ data, error }) => { if (vivo && !error && data && !data.error) setD(data) })
+    const carregar = () => invokeFn('metas-vendas', { body: chaveMes ? { mes: chaveMes } : {} }).then(({ data, error }) => { if (vivo && !error && data && !data.error) setD(data) })
     carregar()
     const iv = setInterval(carregar, 120_000)
     return () => { vivo = false; clearInterval(iv) }
-  }, [])
+  }, [chaveMes])
   if (!d) return <div className="card muted small">Carregando o ranking…</div>
   const nomeMes = d.mes_ini ? NOMES_MES[Number(d.mes_ini.slice(5, 7)) - 1] : ''
   const pct = (n) => String(n).replace('.', ',') + '%'

@@ -8,10 +8,9 @@ import MetasVendas, { RankingVendas } from '../components/MetasVendas'
 import PlacarVendas from '../components/PlacarVendas'
 
 // Indicadores completos (os mesmos que ficavam no funil): recolhidos; só carregam quando a pessoa expande
-function Indicadores() {
+function Indicadores({ mesInd, setMesInd }) {
   const [aberto, setAberto] = useState(false)
   const [dadosInd, setDadosInd] = useState(null)
-  const [mesInd, setMesInd] = useState(() => { const h = new Date(); return { y: h.getFullYear(), m: h.getMonth() } })
   return (
     <div style={{ marginTop: 16 }}>
       <button type="button" className="btn ghost rk-wrap-btn" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setAberto((v) => !v)} aria-expanded={aberto}>
@@ -32,6 +31,8 @@ function Indicadores() {
 export default function Dashboard() {
   const { profile, settings, stages, pipelines, users, label } = useApp()
   const [deals, setDeals] = useState([])
+  // um mês só para o Painel: trocar o mês nos indicadores também atualiza o ranking de cima
+  const [mesInd, setMesInd] = useState(() => { const h = new Date(); return { y: h.getFullYear(), m: h.getMonth() } })
   const [acts, setActs] = useState([])
   const [pipelineId, setPipelineId] = useState(null)
 
@@ -76,8 +77,8 @@ export default function Dashboard() {
         <div><h1>Olá, {(profile.full_name || '').split(' ')[0]} 👋</h1><div className="muted small">{new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</div></div>
       </div>
       {/* o Painel mostra o ranking de vendas do mês (pedido do Murilo em 14/11/2026) */}
-      {!DEMO && <div style={{ marginBottom: 16 }}><RankingVendas /></div>}
-      {!DEMO && <Indicadores />}
+      {!DEMO && <div style={{ marginBottom: 16 }}><RankingVendas mes={mesInd} /></div>}
+      {!DEMO && <Indicadores mesInd={mesInd} setMesInd={setMesInd} />}
     </>
   )
 }
