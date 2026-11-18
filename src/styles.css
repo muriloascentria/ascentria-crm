@@ -530,4 +530,7 @@ input[type=color] { width: 40px; height: 32px; padding: 2px; border: 1px solid v
 .rk-n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .rk-med { font-size: 1.05rem; text-align: center; }
 .rk-nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rk-tab.aperta > span, .rk-tab.aperta .rk-row > * { padding-left: 2px; padding-right: 2px; }
+.rk-tab.aperta .rk-h { letter-spacing: 0; }
+.rk-tab.aperta .rk-row.lider > :last-child { padding-right: 4px; }
 .rk-wrap-btn { white-space: normal; text-align: center; }

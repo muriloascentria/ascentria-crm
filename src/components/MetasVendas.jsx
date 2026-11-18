@@ -80,7 +80,7 @@ function Objecoes({ titulo, mes, d90 }) {
 function TabelaRanking({ cols, linhas }) {
   // uma linha por consultor, tudo na mesma linha (cabe no celular): medalha, nome e os números
   return (
-    <div className="rk-tab" style={{ gridTemplateColumns: `22px minmax(58px, 1fr) ${cols.map(() => 'auto').join(' ')}` }}>
+    <div className={'rk-tab' + (cols.length > 4 ? ' aperta' : '')} style={{ gridTemplateColumns: `22px minmax(58px, 1fr) ${cols.map(() => 'auto').join(' ')}` }}>
       <span /><span className="rk-h">Consultor</span>{cols.map((c) => <span key={c} className="rk-h rk-n">{c}</span>)}
       {linhas.map((l, i) => (
         <div key={l.nome} className={'rk-row' + (i === 0 && l.tem ? ' lider' : '')}>
@@ -111,13 +111,15 @@ export function RankingVendas({ mes }) {
   const num = (v) => Math.round(Number(v) || 0).toLocaleString('pt-BR')
   const novas = [...(d.ranking || [])].map(convSessoes).sort(ordemRanking)
   const ups = d.ranking_upsell || []
+  const reunioes = novas.reduce((s, p) => s + (p.sessoes || 0), 0)
   return (
     <div className="rk">
       <div className="rk-bloco">
         <h2>🏅 Vendas novas</h2>
-        <div className="rk-resumo">{nomeMes} · {d.mes.vendas} {d.mes.vendas === 1 ? 'venda' : 'vendas'} · {fmtMoney(d.mes.valor)} em contratos · {fmtMoney(d.mes.cash || 0)} de cash · valores em R$</div>
-        <TabelaRanking cols={['Vendas', 'Contrato', 'Cash', 'Conv.']}
-          linhas={novas.map((p) => ({ nome: p.nome, tem: p.vendas > 0, vals: [p.vendas, num(p.valor), num(p.cash || 0), pct(p.conversao)] }))} />
+        <div className="rk-resumo">{nomeMes} · {reunioes} {reunioes === 1 ? 'reunião feita' : 'reuniões feitas'} · {d.mes.vendas} {d.mes.vendas === 1 ? 'venda' : 'vendas'} · {fmtMoney(d.mes.valor)} em contratos · {fmtMoney(d.mes.cash || 0)} de cash · valores em R$</div>
+        {/* "Reuniões" = sessões realizadas do mês (a mesma base da conversão), pedido do Murilo em 18/11/2026 */}
+        <TabelaRanking cols={['Reuniões', 'Vendas', 'Contrato', 'Cash', 'Conv.']}
+          linhas={novas.map((p) => ({ nome: p.nome, tem: p.vendas > 0, vals: [p.sessoes || 0, p.vendas, num(p.valor), num(p.cash || 0), pct(p.conversao)] }))} />
       </div>
       <div className="rk-bloco">
         <h2>🔁 Upgrade, upsell e renovação</h2>
