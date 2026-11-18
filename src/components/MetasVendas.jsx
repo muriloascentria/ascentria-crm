@@ -105,25 +105,21 @@ export function RankingVendas({ mes }) {
     return () => { vivo = false; clearInterval(iv) }
   }, [chaveMes])
   if (!d) return <div className="card muted small">Carregando o ranking…</div>
-  const nomeMes = d.mes_ini ? NOMES_MES[Number(d.mes_ini.slice(5, 7)) - 1] : ''
   const pct = (n) => String(n).replace('.', ',') + '%'
   // valores em reais sem o "R$" e sem centavos, para caber na linha (o título da coluna diz que é R$)
   const num = (v) => Math.round(Number(v) || 0).toLocaleString('pt-BR')
   const novas = [...(d.ranking || [])].map(convSessoes).sort(ordemRanking)
   const ups = d.ranking_upsell || []
-  const reunioes = novas.reduce((s, p) => s + (p.sessoes || 0), 0)
   return (
     <div className="rk">
       <div className="rk-bloco">
         <h2>🏅 Vendas novas</h2>
-        <div className="rk-resumo">{nomeMes} · {reunioes} {reunioes === 1 ? 'reunião feita' : 'reuniões feitas'} · {d.mes.vendas} {d.mes.vendas === 1 ? 'venda' : 'vendas'} · {fmtMoney(d.mes.valor)} em contratos · {fmtMoney(d.mes.cash || 0)} de cash · valores em R$</div>
         {/* "Reuniões" = sessões realizadas do mês (a mesma base da conversão), pedido do Murilo em 18/11/2026 */}
         <TabelaRanking cols={['Reuniões', 'Vendas', 'Contrato', 'Cash', 'Conv.']}
           linhas={novas.map((p) => ({ nome: p.nome, tem: p.vendas > 0, vals: [p.sessoes || 0, p.vendas, num(p.valor), num(p.cash || 0), pct(p.conversao)] }))} />
       </div>
       <div className="rk-bloco">
         <h2>🔁 Upgrade, upsell e renovação</h2>
-        <div className="rk-resumo">{nomeMes} · {d.mes.upsells || 0} · {fmtMoney(d.mes.valor_upsell || 0)} em contratos · {fmtMoney(d.mes.cash_upsell || 0)} de cash · valores em R$</div>
         <TabelaRanking cols={['Vendas', 'Contrato', 'Cash']}
           linhas={ups.map((p) => ({ nome: p.nome, tem: p.valor + (p.cash || 0) > 0, vals: [p.upsells, num(p.valor), num(p.cash || 0)] }))} />
       </div>
@@ -195,6 +191,8 @@ export default function MetasVendas({ atualizar, mes: mesSel, onMes, onDados }) 
       {d.ranking?.length > 0 && (
         <div className="mv-ranking">
           <div className="mv-titulo">🏅 Ranking de vendas novas <span>do mês, pelo Registro de Sessões 1:1</span></div>
+          {/* resumo do mês: saiu do ranking do Painel e fica só aqui nos indicadores (pedido do Murilo em 18/11/2026) */}
+          <div className="mv-mes">{(() => { const r = d.ranking.reduce((s, p) => s + (p.sessoes || 0), 0); return `${r} ${r === 1 ? 'reunião feita' : 'reuniões feitas'} · ${d.mes.vendas} ${d.mes.vendas === 1 ? 'venda' : 'vendas'} · ${fmtMoney(d.mes.valor)} em contratos · ${fmtMoney(d.mes.cash || 0)} de cash` })()}</div>
           <div className="mv-tabela">
             <table>
               <thead><tr><th>#</th><th>Consultor</th><th>Vendas</th><th>Valor do contrato</th><th title="Pix na hora + cartão por link (entra no dia seguinte, já sem a taxa da InfinitePay)">Cash collect</th><th>Sessões realizadas</th><th>No-show</th><th>Conversão</th></tr></thead>
@@ -220,6 +218,7 @@ export default function MetasVendas({ atualizar, mes: mesSel, onMes, onDados }) 
       {d.ranking_upsell?.length > 0 && (
         <div className="mv-ranking mv-upsell">
           <div className="mv-titulo">🔁 Upsell e renovação <span>do mês · quem já é mentorada</span></div>
+          <div className="mv-mes">{d.mes.upsells || 0} {(d.mes.upsells || 0) === 1 ? 'venda' : 'vendas'} · {fmtMoney(d.mes.valor_upsell || 0)} em contratos · {fmtMoney(d.mes.cash_upsell || 0)} de cash</div>
           <PlacarVendas tipo="upsell" atualizar={atualizar} mes={mesSel} onMes={onMes} />
           <div className="mv-tabela">
             <table>
