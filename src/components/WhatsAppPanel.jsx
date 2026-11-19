@@ -253,7 +253,9 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     const { error } = await supabase.from('deals').update({ meeting_date: novo.date || null, meeting_time: novo.time || null, meeting_link: novo.link.trim() || null }).eq('id', deal.id)
     if (error) return toast(error.message, 'err')
     // Encontro marcado (dia e hora preenchidos): o card vai sozinho para "Reunião agendada".
-    const reuniao = stages.find((s) => s.pipeline_id === deal.pipeline_id && /reuni/i.test(s.name))
+    // nome exato: "Reunião hoje" também tem "reuni" e fica antes no funil (a passagem para "hoje" é automática, no dia)
+    const reuniao = stages.find((s) => s.pipeline_id === deal.pipeline_id && /^reuni[aã]o agendada$/i.test(s.name.trim()))
+      || stages.find((s) => s.pipeline_id === deal.pipeline_id && /reuni/i.test(s.name) && !/hoje/i.test(s.name))
     const atual = stages.find((s) => s.id === curStageRef.current)
     if (novo.date && novo.time && reuniao && atual && atual.id !== reuniao.id && atual.kind === 'open') {
       const { error: e2 } = await supabase.from('deals').update({ stage_id: reuniao.id }).eq('id', deal.id)
