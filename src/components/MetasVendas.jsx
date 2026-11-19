@@ -120,8 +120,8 @@ export function RankingVendas({ mes }) {
       </div>
       <div className="rk-bloco">
         <h2>🔁 Upgrade, upsell e renovação</h2>
-        <TabelaRanking cols={['Vendas', 'Contrato', 'Cash']}
-          linhas={ups.map((p) => ({ nome: p.nome, tem: p.valor + (p.cash || 0) > 0, vals: [p.upsells, num(p.valor), num(p.cash || 0)] }))} />
+        <TabelaRanking cols={['Reuniões', 'Vendas', 'Contrato', 'Cash']}
+          linhas={ups.map((p) => ({ nome: p.nome, tem: p.valor + (p.cash || 0) > 0, vals: [p.sessoes || 0, p.upsells, num(p.valor), num(p.cash || 0)] }))} />
       </div>
     </div>
   )
@@ -218,16 +218,17 @@ export default function MetasVendas({ atualizar, mes: mesSel, onMes, onDados }) 
       {d.ranking_upsell?.length > 0 && (
         <div className="mv-ranking mv-upsell">
           <div className="mv-titulo">🔁 Upsell e renovação <span>do mês · quem já é mentorada</span></div>
-          <div className="mv-mes">{d.mes.upsells || 0} {(d.mes.upsells || 0) === 1 ? 'venda' : 'vendas'} · {fmtMoney(d.mes.valor_upsell || 0)} em contratos · {fmtMoney(d.mes.cash_upsell || 0)} de cash</div>
+          <div className="mv-mes">{(() => { const r = d.ranking_upsell.reduce((s, p) => s + (p.sessoes || 0), 0); return `${r} ${r === 1 ? 'reunião feita' : 'reuniões feitas'} · ` })()}{d.mes.upsells || 0} {(d.mes.upsells || 0) === 1 ? 'venda' : 'vendas'} · {fmtMoney(d.mes.valor_upsell || 0)} em contratos · {fmtMoney(d.mes.cash_upsell || 0)} de cash</div>
           <PlacarVendas tipo="upsell" atualizar={atualizar} mes={mesSel} onMes={onMes} />
           <div className="mv-tabela">
             <table>
-              <thead><tr><th>#</th><th>Consultor</th><th>Upsells</th><th>Valor do novo contrato</th><th>Cash collect</th></tr></thead>
+              <thead><tr><th>#</th><th>Consultor</th><th>Reuniões</th><th>Upsells</th><th>Valor do novo contrato</th><th>Cash collect</th></tr></thead>
               <tbody>
                 {d.ranking_upsell.map((p, i) => (
                   <tr key={p.nome} className={i === 0 && p.valor > 0 ? 'lider' : ''}>
                     <td>{medalha(i, p.valor > 0)}</td>
                     <td><b>{p.nome}</b></td>
+                    <td>{p.sessoes || 0}</td>
                     <td>{p.upsells}</td>
                     <td>{fmtMoney(p.valor)}</td>
                     <td>{fmtMoney(p.cash || 0)}</td>
