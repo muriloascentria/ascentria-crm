@@ -387,6 +387,9 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     if (abertas.length >= total) {
       await registrarEnvio()
       toast('Última parte aberta. Depois de enviar no WhatsApp, a mensagem pronta fica marcada ✓')
+      // volta para a lista de mensagens prontas (como acontece com as mensagens de uma parte só),
+      // sem precisar fechar e abrir o card de novo
+      setSeq({ parts: [], options: [] }); setPartesAbertas([]); setMode('text')
     }
   }
   const send = async (e) => {
