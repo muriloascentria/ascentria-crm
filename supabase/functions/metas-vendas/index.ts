@@ -257,6 +257,13 @@ Deno.serve(async (req) => {
     dias_semana: diasSemana, dias_restantes: diasRestantes,
   }
   const taxa = (c: { show: number; noshow: number }) => ({ ...c, pct: c.show + c.noshow ? Math.round(c.show / (c.show + c.noshow) * 1000) / 10 : null })
+  // Painel de Metas dos sócios no Plat: guarda a mesma "Metas da semana" que o funil mostra (só do mês atual)
+  if (plat && atual) {
+    try {
+      await plat.from('crm_metas_semana').upsert({ id: 1, atualizado_em: new Date().toISOString(), dados: {
+        hoje, semana_ini: wIni, leads, agendadas, realizadas: semana.realizadas, vendas_semana: semana.vendas, vendas_mes: mes.vendas, metas } })
+    } catch (e) { console.log('plat metas:', String(e)) }
+  }
   return json({ hoje, atual, mes_ref: mesPedido, semana_ini: wIni, metas, mes_ini: mesIni, leads, agendadas, semana, mes, ranking, ranking_upsell,
     comparecimento: { semana: taxa(comparecimento.semana), mes: taxa(comparecimento.mes) }, objecoes, plat: !!plat })
 })
