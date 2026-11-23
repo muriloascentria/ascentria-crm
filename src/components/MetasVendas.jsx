@@ -116,12 +116,12 @@ export function RankingVendas({ mes }) {
         <h2>🏅 Vendas novas</h2>
         {/* "Reuniões" = sessões realizadas do mês (a mesma base da conversão), pedido do Murilo em 18/11/2026 */}
         <TabelaRanking cols={['Reuniões', 'Vendas', 'Contrato', 'Cash', 'Conv.']}
-          linhas={novas.map((p) => ({ nome: p.nome, tem: p.vendas > 0, vals: [p.sessoes || 0, p.vendas, num(p.valor), num(p.cash || 0), pct(p.conversao)] }))} />
+          linhas={novas.map((p) => ({ nome: p.nome, tem: p.vendas > 0 || (p.sessoes || 0) > 0, vals: [p.sessoes || 0, p.vendas, num(p.valor), num(p.cash || 0), pct(p.conversao)] }))} />
       </div>
       <div className="rk-bloco">
         <h2>🔁 Upgrade, upsell e renovação</h2>
         <TabelaRanking cols={['Reuniões', 'Vendas', 'Contrato', 'Cash']}
-          linhas={ups.map((p) => ({ nome: p.nome, tem: p.valor + (p.cash || 0) > 0, vals: [p.sessoes || 0, p.upsells, num(p.valor), num(p.cash || 0)] }))} />
+          linhas={ups.map((p) => ({ nome: p.nome, tem: p.valor + (p.cash || 0) > 0 || (p.sessoes || 0) > 0, vals: [p.sessoes || 0, p.upsells, num(p.valor), num(p.cash || 0)] }))} />
       </div>
     </div>
   )
