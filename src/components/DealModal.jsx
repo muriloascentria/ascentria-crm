@@ -60,7 +60,16 @@ export default function DealModal({ deal, defaults = {}, onClose, onSaved, onMar
   const curStage = stages.find((s) => s.id === f.stage_id)
 
   useEffect(() => {
-    supabase.from('contacts').select('id,name,phone,email,wa_id,marketing_opt_out,opt_out_at,opt_out_motivo,optin').order('name').then(({ data }) => setContacts(data || []))
+    const cols = 'id,name,phone,email,wa_id,marketing_opt_out,opt_out_at,opt_out_motivo,optin'
+    // a lista vem limitada a 1.000 contatos pelo Supabase: o contato do próprio card é buscado à parte,
+    // senão cards de contatos fora dessa lista ficam sem e-mail/telefone (ex.: termo de cancelamento da Patricia, 24/11)
+    Promise.all([
+      supabase.from('contacts').select(cols).order('name').limit(5000),
+      deal?.contact_id ? supabase.from('contacts').select(cols).eq('id', deal.contact_id).maybeSingle() : Promise.resolve({ data: null }),
+    ]).then(([{ data }, { data: meu }]) => {
+      const lista = data || []
+      setContacts(meu && !lista.some((c) => c.id === meu.id) ? [meu, ...lista] : lista)
+    })
     if (deal?.id) supabase.from('deal_stage_history').select('*').eq('deal_id', deal.id).order('changed_at', { ascending: false }).then(({ data }) => setHistory(data || []))
   }, [deal?.id])
 
