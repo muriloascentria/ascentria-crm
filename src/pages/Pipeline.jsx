@@ -7,7 +7,7 @@ import DealModal from '../components/DealModal'
 import { daysIn, runCadenceNow, simulateInstagramDM, moveInboxToDay1, sentLast24h } from '../lib/wa'
 import { DEMO } from '../lib/supabase'
 import ContatarHoje from '../components/ContatarHoje'
-import CobrarHoje, { PIPE_INADIMPLENTES, proximaCobranca } from '../components/CobrarHoje'
+import CobrarHoje, { PIPES_COBRANCA, proximaCobranca } from '../components/CobrarHoje'
 import { isManual, devidos } from '../lib/manual'
 import { useMobile } from '../lib/useMobile'
 import { leadAssinouEm } from '../lib/contrato'
@@ -215,7 +215,7 @@ export default function Pipeline() {
           {DEMO && pipeStages.some((s) => s.role) && <button className="btn" title="Simula uma mensagem no direct do Instagram contendo um celular" onClick={async () => { const r = await simulateInstagramDM(); toast(`DM recebida: ${r.name} entrou em Recebidos`); load() }}>📷 Simular DM do Instagram</button>}
           {DEMO && pipeStages.some((s) => s.role) && <button className="btn" title="Simula a passagem de 1 dia e roda o motor da cadência" onClick={async () => { const r = await runCadenceNow(); toast(`+1 dia: ${r.cadence.advanced} avançou, ${r.cadence.archived} perdido cadência, ${r.cadence.reactivated} reativado`); load() }}>⏩ Simular +1 dia</button>}
           {manual && hasCadence && <button className={'btn' + (mobile ? ' primary' : '')} style={mobile ? { flex: 1, justifyContent: 'center' } : undefined} onClick={() => setHojeAberto(true)} title="Quem precisa receber a mensagem da sequência hoje, pelo seu WhatsApp">📲 Para contatar hoje <b>{paraHoje.length}</b></button>}
-          {pipelineId === PIPE_INADIMPLENTES && <button className={'btn' + (mobile ? ' primary' : '')} style={mobile ? { flex: 1, justifyContent: 'center' } : undefined} onClick={() => setCobrarAberto(true)} title="Qual mensagem de cobrança mandar hoje para cada aluno">💰 Cobrar hoje <b>{deals.filter((d) => proximaCobranca(d, pipeStages)).length}</b></button>}
+          {PIPES_COBRANCA.includes(pipelineId) && <button className={'btn' + (mobile ? ' primary' : '')} style={mobile ? { flex: 1, justifyContent: 'center' } : undefined} onClick={() => setCobrarAberto(true)} title="Qual mensagem de cobrança mandar hoje para cada aluno">💰 {pipelineId === PIPES_COBRANCA[0] ? 'Cobrar hoje' : 'Lembrar hoje'} <b>{deals.filter((d) => proximaCobranca(d, pipeStages)).length}</b></button>}
           <button className={'btn' + (mobile ? '' : ' primary')} onClick={() => setModal({ deal: null, defaults: { pipeline_id: pipelineId } })} title="Novo negócio">{mobile ? '+' : '+ Negócio'}</button>
         </div>
       </div>

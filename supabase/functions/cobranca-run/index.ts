@@ -1,4 +1,6 @@
-// Régua de cobrança do funil "Cobrança" (antes "Inadimplentes"; pedido do Murilo em 24/11/2026).
+// Régua de cobrança (pedido do Murilo em 24/11/2026; separada em dois funis em 25/11/2026):
+//   funil "Cobrança": lembretes antes do vencimento, só para quem paga no Pix (D-2, D0, Pago);
+//   funil "Inadimplentes": quem tem 1 dia ou mais de atraso (Pix ou cartão que falhou), de D+1 até o jurídico.
 // Roda pelo cron (Authorization: Bearer <cron_secret>) a cada 5 minutos, das 7h às 21h, e sempre que alguém abre a lista
 // "Cobrar hoje": assim, a baixa feita no ePLAT tira o aluno da cobrança em poucos minutos. Lê o financeiro do ePLAT
 // (fin_lancamentos a receber, só categorias "EMPRESA | ...") e, para cada cliente:
@@ -16,7 +18,9 @@ const cors = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { 'Content-Type': 'application/json', ...cors } })
-const PIPE = '1731d20c-e32a-4a67-a537-b8bc653c1e1f'
+const PIPE_INAD = '1731d20c-e32a-4a67-a537-b8bc653c1e1f' // Inadimplentes: 1 dia ou mais de atraso
+const PIPE_COB = '2354ef40-0887-44f4-b584-e9c1c2bd2315'  // Cobrança: lembretes antes do vencimento (só Pix)
+const PIPES = [PIPE_INAD, PIPE_COB]
 const DONO = '08636121-ce1c-4884-9e6a-8f6ce30958ba' // Murilo
 const digits = (s: string | null | undefined) => String(s ?? '').replace(/\D/g, '')
 const brl = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -50,10 +54,10 @@ Deno.serve(async (req) => {
   const somaDias = (iso: string, n: number) => new Date(Date.parse(iso + 'T12:00:00Z') + n * 86_400_000).toISOString().slice(0, 10)
   const ate = somaDias(hoje, 2)
 
-  const { data: stages } = await admin.from('stages').select('id, name').eq('pipeline_id', PIPE)
+  const { data: stages } = await admin.from('stages').select('id, name, pipeline_id').in('pipeline_id', PIPES)
   const st = (re: RegExp) => stages?.find((s) => re.test(s.name))?.id
-  const S = { d2: st(/D-2/), d0: st(/D0/), d1: st(/D\+1\b/), reg: st(/^Regularizado/) }
-  if (!S.d2 || !S.d0 || !S.d1 || !S.reg) return json({ ok: false, error: 'colunas do funil não encontradas' })
+  const S = { d2: st(/D-2/), d0: st(/D0/), d1: st(/D\+1\b/), reg: st(/^Regularizado/), pago: stages?.find((s) => s.pipeline_id === PIPE_COB && /^Pago/.test(s.name))?.id }
+  if (!S.d2 || !S.d0 || !S.d1 || !S.reg || !S.pago) return json({ ok: false, error: 'colunas do funil não encontradas' })
 
   const { data: cats } = await plat.from('fin_categorias').select('id, nome').ilike('nome', 'EMPRESA |%')
   const catIds = (cats ?? []).map((c) => c.id)
@@ -71,7 +75,7 @@ Deno.serve(async (req) => {
   const abertas = (abertas0 ?? []).filter((l) => !cartao.has(l.forma_id) || l.data_vencimento < hoje)
 
   // cards abertos do funil acompanhados por este robô (ou importados com plat_cliente_id)
-  const { data: cards } = await admin.from('deals').select('id, title, stage_id, contact_id, custom, value').eq('pipeline_id', PIPE).eq('status', 'open')
+  const { data: cards } = await admin.from('deals').select('id, title, stage_id, pipeline_id, contact_id, custom, value').in('pipeline_id', PIPES).eq('status', 'open')
   const porCliente = new Map<number, any>()
   for (const c of cards ?? []) if (c.custom?.plat_cliente_id) porCliente.set(Number(c.custom.plat_cliente_id), c)
 
@@ -112,7 +116,7 @@ Deno.serve(async (req) => {
       if (!alvo) continue // vencida, mas ainda antes das 14h: espera a rodada da tarde
       if (alvo === S.d1 && primeira < somaDias(hoje, -1)) continue // atrasos antigos não entram sozinhos (já foram importados à mão)
       // outra rodada (cron e lista abertos ao mesmo tempo) pode ter criado o card agora: não duplica
-      const { data: jaTem } = await admin.from('deals').select('id').eq('pipeline_id', PIPE).eq('status', 'open').eq('custom->>plat_cliente_id', String(cid)).limit(1)
+      const { data: jaTem } = await admin.from('deals').select('id').in('pipeline_id', PIPES).eq('status', 'open').eq('custom->>plat_cliente_id', String(cid)).limit(1)
       if (jaTem?.length) continue
       // contato: pelo telefone (8 últimos dígitos) ou e-mail; cria se não existir
       const fone = telefone(c.whatsapp)
@@ -129,7 +133,7 @@ Deno.serve(async (req) => {
         const { data: novo } = await admin.from('contacts').insert({ name: c.nome, phone: fone, wa_id: fone ? fone.slice(1) : null, email: c.email, source: 'ePLAT – financeiro', tags: ['cobrança'], owner_id: DONO, created_by: DONO }).select('id').single()
         contactId = novo?.id || null
       }
-      const { data: d } = await admin.from('deals').insert({ title: c.nome, pipeline_id: PIPE, stage_id: alvo, contact_id: contactId, owner_id: DONO, created_by: DONO, value: total, custom }).select('id').single()
+      const { data: d } = await admin.from('deals').insert({ title: c.nome, pipeline_id: alvo === S.d1 ? PIPE_INAD : PIPE_COB, stage_id: alvo, contact_id: contactId, owner_id: DONO, created_by: DONO, value: total, custom }).select('id').single()
       if (d) await nota(d.id, contactId, alvo === S.d2 ? 'Parcela vence em breve' : alvo === S.d0 ? 'Parcela vence hoje' : 'Não pagou no vencimento: segue para a cobrança', resumo)
       log.push({ cliente: c.nome, criou: alvo })
     }
@@ -142,8 +146,8 @@ Deno.serve(async (req) => {
     if (!ids.length || grupos.has(cid)) continue
     const { data: ls } = await plat.from('fin_lancamentos').select('id, pagou').in('id', ids)
     if (ls?.length && ls.every((l) => l.pagou)) {
-      await admin.from('deals').update({ stage_id: S.reg }).eq('id', card.id)
-      await nota(card.id, card.contact_id, 'Pagamento confirmado no ePLAT: regularizado', `Todas as ${ls.length} parcela(s) acompanhada(s) constam como pagas no financeiro do ePLAT.`)
+      await admin.from('deals').update({ stage_id: card.pipeline_id === PIPE_COB ? S.pago : S.reg }).eq('id', card.id)
+      await nota(card.id, card.contact_id, card.pipeline_id === PIPE_COB ? 'Pagamento confirmado no ePLAT: pago' : 'Pagamento confirmado no ePLAT: regularizado', `Todas as ${ls.length} parcela(s) acompanhada(s) constam como pagas no financeiro do ePLAT.`)
       log.push({ cliente: card.title, regularizado: true })
     }
   }

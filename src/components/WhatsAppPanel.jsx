@@ -299,7 +299,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     // Card na coluna "Remarcar": abre direto nas mensagens de Remarcação.
     const naRemarcar = /remarc/i.test(stages.find((s) => s.id === deal?.stage_id)?.name || '')
     // Card no funil "Inadimplentes" (criado em 24/11/2026): abre direto nas mensagens de Cobrança.
-    const naCobranca = deal?.pipeline_id === '1731d20c-e32a-4a67-a537-b8bc653c1e1f'
+    const naCobranca = ['1731d20c-e32a-4a67-a537-b8bc653c1e1f', '2354ef40-0887-44f4-b584-e9c1c2bd2315'].includes(deal?.pipeline_id)
     if (!showQuick && naCobranca) setStage('cobranca')
     else if (!showQuick && naRemarcar) setStage('remarcacao')
     else if (!showQuick && proxima?.stage) setStage(proxima.stage)

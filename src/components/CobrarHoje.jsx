@@ -18,6 +18,8 @@ import { splitParts } from '../lib/wa'
  *   "Em negociação", "Acordo em dia" e o encaminhamento ao jurídico ficam manuais.
  */
 export const PIPE_INADIMPLENTES = '1731d20c-e32a-4a67-a537-b8bc653c1e1f'
+export const PIPE_COBRANCA = '2354ef40-0887-44f4-b584-e9c1c2bd2315'
+export const PIPES_COBRANCA = [PIPE_INADIMPLENTES, PIPE_COBRANCA]
 const DIA = 86_400_000
 const hojeISO = () => new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10)
 const br = (iso) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '')
@@ -80,7 +82,7 @@ export default function CobrarHoje({ deals, onClose, onOpen, onRefresh }) {
     })
     return () => { vivo = false }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  const pipeStages = useMemo(() => stages.filter((s) => s.pipeline_id === PIPE_INADIMPLENTES), [stages])
+  const pipeStages = useMemo(() => stages.filter((s) => PIPES_COBRANCA.includes(s.pipeline_id)), [stages])
 
   const lista = useMemo(() => deals.map((d) => ({ d, p: proximaCobranca(d, pipeStages) })).filter((x) => x.p)
     .sort((a, b) => (diasAtraso(b.d) ?? -9) - (diasAtraso(a.d) ?? -9)), [deals, pipeStages])
