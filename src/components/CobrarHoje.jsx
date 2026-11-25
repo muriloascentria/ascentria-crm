@@ -48,12 +48,15 @@ export function proximaCobranca(d, stages) {
   const st = (re) => stages.find((s) => re.test(s.name))
   if (/D-2/.test(nome)) return enviouAqui ? null : { msg: 'Lembrete: vence em 2 dias', alvo: col }
   if (/D0/.test(nome)) return enviouAqui ? null : { msg: 'Lembrete: vence hoje', alvo: col }
-  if (/^Parcela em atraso/.test(nome)) { const r = pelaIdade(dias); return { msg: r.msg, alvo: st(r.col) } }
+  // quem entrou já atrasado (importado) começa no máximo pelo aviso formal: nunca pula direto para a última tentativa
+  if (/^Parcela em atraso/.test(nome)) { const r = pelaIdade(Math.min(dias ?? 0, 29)); return { msg: r.msg, alvo: st(r.col) } }
   const idx = COB.findIndex((c) => c.col.test(nome))
   if (idx < 0) return null // negociação, acordo, regularizado, jurídico: manual
   if (!enviouAqui) return { msg: COB[idx].msg, alvo: col }
   const prox = COB[idx - 1] // a etapa seguinte da régua
-  if (prox && (dias ?? 0) >= prox.min) return { msg: prox.msg, alvo: st(prox.col) }
+  // entre uma cobrança e a próxima, pelo menos 5 dias (mesmo para quem já está muito atrasado)
+  const desdeEnvio = d.manual_sent_at ? (Date.now() - Date.parse(d.manual_sent_at)) / DIA : 99
+  if (prox && (dias ?? 0) >= prox.min && desdeEnvio >= 5) return { msg: prox.msg, alvo: st(prox.col) }
   return null
 }
 
