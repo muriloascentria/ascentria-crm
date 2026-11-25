@@ -196,6 +196,9 @@ async function rodar(admin: any, plat: any) {
       const contactId = await contatoPara(c)
       const pipe = alvo === S.d1 || alvo === S.atr ? PIPE_INAD : PIPE_COB
       const { data: d } = await admin.from('deals').insert({ title: c.nome, pipeline_id: pipe, stage_id: alvo, contact_id: contactId, owner_id: DONO, created_by: DONO, value: valor, custom }).select('id').single()
+      // duas rodadas ao mesmo tempo (cron e lista aberta) podem criar o mesmo card: fica só o mais antigo
+      const { data: iguais } = await admin.from('deals').select('id').in('pipeline_id', PIPES).eq('status', 'open').eq('custom->>plat_cliente_id', String(cid)).order('created_at').order('id')
+      if (d && iguais && iguais.length > 1 && iguais[0].id !== d.id) { await admin.from('deals').delete().eq('id', d.id); continue }
       if (d) {
         await nota(d.id, contactId, titulo, resumo)
         if (alvo === S.aq || alvo === S.ar) await tarefaCarmem(admin, d.id, contactId, c.nome, alvo === S.aq, resumo)
