@@ -10,7 +10,12 @@
 // Não envia nenhuma mensagem: só cria/move os cards. As colunas seguintes (D+5, D+10…) continuam manuais.
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
-const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { 'Content-Type': 'application/json' } })
+const cors = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { 'Content-Type': 'application/json', ...cors } })
 const PIPE = '1731d20c-e32a-4a67-a537-b8bc653c1e1f'
 const DONO = '08636121-ce1c-4884-9e6a-8f6ce30958ba' // Murilo
 const digits = (s: string | null | undefined) => String(s ?? '').replace(/\D/g, '')
@@ -24,6 +29,7 @@ const telefone = (s: string | null | undefined) => {
 }
 
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
   const t = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
   // chamada pelo cron (cron_secret) ou pelo próprio CRM, por um usuário logado, ao abrir a lista "Cobrar hoje"
