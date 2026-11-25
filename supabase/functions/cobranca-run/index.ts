@@ -166,7 +166,9 @@ async function rodar(admin: any, plat: any) {
       let desejado = emDia
       let novoEleg: string | null = null
       if (mentorado && meses != null) {
-        if (meses >= 6 && !ofertas.renovacao) { desejado = S.ar; novoEleg = 'renovacao' }
+        // renovação (pedido de 25/11): 6+ meses e mentoria já quitada (a empresa recebeu o valor total): nada a pagar, ou cartão normal / à vista
+        const quitado = saldo <= 0 || tipo === 'cartao_normal'
+        if (meses >= 6 && quitado && !ofertas.renovacao) { desejado = S.ar; novoEleg = 'renovacao' }
         else if (meses >= 4 && tipo !== 'cartao_normal' && saldo > 0 && !ofertas.quitacao) { desejado = S.aq; novoEleg = 'quitacao' }
       }
       if (proxPix.length) desejado = proxPix[0].data_vencimento === hoje ? S.d0 : S.d2
@@ -213,6 +215,9 @@ async function rodar(admin: any, plat: any) {
     if (move) {
       await nota(card.id, card.contact_id, titulo, resumo)
       if (alvo === S.aq || alvo === S.ar) await tarefaCarmem(admin, card.id, card.contact_id, c.nome, alvo === S.aq, resumo)
+      // saiu de "Agendar acompanhamento" sem a reunião ter sido marcada (deixou de ser elegível): tira a tarefa da Carmem
+      else if ((card.stage_id === S.aq || card.stage_id === S.ar) && alvo !== S.d2 && alvo !== S.d0)
+        await admin.from('activities').delete().eq('deal_id', card.id).eq('done', false).eq('type', 'task').ilike('title', 'Agendar reunião de acompanhamento%')
       log.push({ cliente: c.nome, moveu: nomeCol.get(alvo) })
     }
   }
@@ -221,11 +226,14 @@ async function rodar(admin: any, plat: any) {
 
 // Sinaliza para a Carmem que é hora de marcar a reunião de acompanhamento (onde ela apresenta a oferta).
 async function tarefaCarmem(admin: any, dealId: string, contactId: string | null, nome: string, quitacao: boolean, resumo: string) {
-  const { data: ja } = await admin.from('activities').select('id').eq('deal_id', dealId).eq('done', false).ilike('title', 'Agendar reunião de acompanhamento%').limit(1)
-  if (ja?.length) return
+  const title = `Agendar reunião de acompanhamento: ${nome} (${quitacao ? 'oferecer quitação antecipada com 20%' : 'oferecer renovação'})`
+  const description = `${resumo}\n\nA Mari envia o convite para uma reunião de acompanhamento normal da mentoria (pela lista do topo do funil Cobrança). Na reunião, a Carmem apresenta a ${quitacao ? 'quitação antecipada com 20% de desconto' : 'renovação'}. Depois da reunião, mova o card para "Oferta feita".`
+  const { data: ja } = await admin.from('activities').select('id, title').eq('deal_id', dealId).eq('done', false).ilike('title', 'Agendar reunião de acompanhamento%').limit(1)
+  // se a oferta mudou (ex.: saiu de renovação para quitação), corrige a tarefa aberta em vez de criar outra
+  if (ja?.length) { if (ja[0].title !== title) await admin.from('activities').update({ title, description }).eq('id', ja[0].id); return }
   await admin.from('activities').insert({
-    type: 'task', title: `Agendar reunião de acompanhamento: ${nome} (${quitacao ? 'oferecer quitação antecipada com 20%' : 'oferecer renovação'})`,
-    description: `${resumo}\n\nA Mari envia o convite para uma reunião de acompanhamento normal da mentoria (pela lista do topo do funil Cobrança). Na reunião, a Carmem apresenta a ${quitacao ? 'quitação antecipada com 20% de desconto' : 'renovação'}. Depois da reunião, mova o card para "Oferta feita".`,
+    type: 'task', title,
+    description,
     deal_id: dealId, contact_id: contactId, assigned_to: CARMEM, created_by: DONO, due_at: new Date(Date.now() + 2 * 86_400_000).toISOString(),
   })
 }
