@@ -13,7 +13,8 @@ import { splitParts } from '../lib/wa'
  * o envio, o card vai sozinho para a coluna certa.
  * A régua (dias contados do primeiro vencimento em aberto):
  *   D-2 e D0 → lembretes (a passagem D-2 → D0 → D+1 é feita pela rotina cobranca-run, de acordo com o ePLAT)
- *   D+1 → Cobrança 1 · D+5 → Cobrança 2 · D+10 → Cobrança 3 (aviso formal) · D+30 → Cobrança 4 (última tentativa)
+ *   Régua da Carmem (25/11): D+1 contato leve · D+4 condição especial · D+8 consequências · D+12 proposta de acordo
+ *   · D+15 prazo final · D+20 encerramento (Carmem)
  *   "Em negociação", "Acordo em dia" e o encaminhamento ao jurídico ficam manuais.
  */
 export const PIPE_INADIMPLENTES = '1731d20c-e32a-4a67-a537-b8bc653c1e1f'
@@ -29,9 +30,11 @@ export const diasAtraso = (d) => {
 
 // mensagem (início do título da mensagem pronta) e coluna para onde o card vai depois de enviada
 const COB = [
-  { min: 30, msg: 'Cobrança 4', col: /Última tentativa/ },
-  { min: 10, msg: 'Cobrança 3', col: /Aviso formal/ },
-  { min: 5, msg: 'Cobrança 2', col: /2º aviso/ },
+  { min: 20, msg: 'Cobrança 5', col: /Encerramento/ },
+  { min: 15, msg: 'Cobrança 4', col: /Prazo final/ },
+  { min: 12, msg: 'Negociação: proposta', col: /Proposta de acordo/ },
+  { min: 8, msg: 'Cobrança 3', col: /Consequências/ },
+  { min: 4, msg: 'Cobrança 2', col: /Condição especial/ },
   { min: -Infinity, msg: 'Cobrança 1', col: /1º lembrete/ },
 ]
 const pelaIdade = (dias) => COB.find((c) => (dias ?? 0) >= c.min)
@@ -48,21 +51,21 @@ export function proximaCobranca(d, stages) {
   const st = (re) => stages.find((s) => re.test(s.name))
   if (/D-2/.test(nome)) return enviouAqui ? null : { msg: 'Lembrete: vence em 2 dias', alvo: col }
   if (/D0/.test(nome)) return enviouAqui ? null : { msg: 'Lembrete: vence hoje', alvo: col }
-  // quem entrou já atrasado (importado) começa no máximo pelo aviso formal: nunca pula direto para a última tentativa
-  if (/^Parcela em atraso/.test(nome)) { const r = pelaIdade(Math.min(dias ?? 0, 29)); return { msg: r.msg, alvo: st(r.col) } }
+  // quem entrou já atrasado (importado) começa no máximo pela mensagem de consequências (D+8): nunca pula etapas finais
+  if (/^Parcela em atraso/.test(nome)) { const r = pelaIdade(Math.min(dias ?? 0, 11)); return { msg: r.msg, alvo: st(r.col) } }
   const idx = COB.findIndex((c) => c.col.test(nome))
   if (idx < 0) return null // negociação, acordo, regularizado, jurídico: manual
   if (!enviouAqui) return { msg: COB[idx].msg, alvo: col }
   const prox = COB[idx - 1] // a etapa seguinte da régua
-  // entre uma cobrança e a próxima, pelo menos 5 dias (mesmo para quem já está muito atrasado)
+  // entre uma cobrança e a próxima, pelo menos 3 dias (régua da Carmem: 2 a 4 dias entre envios)
   const desdeEnvio = d.manual_sent_at ? (Date.now() - Date.parse(d.manual_sent_at)) / DIA : 99
-  if (prox && (dias ?? 0) >= prox.min && desdeEnvio >= 5) return { msg: prox.msg, alvo: st(prox.col) }
+  if (prox && (dias ?? 0) >= prox.min && desdeEnvio >= 3) return { msg: prox.msg, alvo: st(prox.col) }
   return null
 }
 
 export default function CobrarHoje({ deals, onClose, onOpen }) {
   const mobile = useMobile()
-  const { stages, toast, profile } = useApp()
+  const { stages, toast, profile, settings } = useApp()
   const [quick, setQuick] = useState([])
   const [feitos, setFeitos] = useState({})
   useEffect(() => { supabase.from('quick_replies').select('title, body').eq('stage', 'cobranca').then(({ data }) => setQuick(data || [])) }, [])
@@ -80,6 +83,7 @@ export default function CobrarHoje({ deals, onClose, onOpen }) {
       .replaceAll('[VALOR]', brl(d.value))
       .replaceAll('[VENCIMENTO]', br(d.custom?.primeiro_vencimento) || d.custom?.vencida_desde || '')
       .replaceAll('[DATA LIMITE]', br(limite))
+      .replaceAll('[CHAVE PIX]', String(settings?.pix_key || '').trim() || '[CHAVE PIX]')
   }
   const enviar = (d, p) => {
     const link = waLink(d.contact, texto(d, p.msg))
@@ -102,7 +106,7 @@ export default function CobrarHoje({ deals, onClose, onOpen }) {
       <details className="small muted" style={{ marginBottom: 10 }} open={!mobile}>
         <summary style={{ cursor: 'pointer' }}>Como funciona</summary>
         <b>Enviar</b> abre o WhatsApp com a mensagem de cobrança do dia já preenchida (nome, valor, vencimento e data-limite). Envie por lá e confirme em <b>Sim, enviei</b>: o card vai sozinho para a coluna da mensagem enviada.
-        Régua: lembretes em D-2 e no dia do vencimento; depois Cobrança 1 (D+1), 2 (D+5), 3 – aviso formal (D+10) e 4 – última tentativa (D+30). Negociação, acordo e jurídico continuam manuais. Antes de cobrar, confira se o pagamento não entrou sem baixa no ePLAT.
+        Régua: lembretes em D-2 e no dia do vencimento; depois D+1 contato leve, D+4 condição especial, D+8 consequências, D+12 proposta de acordo, D+15 prazo final e D+20 encerramento. Envie em dias úteis, das 9h às 18h. Negociação, acordo e jurídico continuam manuais. Antes de cobrar, confira se o pagamento não entrou sem baixa no ePLAT.
       </details>
       {lista.length === 0 && <div className="muted" style={{ padding: 16, textAlign: 'center' }}>Nenhuma cobrança para hoje. ✓</div>}
       <div className="stack" style={{ gap: 8 }}>
@@ -112,7 +116,7 @@ export default function CobrarHoje({ deals, onClose, onOpen }) {
           const col = pipeStages.find((s) => s.id === d.stage_id)
           const txt = texto(d, p.msg)
           return (
-            <div key={d.id} className="card" style={{ padding: 10, opacity: feito === 'enviado' ? 0.55 : 1, borderLeft: `3px solid ${(dias ?? 0) >= 30 ? '#7f1d1d' : (dias ?? 0) >= 10 ? '#dc2626' : (dias ?? 0) > 0 ? '#d97706' : '#2563eb'}` }}>
+            <div key={d.id} className="card" style={{ padding: 10, opacity: feito === 'enviado' ? 0.55 : 1, borderLeft: `3px solid ${(dias ?? 0) >= 15 ? '#7f1d1d' : (dias ?? 0) >= 8 ? '#dc2626' : (dias ?? 0) > 0 ? '#d97706' : '#2563eb'}` }}>
               <div className="between hoje-item" style={{ gap: 8, alignItems: 'flex-start' }}>
                 <div className="grow" style={{ minWidth: 0 }}>
                   <div><b>{d.contact?.name || d.title}</b> <span className="chip" style={{ marginLeft: 4 }}>{p.msg}</span>
