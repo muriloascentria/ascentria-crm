@@ -13,7 +13,7 @@ import { splitParts } from '../lib/wa'
  * o envio, o card vai sozinho para a coluna certa.
  * A régua (dias contados do primeiro vencimento em aberto):
  *   D-2 e D0 → lembretes (a passagem D-2 → D0 → D+1 é feita pela rotina cobranca-run, de acordo com o ePLAT)
- *   Régua da Carmem (25/11): D+1 contato leve · D+4 condição especial · D+8 consequências · D+12 proposta de acordo
+ *   Régua da Carmem (25/11): D+1 contato leve · D+4 aviso de pendência · D+8 consequências · D+12 proposta de acordo
  *   · D+15 prazo final · D+20 encerramento (Carmem)
  *   "Em negociação", "Acordo em dia" e o encaminhamento ao jurídico ficam manuais.
  */
@@ -34,7 +34,7 @@ const COB = [
   { min: 15, msg: 'Cobrança 4', col: /Prazo final/ },
   { min: 12, msg: 'Negociação: proposta', col: /Proposta de acordo/ },
   { min: 8, msg: 'Cobrança 3', col: /Consequências/ },
-  { min: 4, msg: 'Cobrança 2', col: /Condição especial/ },
+  { min: 4, msg: 'Cobrança 2', col: /Aviso de pendência/ },
   { min: -Infinity, msg: 'Cobrança 1', col: /1º lembrete/ },
 ]
 const pelaIdade = (dias) => COB.find((c) => (dias ?? 0) >= c.min)
@@ -106,7 +106,7 @@ export default function CobrarHoje({ deals, onClose, onOpen }) {
       <details className="small muted" style={{ marginBottom: 10 }} open={!mobile}>
         <summary style={{ cursor: 'pointer' }}>Como funciona</summary>
         <b>Enviar</b> abre o WhatsApp com a mensagem de cobrança do dia já preenchida (nome, valor, vencimento e data-limite). Envie por lá e confirme em <b>Sim, enviei</b>: o card vai sozinho para a coluna da mensagem enviada.
-        Régua: lembretes em D-2 e no dia do vencimento; depois D+1 contato leve, D+4 condição especial, D+8 consequências, D+12 proposta de acordo, D+15 prazo final e D+20 encerramento. Envie em dias úteis, das 9h às 18h. Negociação, acordo e jurídico continuam manuais. Antes de cobrar, confira se o pagamento não entrou sem baixa no ePLAT.
+        Régua: lembretes em D-2 e no dia do vencimento; depois D+1 contato leve, D+4 aviso de pendência, D+8 consequências, D+12 proposta de acordo, D+15 prazo final e D+20 encerramento. Envie em dias úteis, das 9h às 18h. Negociação, acordo e jurídico continuam manuais. Antes de cobrar, confira se o pagamento não entrou sem baixa no ePLAT.
       </details>
       {lista.length === 0 && <div className="muted" style={{ padding: 16, textAlign: 'center' }}>Nenhuma cobrança para hoje. ✓</div>}
       <div className="stack" style={{ gap: 8 }}>
