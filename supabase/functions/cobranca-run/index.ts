@@ -3,7 +3,7 @@
 //      Vence em 5 dias (D-5) / Vence hoje (D0)   → só quem paga no Pix, com parcela vencendo
 //      Em dia · Pix / Em dia · Cartão recorrente / Em dia · Cartão normal ou à vista
 //      Agendar acompanhamento · Quitação 20%     → 4+ meses na mentoria, em dia, Pix ou cartão recorrente, com saldo a pagar
-//      Agendar acompanhamento · Renovação        → 6+ meses na mentoria, em dia (qualquer forma de pagamento)
+//      Agendar acompanhamento · Renovação        → 6+ meses na mentoria e mentoria já quitada (nada a pagar, ou cartão normal / à vista)
 //      Acompanhamento agendado / Oferta feita    → colunas manuais (a rotina não mexe)
 //   "Inadimplentes": quem tem 1 dia ou mais de atraso (Pix depois das 14h do dia seguinte; cartão que falhou), de D+1
 //      até o jurídico; quando tudo aparece pago no ePLAT, vai para Regularizado e volta para a carteira (Cobrança).
