@@ -1,6 +1,6 @@
 // Carteira de alunos e régua de cobrança (pedido do Murilo em 24–25/11/2026). Dois funis:
 //   "Cobrança": um card por mentorado ativo, na coluna da sua situação:
-//      Vence em 2 dias (D-2) / Vence hoje (D0)   → só quem paga no Pix, com parcela vencendo
+//      Vence em 5 dias (D-5) / Vence hoje (D0)   → só quem paga no Pix, com parcela vencendo
 //      Em dia · Pix / Em dia · Cartão recorrente / Em dia · Cartão normal ou à vista
 //      Agendar acompanhamento · Quitação 20%     → 4+ meses na mentoria, em dia, Pix ou cartão recorrente, com saldo a pagar
 //      Agendar acompanhamento · Renovação        → 6+ meses na mentoria, em dia (qualquer forma de pagamento)
@@ -64,14 +64,14 @@ async function rodar(admin: any, plat: any) {
   const hoje = agora.toISOString().slice(0, 10)
   const hora = agora.getUTCHours()
   const somaDias = (iso: string, n: number) => new Date(Date.parse(iso + 'T12:00:00Z') + n * 86_400_000).toISOString().slice(0, 10)
-  const ontem = somaDias(hoje, -1), ate = somaDias(hoje, 2)
+  const ontem = somaDias(hoje, -1), ate = somaDias(hoje, 5) // lembrete 5 dias antes (pedido de 25/11)
   const diasEntre = (a: string, b: string) => Math.round((Date.parse(b + 'T12:00:00Z') - Date.parse(String(a).slice(0, 10) + 'T12:00:00Z')) / 86_400_000)
 
   // colunas
   const { data: stages } = await admin.from('stages').select('id, name, pipeline_id').in('pipeline_id', PIPES)
   const col = (pipe: string, re: RegExp) => stages?.find((s: any) => s.pipeline_id === pipe && re.test(s.name))?.id
   const S: Record<string, string> = {
-    d2: col(PIPE_COB, /D-2/), d0: col(PIPE_COB, /D0/), pix: col(PIPE_COB, /^Em dia · Pix/), rec: col(PIPE_COB, /^Em dia · Cartão recorrente/),
+    d2: col(PIPE_COB, /^Vence em \d+ dias|D-[25]\b/), d0: col(PIPE_COB, /D0/), pix: col(PIPE_COB, /^Em dia · Pix/), rec: col(PIPE_COB, /^Em dia · Cartão recorrente/),
     cn: col(PIPE_COB, /^Em dia · Cartão normal/), aq: col(PIPE_COB, /Quitação/), ar: col(PIPE_COB, /Agendar.*Renovação/),
     ag: col(PIPE_COB, /^Acompanhamento agendado/), of: col(PIPE_COB, /^Oferta feita/),
     atr: col(PIPE_INAD, /^Parcela em atraso/), d1: col(PIPE_INAD, /D\+1\b/), reg: col(PIPE_INAD, /^Regularizado/),

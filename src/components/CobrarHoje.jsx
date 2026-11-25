@@ -12,7 +12,7 @@ import { splitParts } from '../lib/wa'
  * "Para contatar hoje" da Mentoria: diz qual mensagem de cobrança mandar para cada aluno hoje; ao confirmar
  * o envio, o card vai sozinho para a coluna certa.
  * A régua (dias contados do primeiro vencimento em aberto):
- *   D-2 e D0 → lembretes (a passagem D-2 → D0 → D+1 é feita pela rotina cobranca-run, de acordo com o ePLAT)
+ *   D-5 e D0 → lembretes (a passagem D-5 → D0 → D+1 é feita pela rotina cobranca-run, de acordo com o ePLAT)
  *   Régua da Carmem (25/11): D+1 contato leve · D+4 aviso de pendência · D+8 consequências · D+12 proposta de acordo
  *   · D+15 prazo final · D+20 encerramento (Carmem)
  *   "Em negociação", "Acordo em dia" e o encaminhamento ao jurídico ficam manuais.
@@ -53,7 +53,7 @@ export function proximaCobranca(d, stages) {
   const st = (re) => stages.find((s) => re.test(s.name))
   // carteira (funil Cobrança): elegível à quitação ou à renovação → convite para a reunião de acompanhamento
   if (/^Agendar acompanhamento/.test(nome)) return enviouAqui ? null : { msg: 'Convite: reunião de acompanhamento', alvo: col }
-  if (/D-2/.test(nome)) return enviouAqui ? null : { msg: 'Lembrete: vence em 2 dias', alvo: col }
+  if (/^Vence em \d+ dias|D-[25]\b/.test(nome)) return enviouAqui ? null : { msg: 'Lembrete: vence em 5 dias', alvo: col }
   if (/D0/.test(nome)) return enviouAqui ? null : { msg: 'Lembrete: vence hoje', alvo: col }
   // quem entrou já atrasado (importado) começa no máximo pela mensagem de consequências (D+8): nunca pula etapas finais
   if (/^Parcela em atraso/.test(nome)) { const r = pelaIdade(Math.min(dias ?? 0, 11)); return { msg: r.msg, alvo: st(r.col) } }
@@ -121,7 +121,7 @@ export default function CobrarHoje({ deals, onClose, onOpen, onRefresh }) {
       <details className="small muted" style={{ marginBottom: 10 }} open={!mobile}>
         <summary style={{ cursor: 'pointer' }}>Como funciona</summary>
         <b>Enviar</b> abre o WhatsApp com a mensagem de cobrança do dia já preenchida (nome, valor, vencimento e data-limite). Envie por lá e confirme em <b>Sim, enviei</b>: o card vai sozinho para a coluna da mensagem enviada.
-        Régua: lembretes em D-2 e no dia do vencimento; depois D+1 contato leve, D+4 aviso de pendência, D+8 consequências, D+12 proposta de acordo, D+15 prazo final e D+20 encerramento. Envie em dias úteis, das 9h às 18h. Negociação, acordo e jurídico continuam manuais. Antes de cobrar, confira se o pagamento não entrou sem baixa no ePLAT.
+        Régua: lembretes 5 dias antes (D-5) e no dia do vencimento; depois D+1 contato leve, D+4 aviso de pendência, D+8 consequências, D+12 proposta de acordo, D+15 prazo final e D+20 encerramento. Envie em dias úteis, das 9h às 18h. Negociação, acordo e jurídico continuam manuais. Antes de cobrar, confira se o pagamento não entrou sem baixa no ePLAT.
       </details>
       {conferindo && <div className="small muted" style={{ marginBottom: 8 }}>⏳ Conferindo as baixas no ePLAT…</div>}
       {lista.length === 0 && <div className="muted" style={{ padding: 16, textAlign: 'center' }}>Nenhuma cobrança para hoje. ✓</div>}
