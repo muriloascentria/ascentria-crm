@@ -84,7 +84,7 @@ function TabelaRanking({ cols, linhas }) {
       <span /><span className="rk-h">Consultor</span>{cols.map((c) => <span key={c} className="rk-h rk-n">{c}</span>)}
       {linhas.map((l, i) => (
         <div key={l.nome} className={'rk-row' + (i === 0 && l.tem ? ' lider' : '')}>
-          <span className="rk-med">{medalha(i, l.tem)}</span>
+          <span className="rk-med">{medalha(i, true)}</span>
           <b className="rk-nome">{l.nome}</b>
           {l.vals.map((v, j) => <span key={j} className="rk-n">{v}</span>)}
         </div>

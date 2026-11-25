@@ -7,6 +7,7 @@ import DealModal from '../components/DealModal'
 import { daysIn, runCadenceNow, simulateInstagramDM, moveInboxToDay1, sentLast24h } from '../lib/wa'
 import { DEMO } from '../lib/supabase'
 import ContatarHoje from '../components/ContatarHoje'
+import CobrarHoje, { PIPE_INADIMPLENTES, proximaCobranca } from '../components/CobrarHoje'
 import { isManual, devidos } from '../lib/manual'
 import { useMobile } from '../lib/useMobile'
 import { leadAssinouEm } from '../lib/contrato'
@@ -79,6 +80,7 @@ export default function Pipeline() {
   const [over, setOver] = useState(null)
   const [sent24, setSent24] = useState(null)
   const [hojeAberto, setHojeAberto] = useState(false)
+  const [cobrarAberto, setCobrarAberto] = useState(false)
   const manual = isManual(settings)
   // lembretes do encontro que não saíram sozinhos (viraram tarefa) e ainda não foram feitos
   const [pendLembretes, setPendLembretes] = useState([])
@@ -113,9 +115,9 @@ export default function Pipeline() {
     return () => window.removeEventListener('crm:relatorio-enviado', f)
   }, [])
   useEffect(() => {
-    const iv = setInterval(() => { if (document.visibilityState === 'visible' && !dragId && !modal && !hojeAberto) load() }, 30_000)
+    const iv = setInterval(() => { if (document.visibilityState === 'visible' && !dragId && !modal && !hojeAberto && !cobrarAberto) load() }, 30_000)
     return () => clearInterval(iv)
-  }, [load, dragId, modal, hojeAberto])
+  }, [load, dragId, modal, hojeAberto, cobrarAberto])
   // link do aviso de contrato assinado (/funil?negocio=<id>): abre o card certo, no funil dele
   const [params, setParams] = useSearchParams()
   useEffect(() => {
@@ -213,6 +215,7 @@ export default function Pipeline() {
           {DEMO && pipeStages.some((s) => s.role) && <button className="btn" title="Simula uma mensagem no direct do Instagram contendo um celular" onClick={async () => { const r = await simulateInstagramDM(); toast(`DM recebida: ${r.name} entrou em Recebidos`); load() }}>📷 Simular DM do Instagram</button>}
           {DEMO && pipeStages.some((s) => s.role) && <button className="btn" title="Simula a passagem de 1 dia e roda o motor da cadência" onClick={async () => { const r = await runCadenceNow(); toast(`+1 dia: ${r.cadence.advanced} avançou, ${r.cadence.archived} perdido cadência, ${r.cadence.reactivated} reativado`); load() }}>⏩ Simular +1 dia</button>}
           {manual && hasCadence && <button className={'btn' + (mobile ? ' primary' : '')} style={mobile ? { flex: 1, justifyContent: 'center' } : undefined} onClick={() => setHojeAberto(true)} title="Quem precisa receber a mensagem da sequência hoje, pelo seu WhatsApp">📲 Para contatar hoje <b>{paraHoje.length}</b></button>}
+          {pipelineId === PIPE_INADIMPLENTES && <button className={'btn' + (mobile ? ' primary' : '')} style={mobile ? { flex: 1, justifyContent: 'center' } : undefined} onClick={() => setCobrarAberto(true)} title="Qual mensagem de cobrança mandar hoje para cada aluno">💰 Cobrar hoje <b>{deals.filter((d) => proximaCobranca(d, pipeStages)).length}</b></button>}
           <button className={'btn' + (mobile ? '' : ' primary')} onClick={() => setModal({ deal: null, defaults: { pipeline_id: pipelineId } })} title="Novo negócio">{mobile ? '+' : '+ Negócio'}</button>
         </div>
       </div>
@@ -331,6 +334,7 @@ export default function Pipeline() {
         </div>
       )}
 
+      {cobrarAberto && <CobrarHoje deals={deals} onClose={() => { setCobrarAberto(false); load() }} onOpen={(d) => { setCobrarAberto(false); openDeal(d) }} />}
       {hojeAberto && <ContatarHoje deals={deals} onClose={() => { setHojeAberto(false); load() }} onChanged={() => {}} onOpen={(d) => { setHojeAberto(false); openDeal(d) }} />}
 
       {modal && <DealModal deal={modal.deal} defaults={modal.defaults} onClose={async () => { const id = modal.deal?.id; setModal(null); if (id) { await supabase.from('deals').update({ seen_at: new Date().toISOString() }).eq('id', id); window.dispatchEvent(new Event('crm:unread')) } load() }} onSaved={load}
