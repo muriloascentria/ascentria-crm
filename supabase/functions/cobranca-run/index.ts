@@ -1,4 +1,4 @@
-// Régua de cobrança do funil "Inadimplentes" (pedido do Murilo em 24/11/2026).
+// Régua de cobrança do funil "Cobrança" (antes "Inadimplentes"; pedido do Murilo em 24/11/2026).
 // Roda pelo cron (Authorization: Bearer <cron_secret>) a cada 5 minutos, das 7h às 21h, e sempre que alguém abre a lista
 // "Cobrar hoje": assim, a baixa feita no ePLAT tira o aluno da cobrança em poucos minutos. Lê o financeiro do ePLAT
 // (fin_lancamentos a receber, só categorias "EMPRESA | ...") e, para cada cliente:
@@ -7,7 +7,7 @@
 //   - parcela vencendo hoje             → card em "Vence hoje (D0)"
 //   - parcela vencida e ainda não paga  → a partir das 14h, card que estava em D-2/D0 segue para "1º lembrete (D+1)"
 //   - todas as parcelas acompanhadas pagas → card vai para "Regularizado"
-// Não envia nenhuma mensagem: só cria/move os cards. As colunas seguintes (D+5, D+10…) continuam manuais.
+// Não envia nenhuma mensagem: só cria/move os cards. As colunas seguintes continuam com a lista "Cobrar hoje".
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const cors = {
@@ -97,7 +97,7 @@ Deno.serve(async (req) => {
       const resumo = `${produtos}: ${ls.length} parcela(s), total R$ ${brl(total)}, primeiro vencimento em ${br(primeira)}.`
       if (card) {
         const upd: any = { value: total, custom: { ...(card.custom || {}), ...custom } }
-        // só move automaticamente dentro da régua (D-2 → D0 → D+1); daí em diante é manual
+        // só move automaticamente dentro da régua (D-2 → D0 → D+1); daí em diante é pela lista "Cobrar hoje"
         const naRegua = card.stage_id === S.d2 || card.stage_id === S.d0
         if (alvo && naRegua && alvo !== card.stage_id && !(card.stage_id === S.d0 && alvo === S.d2)) {
           upd.stage_id = alvo
