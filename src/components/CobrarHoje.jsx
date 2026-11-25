@@ -51,6 +51,8 @@ export function proximaCobranca(d, stages) {
   if (enviouHoje) return null
   const dias = diasAtraso(d)
   const st = (re) => stages.find((s) => re.test(s.name))
+  // carteira (funil Cobrança): elegível à quitação ou à renovação → convite para a reunião de acompanhamento
+  if (/^Agendar acompanhamento/.test(nome)) return enviouAqui ? null : { msg: 'Convite: reunião de acompanhamento', alvo: col }
   if (/D-2/.test(nome)) return enviouAqui ? null : { msg: 'Lembrete: vence em 2 dias', alvo: col }
   if (/D0/.test(nome)) return enviouAqui ? null : { msg: 'Lembrete: vence hoje', alvo: col }
   // quem entrou já atrasado (importado) começa no máximo pela mensagem de consequências (D+8): nunca pula etapas finais
