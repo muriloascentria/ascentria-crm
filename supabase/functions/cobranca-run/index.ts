@@ -109,6 +109,9 @@ Deno.serve(async (req) => {
       }
       if (!alvo) continue // vencida, mas ainda antes das 14h: espera a rodada da tarde
       if (alvo === S.d1 && primeira < somaDias(hoje, -1)) continue // atrasos antigos não entram sozinhos (já foram importados à mão)
+      // outra rodada (cron e lista abertos ao mesmo tempo) pode ter criado o card agora: não duplica
+      const { data: jaTem } = await admin.from('deals').select('id').eq('pipeline_id', PIPE).eq('status', 'open').eq('custom->>plat_cliente_id', String(cid)).limit(1)
+      if (jaTem?.length) continue
       // contato: pelo telefone (8 últimos dígitos) ou e-mail; cria se não existir
       const fone = telefone(c.whatsapp)
       let contactId: string | null = null
