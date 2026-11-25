@@ -163,7 +163,7 @@ const RESP: Record<string, string> = { Carmem: 'Carmem Goretty', Diego: 'Diego E
 const CANAL: Record<string, string> = { whatsapp: 'whatsapp', call: 'ligacao', email: 'email', meeting: 'reuniao' }
 
 async function sincronizarRegistros(admin: any, plat: any, log: any[]) {
-  const desde = new Date(Date.now() - 3 * 86_400_000).toISOString()
+  const desde = new Date(Date.now() - 30 * 86_400_000).toISOString() // dedupe pela tabela plat_cobranca_sync
   const { data: cards } = await admin.from('deals').select('id, title, contact_id, stage_id, value, custom, stage:stages(name)').in('pipeline_id', PIPES)
   const comCliente = (cards ?? []).filter((c: any) => c.custom?.plat_cliente_id)
   if (!comCliente.length) return { enviados: 0, recebidos: 0 }
