@@ -104,7 +104,9 @@ Deno.serve(async (req) => {
           await nota(card.id, card.contact_id, alvo === S.d1 ? 'Não pagou no vencimento: segue para a cobrança' : 'Parcela vence hoje', resumo)
           log.push({ cliente: c.nome, moveu: alvo })
         }
-        await admin.from('deals').update(upd).eq('id', card.id)
+        // rodando a cada 5 min: só grava quando algo mudou
+        const mudou = upd.stage_id || Number(card.value) !== total || JSON.stringify(card.custom?.lanc_ids ?? []) !== JSON.stringify(custom.lanc_ids)
+        if (mudou) await admin.from('deals').update(upd).eq('id', card.id)
         continue
       }
       if (!alvo) continue // vencida, mas ainda antes das 14h: espera a rodada da tarde
