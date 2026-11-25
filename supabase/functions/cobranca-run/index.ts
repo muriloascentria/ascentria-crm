@@ -151,5 +151,69 @@ Deno.serve(async (req) => {
       log.push({ cliente: card.title, regularizado: true })
     }
   }
-  return json({ ok: true, hoje, hora, mudancas: log })
+  // 3) eCRM → ePLAT: toda conversa ou negociação registrada nos cards destes funis vira um registro no
+  //    "Registro de Cobranças Financeiras" do aluno no ePLAT (Acompanhamento Interno), para a Mari ter tudo lá.
+  // 4) ePLAT → eCRM: o que a Mari registrar no ePLAT aparece como nota no card do aluno.
+  const sync = await sincronizarRegistros(admin, plat, log)
+  return json({ ok: true, hoje, hora, mudancas: log, sync })
 })
+
+const ROBO = /^(Parcela vence|Não pagou no vencimento|Pagamento confirmado no ePLAT|Em atraso no financeiro da Plat|Registro no ePLAT)/
+const RESP: Record<string, string> = { Carmem: 'Carmem Goretty', Diego: 'Diego Eller', Murilo: 'Murilo Pedroso', Mariane: 'Mariane', Mari: 'Mariane', Sandra: 'Sandra Bublitz', Viviane: 'Viviane da Silva' }
+const CANAL: Record<string, string> = { whatsapp: 'whatsapp', call: 'ligacao', email: 'email', meeting: 'reuniao' }
+
+async function sincronizarRegistros(admin: any, plat: any, log: any[]) {
+  const desde = new Date(Date.now() - 3 * 86_400_000).toISOString()
+  const { data: cards } = await admin.from('deals').select('id, title, contact_id, stage_id, value, custom, stage:stages(name)').in('pipeline_id', PIPES)
+  const comCliente = (cards ?? []).filter((c: any) => c.custom?.plat_cliente_id)
+  if (!comCliente.length) return { enviados: 0, recebidos: 0 }
+  const { data: clientes } = await plat.from('registro_clientes').select('id, student_id').in('id', comCliente.map((c: any) => Number(c.custom.plat_cliente_id)))
+  const aluno = new Map((clientes ?? []).map((c: any) => [Number(c.id), c.student_id]))
+  const cardPorAluno = new Map<string, any>()
+  for (const c of comCliente) { const sid = aluno.get(Number(c.custom.plat_cliente_id)); if (sid) cardPorAluno.set(sid, c) }
+  const cardPorId = new Map(comCliente.map((c: any) => [c.id, c]))
+  let enviados = 0, recebidos = 0, semAluno = 0
+
+  // eCRM → ePLAT
+  const { data: ativs } = await admin.from('activities').select('id, type, title, description, due_at, deal_id, created_by, created_at, autor:profiles!activities_created_by_fkey(full_name)')
+    .in('deal_id', comCliente.map((c: any) => c.id)).gte('created_at', desde).order('created_at')
+  const { data: jaFoi } = await admin.from('plat_cobranca_sync').select('activity_id').in('activity_id', (ativs ?? []).map((a: any) => a.id).concat(['00000000-0000-0000-0000-000000000000']))
+  const feitos = new Set((jaFoi ?? []).map((x: any) => x.activity_id))
+  for (const a of ativs ?? []) {
+    if (feitos.has(a.id) || ROBO.test(a.title || '')) continue
+    const card: any = cardPorId.get(a.deal_id)
+    const sid = card && aluno.get(Number(card.custom.plat_cliente_id))
+    if (!sid) { semAluno++; continue }
+    const nome = String(a.autor?.full_name || 'Mariane').split(' ')[0]
+    const etapa = String(card.stage?.name || '')
+    const resultado = /negocia|Acordo/i.test(etapa) ? 'negociado' : /Regularizado|^Pago/.test(etapa) ? 'pago' : /jur[ií]dico/i.test(etapa) ? 'juridico' : null
+    const venc = card.custom?.primeiro_vencimento ? 'Vencimento desde ' + String(card.custom.primeiro_vencimento).split('-').reverse().join('/') : null
+    const prox = a.type !== 'note' && a.due_at && Date.parse(a.due_at) > Date.now() ? new Date(Date.parse(a.due_at) - 3 * 3600_000).toISOString().slice(0, 10) : null
+    const reg = {
+      student_id: sid, data: new Date(Date.parse(a.created_at) - 3 * 3600_000).toISOString().slice(0, 10),
+      canal: CANAL[a.type] || 'whatsapp', responsavel: RESP[nome] || a.autor?.full_name || 'Mariane',
+      valor: card.value != null ? Number(card.value) : null, parcelas: venc, resultado, proximo_passo: prox,
+      resumo: `[eCRM · ${etapa}] ${a.title}${a.description ? '\n' + a.description : ''}`.slice(0, 4000),
+    }
+    const { data: novo, error } = await plat.from('cobranca_registros').insert(reg).select('id').single()
+    if (error) { console.error('sync → ePLAT', a.id, error.message); continue }
+    await admin.from('plat_cobranca_sync').insert({ activity_id: a.id, plat_registro_id: novo.id, direcao: 'crm_para_plat' })
+    enviados++
+  }
+
+  // ePLAT → eCRM
+  const { data: regs } = await plat.from('cobranca_registros').select('id, student_id, data, canal, responsavel, valor, parcelas, resultado, proximo_passo, resumo, created_at')
+    .in('student_id', [...cardPorAluno.keys()]).gte('created_at', desde)
+  const { data: jaVeio } = await admin.from('plat_cobranca_sync').select('plat_registro_id').in('plat_registro_id', (regs ?? []).map((r: any) => r.id).concat([-1]))
+  const vieram = new Set((jaVeio ?? []).map((x: any) => Number(x.plat_registro_id)))
+  const RES: Record<string, string> = { sem_resposta: 'Sem resposta', prometeu: 'Prometeu pagar', negociado: 'Negociado', pago: 'Pago', recusou: 'Recusou pagar', juridico: 'Encaminhado ao jurídico' }
+  for (const r of regs ?? []) {
+    if (vieram.has(Number(r.id)) || String(r.resumo || '').startsWith('[eCRM')) continue
+    const card = cardPorAluno.get(r.student_id); if (!card) continue
+    const linhas = [r.resumo, r.resultado ? `Resultado: ${RES[r.resultado] || r.resultado}` : '', r.proximo_passo ? `Próximo passo: ${String(r.proximo_passo).split('-').reverse().join('/')}` : '', r.valor != null ? `Valor: R$ ${brl(Number(r.valor))}` : '', r.parcelas ? `Parcelas: ${r.parcelas}` : ''].filter(Boolean)
+    const { data: nova } = await admin.from('activities').insert({ type: 'note', title: `Registro no ePLAT (${r.responsavel})`, description: linhas.join('\n'), deal_id: card.id, contact_id: card.contact_id, assigned_to: DONO, created_by: DONO, due_at: new Date().toISOString() }).select('id').single()
+    if (nova) { await admin.from('plat_cobranca_sync').insert({ activity_id: nova.id, plat_registro_id: r.id, direcao: 'plat_para_crm' }); recebidos++ }
+  }
+  if (enviados || recebidos) log.push({ sync: { enviados, recebidos } })
+  return { enviados, recebidos, semAluno }
+}
