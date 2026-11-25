@@ -1,6 +1,7 @@
 // Régua de cobrança do funil "Inadimplentes" (pedido do Murilo em 24/11/2026).
 // Roda pelo cron (Authorization: Bearer <cron_secret>), de manhã e à tarde. Lê o financeiro do ePLAT
 // (fin_lancamentos a receber, só categorias "EMPRESA | ...") e, para cada cliente:
+//   (cartão de crédito: sem D-2/D0; só entra em D+1 se vencer sem baixa)
 //   - parcela vencendo em 1–2 dias      → card em "Vence em 2 dias (D-2)"
 //   - parcela vencendo hoje             → card em "Vence hoje (D0)"
 //   - parcela vencida e ainda não paga  → a partir das 14h, card que estava em D-2/D0 segue para "1º lembrete (D+1)"
@@ -47,10 +48,15 @@ Deno.serve(async (req) => {
   const catNome = new Map((cats ?? []).map((c) => [c.id, String(c.nome).replace(/^EMPRESA \|\s*/, '')]))
 
   // parcelas em aberto que vencem até daqui a 2 dias (inclui as já vencidas)
-  const { data: abertas, error: e1 } = await plat.from('fin_lancamentos')
-    .select('id, cliente_id, valor, data_vencimento, categoria_id, parcela_num, parcela_total')
+  const { data: abertas0, error: e1 } = await plat.from('fin_lancamentos')
+    .select('id, cliente_id, valor, data_vencimento, categoria_id, forma_id, parcela_num, parcela_total')
     .eq('tipo', 'receber').eq('pagou', false).lte('data_vencimento', ate).in('categoria_id', catIds).not('cliente_id', 'is', null)
   if (e1) return json({ ok: false, error: e1.message })
+  // Cartão de crédito (recorrente) é cobrado sozinho: não recebe os avisos de D-2 e D0.
+  // A parcela no cartão só conta depois de vencida sem baixa (cobrança falhou ou falta dar baixa) → entra em D+1.
+  const { data: formas } = await plat.from('fin_formas').select('id, nome')
+  const cartao = new Set((formas ?? []).filter((f) => /cart/i.test(String(f.nome))).map((f) => f.id))
+  const abertas = (abertas0 ?? []).filter((l) => !cartao.has(l.forma_id) || l.data_vencimento < hoje)
 
   // cards abertos do funil acompanhados por este robô (ou importados com plat_cliente_id)
   const { data: cards } = await admin.from('deals').select('id, title, stage_id, contact_id, custom, value').eq('pipeline_id', PIPE).eq('status', 'open')
