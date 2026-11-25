@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, invokeFn } from '../lib/supabase'
 import { useApp } from '../lib/store'
 import { Modal } from './ui'
 import AbrirEm from './AbrirEm'
@@ -63,12 +63,23 @@ export function proximaCobranca(d, stages) {
   return null
 }
 
-export default function CobrarHoje({ deals, onClose, onOpen }) {
+export default function CobrarHoje({ deals, onClose, onOpen, onRefresh }) {
   const mobile = useMobile()
   const { stages, toast, profile, settings } = useApp()
   const [quick, setQuick] = useState([])
   const [feitos, setFeitos] = useState({})
   useEffect(() => { supabase.from('quick_replies').select('title, body').eq('stage', 'cobranca').then(({ data }) => setQuick(data || [])) }, [])
+  // ao abrir, confere as baixas no ePLAT antes de mostrar a lista (quem já pagou sai na hora)
+  const [conferindo, setConferindo] = useState(true)
+  useEffect(() => {
+    let vivo = true
+    invokeFn('cobranca-run', { body: {} }).then(async ({ error }) => {
+      if (error) toast('Não consegui conferir as baixas no ePLAT agora: confira antes de cobrar', 'err')
+      await onRefresh?.()
+      if (vivo) setConferindo(false)
+    })
+    return () => { vivo = false }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const pipeStages = useMemo(() => stages.filter((s) => s.pipeline_id === PIPE_INADIMPLENTES), [stages])
 
   const lista = useMemo(() => deals.map((d) => ({ d, p: proximaCobranca(d, pipeStages) })).filter((x) => x.p)
@@ -108,6 +119,7 @@ export default function CobrarHoje({ deals, onClose, onOpen }) {
         <b>Enviar</b> abre o WhatsApp com a mensagem de cobrança do dia já preenchida (nome, valor, vencimento e data-limite). Envie por lá e confirme em <b>Sim, enviei</b>: o card vai sozinho para a coluna da mensagem enviada.
         Régua: lembretes em D-2 e no dia do vencimento; depois D+1 contato leve, D+4 aviso de pendência, D+8 consequências, D+12 proposta de acordo, D+15 prazo final e D+20 encerramento. Envie em dias úteis, das 9h às 18h. Negociação, acordo e jurídico continuam manuais. Antes de cobrar, confira se o pagamento não entrou sem baixa no ePLAT.
       </details>
+      {conferindo && <div className="small muted" style={{ marginBottom: 8 }}>⏳ Conferindo as baixas no ePLAT…</div>}
       {lista.length === 0 && <div className="muted" style={{ padding: 16, textAlign: 'center' }}>Nenhuma cobrança para hoje. ✓</div>}
       <div className="stack" style={{ gap: 8 }}>
         {lista.map(({ d, p }) => {
@@ -130,7 +142,7 @@ export default function CobrarHoje({ deals, onClose, onOpen }) {
                     <button type="button" className="btn primary sm" onClick={() => confirmar(d, p)}>✓ Sim, enviei</button>
                     <button type="button" className="btn sm" onClick={() => setFeitos((f) => { const n = { ...f }; delete n[d.id]; return n })}>Ainda não</button>
                   </> : feito === 'enviado' ? <span className="small" style={{ color: 'var(--success)', fontWeight: 600 }}>✓ enviada</span>
-                    : <button type="button" className="btn primary sm" onClick={() => enviar(d, p)}>📲 Enviar</button>}
+                    : <button type="button" className="btn primary sm" disabled={conferindo} onClick={() => enviar(d, p)}>📲 Enviar</button>}
                   <button type="button" className="btn ghost sm" onClick={() => onOpen?.(d)}>Abrir card</button>
                 </div>
               </div>

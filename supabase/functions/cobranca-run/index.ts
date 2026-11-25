@@ -1,5 +1,6 @@
 // Régua de cobrança do funil "Inadimplentes" (pedido do Murilo em 24/11/2026).
-// Roda pelo cron (Authorization: Bearer <cron_secret>), de manhã e à tarde. Lê o financeiro do ePLAT
+// Roda pelo cron (Authorization: Bearer <cron_secret>) a cada 5 minutos, das 7h às 21h, e sempre que alguém abre a lista
+// "Cobrar hoje": assim, a baixa feita no ePLAT tira o aluno da cobrança em poucos minutos. Lê o financeiro do ePLAT
 // (fin_lancamentos a receber, só categorias "EMPRESA | ...") e, para cada cliente:
 //   (cartão de crédito: sem D-2/D0; só entra em D+1 se vencer sem baixa)
 //   - parcela vencendo em 1–2 dias      → card em "Vence em 2 dias (D-2)"
@@ -25,7 +26,12 @@ const telefone = (s: string | null | undefined) => {
 Deno.serve(async (req) => {
   const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
   const t = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
-  const { data: ok } = await admin.rpc('check_cron_secret', { p: t })
+  // chamada pelo cron (cron_secret) ou pelo próprio CRM, por um usuário logado, ao abrir a lista "Cobrar hoje"
+  let { data: ok } = await admin.rpc('check_cron_secret', { p: t })
+  if (!ok && t) {
+    const { data: u } = await admin.auth.getUser(t)
+    if (u?.user) { const { data: pr } = await admin.from('profiles').select('active').eq('id', u.user.id).maybeSingle(); ok = !!pr?.active }
+  }
   if (!ok) return json({ error: 'não autorizado' }, 401)
   const platKey = Deno.env.get('PLAT_SERVICE_KEY')
   if (!platKey) return json({ ok: false, error: 'PLAT_SERVICE_KEY ausente' })

@@ -334,7 +334,7 @@ export default function Pipeline() {
         </div>
       )}
 
-      {cobrarAberto && <CobrarHoje deals={deals} onClose={() => { setCobrarAberto(false); load() }} onOpen={(d) => { setCobrarAberto(false); openDeal(d) }} />}
+      {cobrarAberto && <CobrarHoje deals={deals} onRefresh={load} onClose={() => { setCobrarAberto(false); load() }} onOpen={(d) => { setCobrarAberto(false); openDeal(d) }} />}
       {hojeAberto && <ContatarHoje deals={deals} onClose={() => { setHojeAberto(false); load() }} onChanged={() => {}} onOpen={(d) => { setHojeAberto(false); openDeal(d) }} />}
 
       {modal && <DealModal deal={modal.deal} defaults={modal.defaults} onClose={async () => { const id = modal.deal?.id; setModal(null); if (id) { await supabase.from('deals').update({ seen_at: new Date().toISOString() }).eq('id', id); window.dispatchEvent(new Event('crm:unread')) } load() }} onSaved={load}
