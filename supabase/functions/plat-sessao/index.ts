@@ -80,7 +80,8 @@ Deno.serve(async (req) => {
     objecoes: ouPadrao(registro.objecao1, SEM_OBJECAO), objecoes2: ouPadrao(registro.objecao2, SEM_OBJECAO),
     observacoes: ouPadrao(registro.observacoes, SEM_OBSERVACAO),
     contrato_texto: registro.contrato || null, video_venda: registro.video || null, transcricao: registro.transcricao || null,
-    video_venda_2: registro.video2 || null, transcricao_2: registro.transcricao2 || null,
+    // 2ª parte: só manda quando preenchida no CRM (não apaga o que alguém já tenha colocado direto no Plat)
+    ...(registro.video2 ? { video_venda_2: registro.video2 } : {}), ...(registro.transcricao2 ? { transcricao_2: registro.transcricao2 } : {}),
   }
   let platId: string | null = deal.plat_sessao_id ?? null
   let numero: number | null = null
