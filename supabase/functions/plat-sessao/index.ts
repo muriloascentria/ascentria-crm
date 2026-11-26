@@ -6,7 +6,9 @@
 // apresentado; No-show → Não compareceu).
 //
 // Body: { deal_id, dados: { data, lead, whatsapp, vendedor, produto, upsell, formato, presenca,
-//         resultado, valor, objecao1, objecao2, observacoes, contrato, video, transcricao } }
+//         resultado, valor, objecao1, objecao2, observacoes, contrato, video, transcricao, video2, transcricao2 } }
+// video2/transcricao2 = 2ª parte de uma reunião quebrada (queda de conexão, nova chamada): vão para os campos
+// "Gravação/Transcrição 2ª parte" da mesma sessão no Registro de Sessões 1:1 do Plat.
 // Gravação e transcrição vazias são completadas com os anexos da reunião já encontrados no card.
 // Secrets: PLAT_SERVICE_KEY (chave de serviço do projeto do Essência Plat)
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -58,10 +60,16 @@ Deno.serve(async (req) => {
     upsell: d.upsell === true, formato: txt(d.formato, 80), presenca: txt(d.presenca, 40), resultado: txt(d.resultado, 40),
     valor: valorTexto, objecao1: txt(d.objecao1), objecao2: txt(d.objecao2), observacoes: txt(d.observacoes),
     contrato: txt(d.contrato, 1000), video: txt(d.video, 1000), transcricao: txt(d.transcricao, 1000),
+    video2: txt(d.video2, 1000), transcricao2: txt(d.transcricao2, 1000),
   }
-  const anexos = linksReuniao(Array.isArray(deal.meeting_files) ? deal.meeting_files : [])
+  const arquivos = Array.isArray(deal.meeting_files) ? deal.meeting_files : []
+  const anexos = linksReuniao(arquivos)
   if (!registro.video) registro.video = anexos.video
   if (!registro.transcricao) registro.transcricao = anexos.transcricao
+  // o Google anexou mais de uma gravação/transcrição à reunião: a outra vira a 2ª parte (se ainda estiver vazia)
+  const outra = (kinds: string[], usado: string) => arquivos.find((x: any) => kinds.includes(x?.kind) && x?.url && x.url !== usado)?.url ?? ''
+  if (!registro.video2) registro.video2 = outra(['gravacao'], registro.video)
+  if (!registro.transcricao2) registro.transcricao2 = outra(['transcricao', 'anotacoes'], registro.transcricao)
 
   // 1) Essência Plat
   const linha = {
@@ -72,6 +80,7 @@ Deno.serve(async (req) => {
     objecoes: ouPadrao(registro.objecao1, SEM_OBJECAO), objecoes2: ouPadrao(registro.objecao2, SEM_OBJECAO),
     observacoes: ouPadrao(registro.observacoes, SEM_OBSERVACAO),
     contrato_texto: registro.contrato || null, video_venda: registro.video || null, transcricao: registro.transcricao || null,
+    video_venda_2: registro.video2 || null, transcricao_2: registro.transcricao2 || null,
   }
   let platId: string | null = deal.plat_sessao_id ?? null
   let numero: number | null = null

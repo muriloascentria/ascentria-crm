@@ -55,6 +55,8 @@ export default function SessaoRegistro({ deal, contato, onSaved, onStageChanged,
     }
   })
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
+  // reunião quebrada (queda de conexão, nova chamada): links da 2ª parte
+  const [parte2, setParte2] = useState(() => !!(salvo?.video2 || salvo?.transcricao2))
   const colunas = stages.filter((s) => s.pipeline_id === deal.pipeline_id).sort((a, b) => a.position - b.position)
   const colunaAtual = stageId || deal.stage_id
   const [destino, setDestino] = useState('') // '' = ainda não escolhida
@@ -164,6 +166,18 @@ export default function SessaoRegistro({ deal, contato, onSaved, onStageChanged,
         <Field label="Link da transcrição"><input className="input" value={f.transcricao || ''} onChange={(e) => set('transcricao', e.target.value)} placeholder="https://..." /></Field>
         <div className="small muted" style={{ alignSelf: 'end', paddingBottom: 8 }}>A gravação e a transcrição entram sozinhas quando o Google anexa à reunião (e vão para o Plat se a sessão já estiver registrada).</div>
       </div>
+      {!parte2 ? (
+        <div><button type="button" className="btn sm" onClick={() => setParte2(true)}>➕ Reunião quebrada: adicionar 2ª parte</button></div>
+      ) : (
+        <div className="card" style={{ padding: 10 }}>
+          <div className="small" style={{ fontWeight: 600, marginBottom: 6 }}>Reunião quebrada · 2ª parte <span className="muted" style={{ fontWeight: 400 }}>(queda de conexão, nova chamada etc.)</span></div>
+          <div className="grid2">
+            <Field label="Link da gravação da 2ª parte"><input className="input" value={f.video2 || ''} onChange={(e) => set('video2', e.target.value)} placeholder="https://..." /></Field>
+            <Field label="Link da transcrição da 2ª parte"><input className="input" value={f.transcricao2 || ''} onChange={(e) => set('transcricao2', e.target.value)} placeholder="https://..." /></Field>
+          </div>
+          <div className="small muted">Ao salvar, os links vão junto para a mesma sessão no Registro de Sessões 1:1 do Essência Plat.</div>
+        </div>
+      )}
       <div className="mover-card">
         <Field label="Depois de salvar, colocar o card em">
           <select className="select" value={destinoEfetivo} onChange={(e) => escolherColuna(e.target.value)} required>
