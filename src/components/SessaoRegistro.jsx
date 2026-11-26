@@ -56,7 +56,15 @@ export default function SessaoRegistro({ deal, contato, onSaved, onStageChanged,
   })
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
   // reunião quebrada (queda de conexão, nova chamada): links da 2ª parte
-  const [parte2, setParte2] = useState(() => !!(salvo?.video2 || salvo?.transcricao2))
+  const [parte2, setParte2] = useState(() => !!(salvo?.video2 || salvo?.transcricao2 || salvo?.partes_extras?.length))
+  // 2ª parte = video2/transcricao2; da 3ª em diante = partes_extras [{ video, transcricao }]
+  const partes = [{ video: f.video2, transcricao: f.transcricao2 }, ...(Array.isArray(f.partes_extras) ? f.partes_extras : [])]
+  const setParte = (i, k, v) => {
+    if (i === 0) return set(k === 'video' ? 'video2' : 'transcricao2', v)
+    setF((x) => { const ex = [...(x.partes_extras || [])]; ex[i - 1] = { ...ex[i - 1], [k]: v }; return { ...x, partes_extras: ex } })
+  }
+  const maisParte = () => setF((x) => ({ ...x, partes_extras: [...(x.partes_extras || []), { video: '', transcricao: '' }] }))
+  const tirarParte = () => setF((x) => ({ ...x, partes_extras: (x.partes_extras || []).slice(0, -1) }))
   const colunas = stages.filter((s) => s.pipeline_id === deal.pipeline_id).sort((a, b) => a.position - b.position)
   const colunaAtual = stageId || deal.stage_id
   const [destino, setDestino] = useState('') // '' = ainda não escolhida
@@ -170,12 +178,20 @@ export default function SessaoRegistro({ deal, contato, onSaved, onStageChanged,
         <div><button type="button" className="btn sm" onClick={() => setParte2(true)}>➕ Reunião quebrada: adicionar 2ª parte</button></div>
       ) : (
         <div className="card" style={{ padding: 10 }}>
-          <div className="small" style={{ fontWeight: 600, marginBottom: 6 }}>Reunião quebrada · 2ª parte <span className="muted" style={{ fontWeight: 400 }}>(queda de conexão, nova chamada etc.)</span></div>
-          <div className="grid2">
-            <Field label="Link da gravação da 2ª parte"><input className="input" value={f.video2 || ''} onChange={(e) => set('video2', e.target.value)} placeholder="https://..." /></Field>
-            <Field label="Link da transcrição da 2ª parte"><input className="input" value={f.transcricao2 || ''} onChange={(e) => set('transcricao2', e.target.value)} placeholder="https://..." /></Field>
-          </div>
-          <div className="small muted">Ao salvar, os links vão junto para a mesma sessão no Registro de Sessões 1:1 do Essência Plat.</div>
+          <div className="small" style={{ fontWeight: 600, marginBottom: 6 }}>Reunião quebrada <span className="muted" style={{ fontWeight: 400 }}>(queda de conexão, nova chamada etc.)</span></div>
+          {partes.map((p, i) => (
+            <div key={i} style={{ marginBottom: 8 }}>
+              <div className="between"><span className="small" style={{ fontWeight: 600 }}>{i + 2}ª parte</span>
+                {i > 0 && i === partes.length - 1 && <button type="button" className="btn ghost sm" onClick={tirarParte}>✕ tirar esta parte</button>}
+              </div>
+              <div className="grid2">
+                <Field label={`Link da gravação da ${i + 2}ª parte`}><input className="input" value={p.video || ''} onChange={(e) => setParte(i, 'video', e.target.value)} placeholder="https://..." /></Field>
+                <Field label={`Link da transcrição da ${i + 2}ª parte`}><input className="input" value={p.transcricao || ''} onChange={(e) => setParte(i, 'transcricao', e.target.value)} placeholder="https://..." /></Field>
+              </div>
+            </div>
+          ))}
+          <button type="button" className="btn sm" onClick={maisParte}>➕ Adicionar mais uma parte ({partes.length + 2}ª)</button>
+          <div className="small muted" style={{ marginTop: 6 }}>Ao salvar, os links de todas as partes vão junto para a mesma sessão no Registro de Sessões 1:1 do Essência Plat.</div>
         </div>
       )}
       <div className="mover-card">

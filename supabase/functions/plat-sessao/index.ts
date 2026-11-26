@@ -61,6 +61,9 @@ Deno.serve(async (req) => {
     valor: valorTexto, objecao1: txt(d.objecao1), objecao2: txt(d.objecao2), observacoes: txt(d.observacoes),
     contrato: txt(d.contrato, 1000), video: txt(d.video, 1000), transcricao: txt(d.transcricao, 1000),
     video2: txt(d.video2, 1000), transcricao2: txt(d.transcricao2, 1000),
+    // da 3ª parte em diante (reunião que caiu mais de uma vez)
+    partes_extras: (Array.isArray(d.partes_extras) ? d.partes_extras : []).slice(0, 10)
+      .map((p: any) => ({ video: txt(p?.video, 1000), transcricao: txt(p?.transcricao, 1000) })).filter((p: any) => p.video || p.transcricao),
   }
   const arquivos = Array.isArray(deal.meeting_files) ? deal.meeting_files : []
   const anexos = linksReuniao(arquivos)
@@ -82,6 +85,7 @@ Deno.serve(async (req) => {
     contrato_texto: registro.contrato || null, video_venda: registro.video || null, transcricao: registro.transcricao || null,
     // 2ª parte: só manda quando preenchida no CRM (não apaga o que alguém já tenha colocado direto no Plat)
     ...(registro.video2 ? { video_venda_2: registro.video2 } : {}), ...(registro.transcricao2 ? { transcricao_2: registro.transcricao2 } : {}),
+    ...(registro.partes_extras.length ? { partes_extras: registro.partes_extras } : {}),
   }
   let platId: string | null = deal.plat_sessao_id ?? null
   let numero: number | null = null
