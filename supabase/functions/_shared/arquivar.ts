@@ -31,16 +31,23 @@ async function token(sa: SA, subject: string): Promise<string> {
 const dataBR = (iso?: string | null) => (iso && /^\d{4}-\d{2}-\d{2}/.test(iso) ? `${iso.slice(8, 10)}-${iso.slice(5, 7)}-${iso.slice(0, 4)}` : '')
 
 export async function arquivarContrato(admin: any, dealId: string, pdfUrl?: string | null): Promise<{ ok: boolean; id?: string; url?: string; error?: string }> {
+  let reservado: string | null = null
+  const falha = async (error: string) => { if (reservado) await admin.from('deals').update({ contrato_arquivo_id: null }).eq('id', reservado).eq('contrato_arquivo_id', 'enviando'); return { ok: false, error } }
   try {
     const { data: d } = await admin.from('deals').select('id, title, contrato, contrato_doc_id, contrato_pdf_url, contrato_arquivo_id, contrato_assinado_em, contact:contacts(name)').eq('id', dealId).single()
     if (!d) return { ok: false, error: 'card não encontrado' }
     if (d.contrato_arquivo_id) return { ok: true, id: d.contrato_arquivo_id }
+    // a Autentique manda vários avisos ao mesmo tempo quando o último assina (assinatura + documento concluído):
+    // reserva o card antes de enviar, para só um deles gravar o PDF na pasta (antes saía em duplicata)
+    const { data: vaga } = await admin.from('deals').update({ contrato_arquivo_id: 'enviando' }).eq('id', dealId).is('contrato_arquivo_id', null).select('id')
+    if (!vaga?.length) return { ok: true }
+    reservado = dealId
     const { data: st } = await admin.from('org_settings').select('contract_signed_folder_id, contract_signer_email').eq('id', 1).single()
     const pasta = st?.contract_signed_folder_id
-    if (!pasta) return { ok: false, error: 'pasta dos contratos assinados não configurada' }
+    if (!pasta) return await falha('pasta dos contratos assinados não configurada')
     const raw = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON')
     const sa: SA | null = raw ? JSON.parse(raw) : null
-    if (!sa?.client_email) return { ok: false, error: 'conta do Google não conectada' }
+    if (!sa?.client_email) return await falha('conta do Google não conectada')
 
     // 1) o PDF: assinado da Autentique (com as assinaturas) ou o Google Docs do contrato exportado
     let pdf: Uint8Array | null = null
@@ -57,7 +64,7 @@ export async function arquivarContrato(admin: any, dealId: string, pdfUrl?: stri
       const r = await fetch(`https://www.googleapis.com/drive/v3/files/${d.contrato_doc_id}/export?mimeType=application/pdf`, { headers: { Authorization: `Bearer ${tkDono}` } })
       if (r.ok) pdf = new Uint8Array(await r.arrayBuffer())
     }
-    if (!pdf) return { ok: false, error: 'não consegui obter o PDF do contrato' }
+    if (!pdf) return await falha('não consegui obter o PDF do contrato')
 
     // 2) envia para a pasta, em nome do Murilo
     const nome = String(d.contrato?.nome || d.contact?.name || d.title || 'Lead').replace(/[\\/:*?"<>|]+/g, ' ').trim()
@@ -75,12 +82,12 @@ export async function arquivarContrato(admin: any, dealId: string, pdfUrl?: stri
       method: 'POST', headers: { Authorization: `Bearer ${tk}`, 'Content-Type': `multipart/related; boundary=${limite}` }, body: corpo,
     })
     const f: any = await up.json().catch(() => ({}))
-    if (!up.ok) return { ok: false, error: 'Drive: ' + (f?.error?.message || up.status) }
+    if (!up.ok) return await falha('Drive: ' + (f?.error?.message || up.status))
     await admin.from('deals').update({ contrato_arquivo_id: f.id, contrato_arquivo_url: f.webViewLink ?? null }).eq('id', dealId)
     await admin.from('activities').insert({ type: 'note', title: 'Contrato assinado salvo na pasta Contratos_Assinados › Mentoria_Essência', description: `${titulo}\n${f.webViewLink ?? ''}`, deal_id: dealId, done: true, done_at: new Date().toISOString() })
     return { ok: true, id: f.id, url: f.webViewLink }
   } catch (e) {
     console.error('arquivarContrato', (e as Error).message)
-    return { ok: false, error: (e as Error).message }
+    return await falha((e as Error).message)
   }
 }

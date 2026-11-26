@@ -76,7 +76,11 @@ export async function aplicarAndamento(admin: any, dealId: string, doc: any) {
   if (r.status === 'assinado') {
     const link = r.pdf || d?.contrato_url
     patch.contrato_pdf_url = r.pdf
-    if (d?.contrato_status !== 'assinado') {
+    // só o primeiro aviso de "assinado" (a Autentique manda mais de um ao mesmo tempo) registra a nota e leva o link
+    const { data: primeiro } = d?.contrato_status !== 'assinado'
+      ? await admin.from('deals').update({ contrato_status: 'assinado' }).eq('id', dealId).or('contrato_status.is.null,contrato_status.neq.assinado').select('id')
+      : { data: null }
+    if (primeiro?.length) {
       const ultima = r.assinaturas.map((a: any) => a.assinado_em).sort().pop()
       patch.contrato_assinado_em = ultima ?? new Date().toISOString()
       if (d?.sessao_registro) patch.sessao_registro = { ...d.sessao_registro, contrato: link }
