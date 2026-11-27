@@ -110,6 +110,14 @@ async function gravarAutomatico(sa: SA, subject: string, link: string | null): P
   }
 }
 
+// lead indicado (tag "indicação Geziel - para Diego ou Carmem", "indicação Cibele Crochi" ou origem "Indicação Geziel"):
+// aparece no título e na descrição do encontro, para o consultor saber na agenda que é indicação
+function indicacao(contact: any): string {
+  const t = [...(Array.isArray(contact?.tags) ? contact.tags : []), contact?.source].map((x) => String(x ?? '').trim()).find((x) => /^indica[cç][aã]o\b/i.test(x))
+  if (!t) return ''
+  const quem = t.replace(/^indica[cç][aã]o\s*(de|do|da)?\s*/i, '').split(/\s+-\s+|\s+\(/)[0].trim()
+  return quem ? `Indicação ${quem}` : 'Indicação'
+}
 const norm = (s = '') => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase().replace(/\s+/g, ' ')
 
 function spParts(iso: string) {
@@ -186,7 +194,7 @@ Deno.serve(async (req) => {
   }
   // O negócio precisa ser visível para quem pede (regras de acesso do banco).
   const dealFor = async (id: string) => {
-    const { data } = await userClient.from('deals').select('id, title, seller_id, calendar_event_id, meeting_date, meeting_time, reunioes_anteriores, contact:contacts(name, phone, wa_id)').eq('id', id).maybeSingle()
+    const { data } = await userClient.from('deals').select('id, title, seller_id, calendar_event_id, meeting_date, meeting_time, reunioes_anteriores, contact:contacts(name, phone, wa_id, tags, source)').eq('id', id).maybeSingle()
     if (!data) throw new Error('Negócio não encontrado.')
     return data as any
   }
@@ -254,12 +262,13 @@ Deno.serve(async (req) => {
       const nome = deal.contact?.name || deal.title
       const fone = deal.contact?.wa_id ? '+' + deal.contact.wa_id : (deal.contact?.phone || '')
       const dupla = ehDupla(ev)
+      const ind = indicacao(deal.contact)
       const convidados = dupla ? comConvidado(ev, true) : null
       const patched = await gcal(tk, `/${encodeURIComponent(b.event_id)}?conferenceDataVersion=1&sendUpdates=none`, {
         method: 'PATCH',
         body: JSON.stringify({
-          summary: dupla ? `${etiqueta(ev)} | ${nome}` : `${s.name} | Consultoria | ${nome}`,
-          description: `Lead: ${nome}\nWhatsApp: ${fone}\nAgendado pelo eCRM (https://ecrm.digital)`,
+          summary: (dupla ? `${etiqueta(ev)} | ${nome}` : `${s.name} | Consultoria | ${nome}`) + (ind ? ` | ⭐ ${ind}` : ''),
+          description: `Lead: ${nome}\nWhatsApp: ${fone}${ind ? `\n⭐ ${ind}` : ''}\nAgendado pelo eCRM (https://ecrm.digital)`,
           ...(convidados ? { attendees: convidados } : {}),
           // sala do Meet própria para cada lead: só reaproveita a do evento quando é o mesmo encontro deste negócio
           // (blocos repetidos criados com Meet compartilham a mesma sala entre todas as semanas)
@@ -361,9 +370,10 @@ Deno.serve(async (req) => {
 
       const tkTo = await googleToken(sa, to.email)
       const fone = deal.contact?.wa_id ? '+' + deal.contact.wa_id : (deal.contact?.phone || '')
+      const ind = indicacao(deal.contact)
       const body = {
-        summary: `${to.name} | Consultoria | ${nome}`,
-        description: `Lead: ${nome}\nWhatsApp: ${fone}\nAgendado pelo eCRM (https://ecrm.digital)`,
+        summary: `${to.name} | Consultoria | ${nome}` + (ind ? ` | ⭐ ${ind}` : ''),
+        description: `Lead: ${nome}\nWhatsApp: ${fone}${ind ? `\n⭐ ${ind}` : ''}\nAgendado pelo eCRM (https://ecrm.digital)`,
       }
       // usa o bloco "disponível" da nova vendedora que começa no mesmo horário; se não tiver, cria o evento
       const r2 = await gcal(tkTo, `?singleEvents=true&timeMin=${encodeURIComponent(new Date(new Date(ev.start.dateTime).getTime() - 60_000).toISOString())}&timeMax=${encodeURIComponent(new Date(new Date(ev.start.dateTime).getTime() + 60_000).toISOString())}`)
