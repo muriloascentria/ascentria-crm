@@ -10,9 +10,9 @@ export const STAGE_ROLES = {
 }
 
 /** Etapas das mensagens prontas (a ordem aqui é a ordem do menu). */
-export const QUICK_STAGES = [['agendamento', 'Agendamento'], ['qualificacao', 'Qualificação'], ['confirmacao', 'Confirmação'], ['remarcacao', 'Remarcação'], ['pos', 'Pós-consultoria'], ['cobranca', 'Cobrança']]
+export const QUICK_STAGES = [['agendamento', 'Agendamento'], ['qualificacao', 'Qualificação'], ['confirmacao', 'Confirmação'], ['remarcacao', 'Remarcação'], ['pos', 'Pós-consultoria'], ['cobranca', 'Cobrança'], ['esis', 'eSIS']]
 /** Etapas usadas só quando acontece algo (cancelamento): ficam fora da "próxima mensagem" sugerida. */
-export const SITUATIONAL_STAGES = ['remarcacao', 'pos', 'cobranca']
+export const SITUATIONAL_STAGES = ['remarcacao', 'pos', 'cobranca', 'esis']
 export const quickStageLabel = (s) => (QUICK_STAGES.find(([k]) => k === s) || [null, 'Outras'])[1]
 
 /** Uma mensagem pronta pode ter várias mensagens separadas por uma linha com "---". */

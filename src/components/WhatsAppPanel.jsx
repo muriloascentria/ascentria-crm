@@ -300,7 +300,10 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     const naRemarcar = /remarc/i.test(stages.find((s) => s.id === deal?.stage_id)?.name || '')
     // Card no funil "Inadimplentes" (criado em 24/11/2026): abre direto nas mensagens de Cobrança.
     const naCobranca = ['1731d20c-e32a-4a67-a537-b8bc653c1e1f', '2354ef40-0887-44f4-b584-e9c1c2bd2315'].includes(deal?.pipeline_id)
-    if (!showQuick && naCobranca) setStage('cobranca')
+    // Card no funil "eSIS" (criado em 27/11/2026): abre direto nas mensagens do eSIS.
+    const naEsis = deal?.pipeline_id === 'a465af9b-4756-47d0-9de5-8990ebe32f50'
+    if (!showQuick && naEsis) setStage('esis')
+    else if (!showQuick && naCobranca) setStage('cobranca')
     else if (!showQuick && naRemarcar) setStage('remarcacao')
     else if (!showQuick && proxima?.stage) setStage(proxima.stage)
     setShowQuick((v) => !v)
