@@ -36,6 +36,7 @@ import { cors, json } from '../_shared/wa.ts'
 import { levarArquivosParaSessao } from '../_shared/plat.ts'
 
 const TZ = 'America/Sao_Paulo'
+const PIPE_ESIS = 'a465af9b-4756-47d0-9de5-8990ebe32f50'
 const SCOPE = 'https://www.googleapis.com/auth/calendar.events'
 const MEET_SCOPE = 'https://www.googleapis.com/auth/meetings.space.settings'
 const DOCS_SCOPE = 'https://www.googleapis.com/auth/documents.readonly'
@@ -137,7 +138,11 @@ Deno.serve(async (req) => {
 
   const b = await req.json().catch(() => ({}))
   const { data: settings } = await admin.from('org_settings').select('slot_title').eq('id', 1).single()
-  const TITLE = settings?.slot_title || 'DISPONÍVEL PARA AGENDAMENTO'
+  // funil eSIS (27/11/2026): a demonstração do sistema é com o Diego, nos blocos "Demonstração eSIS" da agenda dele
+  let esis = false
+  if (b.deal_id) { const { data: dp } = await admin.from('deals').select('pipeline_id').eq('id', String(b.deal_id)).maybeSingle(); esis = dp?.pipeline_id === PIPE_ESIS }
+  const TITLE = esis ? 'Demonstração eSIS' : (settings?.slot_title || 'DISPONÍVEL PARA AGENDAMENTO')
+  const TIPO = esis ? 'Demonstração eSIS' : 'Consultoria'
 
   // blocos reserváveis: o título de disponibilidade ou um bloco com etiqueta ainda sem lead
   const priv = (e: any) => e?.extendedProperties?.private ?? {}
@@ -258,7 +263,7 @@ Deno.serve(async (req) => {
       const patched = await gcal(tk, `/${encodeURIComponent(b.event_id)}?conferenceDataVersion=1&sendUpdates=none`, {
         method: 'PATCH',
         body: JSON.stringify({
-          summary: dupla ? `${etiqueta(ev)} | ${nome}` : `${s.name} | Consultoria | ${nome}`,
+          summary: dupla ? `${etiqueta(ev)} | ${nome}` : `${s.name} | ${TIPO} | ${nome}`,
           description: `Lead: ${nome}\nWhatsApp: ${fone}\nAgendado pelo eCRM (https://ecrm.digital)`,
           ...(convidados ? { attendees: convidados } : {}),
           // sala do Meet própria para cada lead: só reaproveita a do evento quando é o mesmo encontro deste negócio
@@ -362,7 +367,7 @@ Deno.serve(async (req) => {
       const tkTo = await googleToken(sa, to.email)
       const fone = deal.contact?.wa_id ? '+' + deal.contact.wa_id : (deal.contact?.phone || '')
       const body = {
-        summary: `${to.name} | Consultoria | ${nome}`,
+        summary: `${to.name} | ${TIPO} | ${nome}`,
         description: `Lead: ${nome}\nWhatsApp: ${fone}\nAgendado pelo eCRM (https://ecrm.digital)`,
       }
       // usa o bloco "disponível" da nova vendedora que começa no mesmo horário; se não tiver, cria o evento

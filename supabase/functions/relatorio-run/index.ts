@@ -204,6 +204,7 @@ Deno.serve(async (req) => {
   const { data: deals } = await admin.from('deals')
     .select('id, title, contact_id, owner_id, meeting_date, meeting_time, calendar_event_id, meeting_files, reunioes_anteriores, relatorio_checado_em, plat_sessao_id, seller:calendar_sellers(name, email), contact:contacts(name)')
     .gte('meeting_date', desde).is('relatorio_pronto_em', null).is('relatorio_fonte', null).not('meeting_time', 'is', null).not('seller_id', 'is', null)
+    .neq('pipeline_id', 'a465af9b-4756-47d0-9de5-8990ebe32f50') // demonstração do eSIS não tem relatório de diagnóstico
     .order('meeting_date', { ascending: false }).limit(40)
 
   const feitos: any[] = []

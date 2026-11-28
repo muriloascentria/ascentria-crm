@@ -10,6 +10,7 @@ import { fmtDateTime } from '../lib/utils'
 import { Field } from './ui'
 import { callCalendar, fillSlots, slotLabel } from '../lib/calendar'
 import { leadAssinouEm } from '../lib/contrato'
+const PIPE_ESIS = 'a465af9b-4756-47d0-9de5-8990ebe32f50' // funil eSIS (27/11/2026)
 import { isManual, waLink, abrirWhatsApp, stageText, messageStage, podeReceber, marcarEnviado, desfazerEnviado, marcarRespondeu } from '../lib/manual'
 
 /** Conversa de WhatsApp de um contato (com envio). deal opcional para vincular e calcular a janela de 24h. */
@@ -79,8 +80,10 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     if (!sellerId) return toast('Escolha a vendedora', 'err')
     setCalBusy('buscar')
     try {
-      const ids = sellerId === TODOS ? activeSellers.map((s) => s.id) : [sellerId]
-      const res = await Promise.all(ids.map((id) => callCalendar('slots', { seller_id: id }).catch((e) => { toast(`${sellerName(id)}: ${e.message}`, 'err'); return { slots: [] } })))
+      // funil eSIS: a demonstração do sistema é sempre com o Diego (blocos "Demonstração eSIS" da agenda dele)
+      const diego = activeSellers.find((s) => /^diego/i.test(s.name))
+      const ids = deal?.pipeline_id === PIPE_ESIS && diego ? [diego.id] : sellerId === TODOS ? activeSellers.map((s) => s.id) : [sellerId]
+      const res = await Promise.all(ids.map((id) => callCalendar('slots', { seller_id: id, deal_id: deal?.id }).catch((e) => { toast(`${sellerName(id)}: ${e.message}`, 'err'); return { slots: [] } })))
       // na busca em todas as agendas: até 5 horários de cada consultor
       const slots = res.flatMap((r) => (ids.length > 1 ? (r.slots || []).slice(0, 5) : (r.slots || []))).sort((a, b) => (a.start < b.start ? -1 : 1))
       setFound(slots)
@@ -301,7 +304,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
     // Card no funil "Inadimplentes" (criado em 24/11/2026): abre direto nas mensagens de Cobrança.
     const naCobranca = ['1731d20c-e32a-4a67-a537-b8bc653c1e1f', '2354ef40-0887-44f4-b584-e9c1c2bd2315'].includes(deal?.pipeline_id)
     // Card no funil "eSIS" (criado em 27/11/2026): abre direto nas mensagens do eSIS.
-    const naEsis = deal?.pipeline_id === 'a465af9b-4756-47d0-9de5-8990ebe32f50'
+    const naEsis = deal?.pipeline_id === PIPE_ESIS
     if (!showQuick && naEsis) setStage('esis')
     else if (!showQuick && naCobranca) setStage('cobranca')
     else if (!showQuick && naRemarcar) setStage('remarcacao')
