@@ -227,9 +227,15 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
   }, [contactId])
   useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t) }, [load])
   useEffect(() => {
-    supabase.from('quick_replies').select('*').order('position').then(({ data }) => setQuick(data || []))
+    // funil eSIS: só as mensagens do eSIS (as "eSIS · …" de agendamento, lembretes e remarcação, mais o grupo eSIS),
+    // sem qualificação, pesquisa nem nada da mentoria; nos outros funis, as do eSIS não aparecem
+    const ehEsis = deal?.pipeline_id === PIPE_ESIS
+    supabase.from('quick_replies').select('*').order('position').then(({ data }) => setQuick((data || []).filter((q) => {
+      const doEsis = q.stage === 'esis' || String(q.title || '').startsWith('eSIS · ')
+      return ehEsis ? doEsis : !doEsis
+    })))
     supabase.from('contacts').select('id,name,phone,wa_id,source,optin,marketing_opt_out').eq('id', contactId).single().then(({ data }) => { setContato(data || null); setFirstName((data?.name || '').split(' ')[0]) })
-  }, [contactId])
+  }, [contactId, deal?.pipeline_id]) // eslint-disable-line react-hooks/exhaustive-deps
   // {{consultora}}: quem fez a reunião (ex.: "a Carmem", "o Diego")
   const consultoraTxt = () => {
     const n = String(sellers.find((x) => x.id === deal?.seller_id)?.name || '').split(' ')[0]
@@ -758,7 +764,7 @@ export default function WhatsAppPanel({ contactId, deal, onSent, onStageChanged,
             {quick.length > 0 && (
               <select className="select" style={{ marginBottom: 6 }} value={stage} onChange={(e) => setStage(e.target.value)} aria-label="Etapa">
                 <option value="">Todas as etapas</option>
-                {QUICK_STAGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                {QUICK_STAGES.filter(([k]) => quick.some((q) => q.stage === k)).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                 {quick.some((q) => !q.stage) && <option value="outras">Outras</option>}
               </select>
             )}
